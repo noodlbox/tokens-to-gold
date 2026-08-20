@@ -1,0 +1,81 @@
+{
+  "record": "AUTHORITATIVE V1 REFERENCE NUMBERS \u2014 the values the B3 harness must land on",
+  "authored_by": "rel2-measurer",
+  "date": "2026-08-20",
+  "provenance": {
+    "main_sha": "3a3f01fdc69b0e100dde126b9dc6886bd1056d2f",
+    "binary": "noodl-eval-official",
+    "binary_sha256": "c5dbaf91d0502b1c792834d3c3f19e520e68eff50088fab8b1a2f731f04e7c65",
+    "protocol_treatment": "--graph-gold --raw-query --intent implement --reindex --timeout 400 -f json (FRESH store)",
+    "protocol_ablation": "same + --curation off --m22-levers-off, REUSE store, NO --reindex, SCORED-ONLY corpora",
+    "shipped_config": "for_intent(Implement) = CurationPolicy::Waterfill{char_budget: 65536} (S7 wf_b3, sealed)",
+    "scoring": "offline set-match vs FROZEN gold, FIRST-occurrence-per-gold-identity, frozen denominators"
+  },
+  "frozen_gold": {
+    "ts40": {
+      "sha256": "fcc09bd98d5e648be1c46803b72140b233599ef91e2dd945ba4b52e72d02a0e3",
+      "n": 37,
+      "symbols": 372
+    },
+    "py_nosphinx": {
+      "sha256": "05033580302881b919729bdbd9b485c2b89e0531bd338f3e19acedbcebe67736",
+      "n": 39,
+      "symbols": 54
+    }
+  },
+  "arms": {
+    "ts40": {
+      "shipped_treatment": {
+        "n": 37,
+        "head_only_at_10": 0.082407,
+        "head_only_at_25": 0.136768,
+        "gold_at_8k_wire": 0.789118,
+        "gold_at_32k_wire": 0.889274,
+        "reach_at_80": 0.783784,
+        "whole_list_INTERNAL": 0.889274
+      },
+      "levers_off_ablation": {
+        "n": 37,
+        "head_only_at_10": 0.082407,
+        "head_only_at_25": 0.136768,
+        "gold_at_8k_wire": 0.444371,
+        "gold_at_32k_wire": 0.444371,
+        "reach_at_80": 0.216216,
+        "whole_list_INTERNAL": 0.451321
+      }
+    },
+    "py_nosphinx": {
+      "shipped_treatment": {
+        "n": 39,
+        "head_only_at_10": 0.128205,
+        "head_only_at_25": 0.25641,
+        "gold_at_8k_wire": 0.833333,
+        "gold_at_32k_wire": 0.910256,
+        "reach_at_80": 0.897436,
+        "whole_list_INTERNAL": 0.910256
+      },
+      "levers_off_ablation": {
+        "n": 39,
+        "head_only_at_10": 0.038462,
+        "head_only_at_25": 0.089744,
+        "gold_at_8k_wire": 0.384615,
+        "gold_at_32k_wire": 0.384615,
+        "reach_at_80": 0.358974,
+        "whole_list_INTERNAL": 0.401709
+      }
+    }
+  },
+  "tolerance": {
+    "head_only_at_k": "EXACT to 4 decimals \u2014 deterministic set-match; any drift is a real semantic change, not noise",
+    "gold_at_budget_wire": "EXACT to 4 decimals \u2014 read from the report's own token_coverage_wire",
+    "reach_at_80": "EXACT to 4 decimals; note 1 instance = 2.70pp (ts40) / 2.56pp (py), so a single-instance move is visible",
+    "cross_run_reproduction": "a DIFFERENT run of the same config may move within the pre-registered NOISE_FLOOR = 2.75pp (criteria.py:49); a harness REPLAYING these reports must be EXACT"
+  },
+  "harness_must_not": [
+    "re-derive gold (score against the pinned frozen gold files above)",
+    "use full 40-instance corpora on a REUSE run (fall-through re-analyses the excluded instance; belt drift)",
+    "whole-file cmp a frozen gold (the header stamps the producing binary \u2014 compare payload + the 5 claim-bearing header fields)",
+    "credit a gold more than once (first-occurrence-per-gold-identity; ranked lists legitimately repeat identities)",
+    "claim superiority at py @10 (p=0.125, CI spans 0); @25 only (p=0.0078)"
+  ]
+}

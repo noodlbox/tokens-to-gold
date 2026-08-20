@@ -1,0 +1,142 @@
+{
+ "corpus": "py_nosphinx",
+ "binary": "noodl-eval-enriched-v2 4bfec6fd",
+ "protocol": "deepswe-frozen ForceReindex",
+ "graph_gold_derivation_version": 4,
+ "total_gold_symbols": 54,
+ "instances_with_gold": 39,
+ "gold": {
+  "pytest-dev__pytest-11143": [
+   "src/_pytest/assertion/rewrite.py:run"
+  ],
+  "pytest-dev__pytest-11148": [
+   "src/_pytest/pathlib.py:import_path"
+  ],
+  "pytest-dev__pytest-5103": [
+   "src/_pytest/assertion/rewrite.py:visit_Call_35",
+   "src/_pytest/assertion/rewrite.py:visit_Call_legacy"
+  ],
+  "pytest-dev__pytest-5221": [
+   "src/_pytest/python.py:_showfixtures_main"
+  ],
+  "pytest-dev__pytest-5413": [
+   "src/_pytest/_code/code.py:__str__",
+   "src/_pytest/_code/code.py:ExceptionInfo"
+  ],
+  "pytest-dev__pytest-5495": [
+   "src/_pytest/assertion/util.py:_compare_eq_sequence"
+  ],
+  "pytest-dev__pytest-5692": [
+   "src/_pytest/junitxml.py:pytest_sessionfinish"
+  ],
+  "pytest-dev__pytest-6116": [
+   "src/_pytest/main.py:pytest_addoption"
+  ],
+  "pytest-dev__pytest-7168": [
+   "src/_pytest/_io/saferepr.py:_format_repr_exception"
+  ],
+  "pytest-dev__pytest-7220": [
+   "src/_pytest/nodes.py:_repr_failure_py"
+  ],
+  "pytest-dev__pytest-7373": [
+   "src/_pytest/mark/evaluate.py:cached_eval",
+   "src/_pytest/mark/evaluate.py:_istrue"
+  ],
+  "pytest-dev__pytest-7432": [
+   "src/_pytest/skipping.py:pytest_runtest_makereport"
+  ],
+  "pytest-dev__pytest-7490": [
+   "src/_pytest/skipping.py:pytest_runtest_setup",
+   "src/_pytest/skipping.py:pytest_runtest_call"
+  ],
+  "pytest-dev__pytest-8365": [
+   "src/_pytest/tmpdir.py:getbasetemp"
+  ],
+  "pytest-dev__pytest-8906": [
+   "src/_pytest/python.py:_importtestmodule"
+  ],
+  "pytest-dev__pytest-9359": [
+   "src/_pytest/_code/source.py:get_statement_startend2"
+  ],
+  "scikit-learn__scikit-learn-10297": [
+   "sklearn/linear_model/ridge.py:RidgeCV",
+   "sklearn/linear_model/ridge.py:RidgeClassifierCV",
+   "sklearn/linear_model/ridge.py:__init__"
+  ],
+  "scikit-learn__scikit-learn-10508": [
+   "sklearn/preprocessing/label.py:transform",
+   "sklearn/preprocessing/label.py:inverse_transform"
+  ],
+  "scikit-learn__scikit-learn-10949": [
+   "sklearn/utils/validation.py:check_array"
+  ],
+  "scikit-learn__scikit-learn-11040": [
+   "sklearn/neighbors/base.py:_fit",
+   "sklearn/neighbors/base.py:kneighbors"
+  ],
+  "scikit-learn__scikit-learn-11281": [
+   "sklearn/mixture/base.py:fit",
+   "sklearn/mixture/base.py:BaseMixture"
+  ],
+  "scikit-learn__scikit-learn-12471": [
+   "sklearn/preprocessing/_encoders.py:_transform"
+  ],
+  "scikit-learn__scikit-learn-13142": [
+   "sklearn/mixture/base.py:fit_predict"
+  ],
+  "scikit-learn__scikit-learn-13241": [
+   "sklearn/decomposition/kernel_pca.py:_fit_transform"
+  ],
+  "scikit-learn__scikit-learn-13439": [
+   "sklearn/pipeline.py:__getitem__"
+  ],
+  "scikit-learn__scikit-learn-13496": [
+   "sklearn/ensemble/iforest.py:IsolationForest",
+   "sklearn/ensemble/iforest.py:__init__"
+  ],
+  "scikit-learn__scikit-learn-13497": [
+   "sklearn/feature_selection/mutual_info_.py:_estimate_mi"
+  ],
+  "scikit-learn__scikit-learn-13584": [
+   "sklearn/utils/_pprint.py:_changed_params"
+  ],
+  "scikit-learn__scikit-learn-13779": [
+   "sklearn/ensemble/voting.py:fit"
+  ],
+  "scikit-learn__scikit-learn-14087": [
+   "sklearn/linear_model/logistic.py:fit"
+  ],
+  "scikit-learn__scikit-learn-14092": [
+   "sklearn/neighbors/nca.py:_validate_params"
+  ],
+  "scikit-learn__scikit-learn-14894": [
+   "sklearn/svm/base.py:_sparse_fit",
+   "sklearn/svm/base.py:BaseLibSVM"
+  ],
+  "scikit-learn__scikit-learn-14983": [
+   "sklearn/model_selection/_split.py:_build_repr"
+  ],
+  "scikit-learn__scikit-learn-15512": [
+   "sklearn/cluster/_affinity_propagation.py:affinity_propagation",
+   "sklearn/cluster/_affinity_propagation.py:predict"
+  ],
+  "scikit-learn__scikit-learn-15535": [
+   "sklearn/metrics/cluster/_supervised.py:check_clusterings"
+  ],
+  "scikit-learn__scikit-learn-25500": [
+   "sklearn/isotonic.py:transform",
+   "sklearn/isotonic.py:predict",
+   "sklearn/isotonic.py:IsotonicRegression"
+  ],
+  "scikit-learn__scikit-learn-25570": [
+   "sklearn/compose/_column_transformer.py:_hstack"
+  ],
+  "scikit-learn__scikit-learn-25638": [
+   "sklearn/utils/multiclass.py:is_multilabel",
+   "sklearn/utils/multiclass.py:type_of_target"
+  ],
+  "scikit-learn__scikit-learn-25747": [
+   "sklearn/utils/_set_output.py:_wrap_in_pandas_container"
+  ]
+ }
+}

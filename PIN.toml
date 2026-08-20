@@ -1,0 +1,55 @@
+# Artifact pins.
+#
+# STATUS: the harness LOCATION is wired (private repo, below). The durable
+# artifact home (R2) and the released-binary attachment are NOT wired yet.
+#
+# G3 is SIGNED (founder, 2026-08-20): page copy and claims are approved, and
+# the public flip is AUTHORIZED for the coordinated go-live once B8 and
+# packaging land. So the remaining markers are READY-TO-FLIP, not blocked —
+# but flipping them is the design owner's coordinated step, not a side effect
+# of a packaging commit.
+#
+# Nothing here may be cited as a PUBLIC location while a READY-TO-FLIP
+# remains: the repo is still private and the URLs do not resolve yet.
+
+[repo]
+# WIRED: the harness lives here. This is the HARNESS LOCATION, not a public
+# URL — the repo is private and the public flip rides the founder G3 sign-off.
+name = "noodlbox/tokens-to-gold"
+visibility = "private"
+clone_url = "https://github.com/noodlbox/tokens-to-gold.git"
+# G3 SIGNED — authorized to flip at the coordinated go-live (B8 + packaging).
+public_url = "<READY-TO-FLIP-AT-GO-LIVE>"
+
+[binary]
+# The released noodl-eval a third party runs. Identity is pinned by digest;
+# the SHA of the binary FILE is not a reproduction target (OUT_DIR bakes in
+# the absolute build path) — see README.
+release_tag = "<READY-TO-FLIP-RELEASE-WIRING>"
+asset_name = "<READY-TO-FLIP-RELEASE-WIRING>"
+sha256 = "<READY-TO-FLIP-RELEASE-WIRING>"
+
+[artifacts]
+# Large derivation reports live in object storage, not in the repo.
+store = "r2"
+bucket = "<READY-TO-FLIP-R2>"
+prefix = "<READY-TO-FLIP-R2>"
+
+[[artifacts.files]]
+name = "deepswe_frozen_ts40.json"
+sha256 = "fce361cb6cd0a9bdee57fb1d6d4a65d39cad0279299b7a25b694fd615eeb0e49"
+url = "<READY-TO-FLIP-R2>"
+
+[[artifacts.files]]
+name = "deepswe_frozen_py_nosphinx.json"
+sha256 = "1874fb4e7bb44b349923ddf73f29622227a02b4318660c7cd1f87b5f91932af5"
+url = "<READY-TO-FLIP-R2>"
+
+[gold]
+# Small enough to ship in the repo; digests also in gold/SHA256SUMS.
+frozen_gold_py_nosphinx = "05033580302881b919729bdbd9b485c2b89e0531bd338f3e19acedbcebe67736"
+frozen_gold_ts40 = "fcc09bd98d5e648be1c46803b72140b233599ef91e2dd945ba4b52e72d02a0e3"
+
+[provenance]
+gold_derived_at_commit = "0c061c57"
+sweep_binary_base_commit = "6d3ccaf0"
