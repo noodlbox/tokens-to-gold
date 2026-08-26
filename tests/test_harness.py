@@ -384,14 +384,28 @@ class T8PinConsistency(unittest.TestCase):
         self.assertGreater(checked, 0)
 
     def test_pending_pins_are_explicitly_marked(self) -> None:
-        """An unwired pin must READ as unwired, never as a plausible value."""
+        """An unwired pin must READ as unwired, never as a plausible value.
+
+        POST-WIRING (2026-08-26): every artifact pin is now a real value
+        (release attachments on this repo). The ONE remaining pending item is
+        the visibility flip, and it must still read as pending — while no pin
+        VALUE may be a placeholder that could be mistaken for a location.
+        """
         pin = (PKG / "PIN.toml").read_text()
+        # The one pending item — the public flip — still reads as pending:
+        self.assertIn('visibility = "private"', pin)
         self.assertIn("READY-TO-FLIP", pin)
-        # An unwired artifact URL must never look like a resolvable one.
+        # No pin VALUE is a placeholder (markers live in comments only), and
+        # nothing pretends to be an R2 URL:
+        self.assertNotIn("<READY-TO-FLIP", pin)
         self.assertNotIn("https://r2", pin)
-        for marker in ("bucket", "release_tag"):
-            line = next(l for l in pin.splitlines() if l.startswith(marker))
-            self.assertIn("READY-TO-FLIP", line)
+        # Every value-bearing pin line is concrete:
+        for key in ("release_tag", "asset_name", "sha256", "url", "clone_url"):
+            for line in pin.splitlines():
+                if line.startswith(key):
+                    self.assertNotIn(
+                        "READY-TO-FLIP", line, f"{key} still carries a placeholder"
+                    )
 
 
 class T6Privacy(unittest.TestCase):

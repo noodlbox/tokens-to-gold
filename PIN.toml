@@ -18,6 +18,8 @@
 # WIRED: the harness lives here. The public flip rides the coordinated
 # go-live (founder-authorized at the G3 sign-off).
 name = "noodlbox/tokens-to-gold"
+# READY-TO-FLIP: the ONE pending pin — the coordinated go-live step sets this
+# to "public"; every URL in this file then resolves for a logged-out reader.
 visibility = "private"
 clone_url = "https://github.com/noodlbox/tokens-to-gold.git"
 # At go-live this becomes the same URL with the repo public; recorded now so
