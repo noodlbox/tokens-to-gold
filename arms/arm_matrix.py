@@ -159,11 +159,27 @@ ARMS: Final[dict[str, Arm]] = {
         reindex=False,
         scored_only_corpus=True,
     ),
-    # Q1 RIDER: the R5 native-floor arm (B4) slots into THIS table when it
-    # lands. Registered now so the matrix is provably able to take a third
-    # section-5 arm; requesting it before B4 fails loudly rather than silently.
+    # B4 (LANDED 2026-08-26): the R5 native-floor arm — the in-binary R5
+    # Explorer (`--explorer`): deterministic graph-free rg/glob/span retrieval,
+    # frozen policy per R5_EXPLORER_PREREG_2026-07-23 (context ±25 lines,
+    # whole-file ≤150 lines, ≤24 terms, source-only globs). Scoring is the
+    # in-binary span-intersection vs graph-gold line ranges (evaluator
+    # `evaluate_explorer`): first covering span per gold, same file + line
+    # overlap; a RANGE-LESS gold identity is uncoverable and STAYS in the
+    # denominator (pre-registered denominator rule — dropping it would flatter
+    # the comparator). Wire == read by design (spans ARE read content), priced
+    # by the same walk as every other arm. `--curation off` is EXPLICIT and
+    # inert on the explorer path — it satisfies the lane invariant; omission
+    # would silently mean the Waterfill treatment on the other paths.
+    # Protocol mirrors the ablation: REUSE the official store, NO --reindex,
+    # SCORED-ONLY corpora (MUST-NOT #2 / belt drift).
     "native_floor": Arm(
-        "native_floor", "off", None, "native-floor", (), available=False
+        "native_floor", "off", None, "native-floor",
+        extra_flags=("--explorer",),
+        curation=Curation.EXPLICIT,
+        store_mode=StoreMode.REUSE,
+        reindex=False,
+        scored_only_corpus=True,
     ),
 }
 

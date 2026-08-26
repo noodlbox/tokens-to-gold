@@ -138,6 +138,8 @@ corpora/            pinned instance manifests + digests
 gold/               frozen gold + digests
 tests/              the must-red suite (negative controls; run with unittest)
 PIN.toml            artifact pins (populated at packaging)
+BUNDLE.md           the 14-row publication contract: every row filled or
+                    explained-absent — what ships with every public number
 ```
 
 ```sh

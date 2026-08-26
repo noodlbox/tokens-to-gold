@@ -16,8 +16,8 @@ from pathlib import Path
 
 from arms.arm_matrix import (
     ARMS, CORPORA, DEFAULT_ARMS, SECTION5_ARMS, SWEEP_ARMS, ArmError, Curation,
-    assert_corpus_matches_protocol, assert_lane_invariants, cells, char_budget,
-    flags_for,
+    StoreMode, assert_corpus_matches_protocol, assert_lane_invariants, cells,
+    char_budget, flags_for,
 )
 from ttg.comparable_path import ComparablePath, PathComparison, compare_paths
 from ttg.curve_recompute import curve_parity_findings, recompute_wire_curve
@@ -256,12 +256,31 @@ class T3ArmFlags(unittest.TestCase):
                 ARMS["shipped_treatment"],
             )
 
-    def test_third_section5_arm_slot_exists_and_fails_loudly(self) -> None:
-        """Q1 RIDER: the R5 native-floor arm slots into the SAME matrix."""
-        self.assertIn("native_floor", ARMS)
-        self.assertFalse(ARMS["native_floor"].available)
-        with self.assertRaises(ArmError):
-            flags_for("native_floor", "ts40")
+    def test_native_floor_arm_wired(self) -> None:
+        """B4 LANDED: the R5 native-floor arm is LIVE in the matrix.
+
+        The arm is the in-binary R5 Explorer (`--explorer`: deterministic
+        rg/glob/span retrieval, frozen policy per R5_EXPLORER_PREREG; span
+        scoring vs graph-gold line ranges — range-less gold STAYS in the
+        denominator). PERMANENT NEGATIVE CONTROLS: (a) `--curation off` is
+        EXPLICIT — the floor can never silently take the shipped Waterfill
+        treatment via omission; (b) `--graph-gold` rides with `--explorer`
+        (the binary refuses `--explorer` alone); (c) a REUSE arm refuses the
+        full 40-instance corpus (belt-drift protection).
+        """
+        arm = ARMS["native_floor"]
+        self.assertTrue(arm.available)
+        self.assertIs(arm.store_mode, StoreMode.REUSE)
+        self.assertFalse(arm.reindex)
+        self.assertTrue(arm.scored_only_corpus)
+        flags = flags_for("native_floor", "ts40")
+        self.assertIn("--explorer", flags)
+        self.assertIn("--graph-gold", flags)  # control (b)
+        self.assertEqual("off", flags[flags.index("--curation") + 1])  # control (a)
+        self.assertNotIn("--reindex", flags)
+        with self.assertRaises(ArmError):  # control (c)
+            assert_corpus_matches_protocol("native_floor", "ts40", 40)
+        assert_corpus_matches_protocol("native_floor", "ts40", 37)  # scored-only OK
 
 
 class T4GoldImmutability(unittest.TestCase):
