@@ -35,8 +35,13 @@ NOODLBOX_DATA_DIR="$STORE" "$BINARY" swe-bench "$JSONL" \
   --timeout "$TIMEOUT" -f json > "$DERIVED" 2> "$OUTDIR/derive_${CORPUS}.log"
 
 echo "L1: freezing"
-python3 ttg/gold_freezer.py --report "$DERIVED" --binary "$BINARY" --out "$FROZEN"
+python3 ttg/gold_freezer.py "$DERIVED" "$FROZEN" --corpus "$CORPUS" --binary "$BINARY"
 
+if [ ! -f "gold/frozen_gold_${CORPUS}.json" ]; then
+  echo "L1: no shipped gold for '${CORPUS}' — own-corpus derivation; Tier-1 n/a"
+  echo "L1: frozen gold written: $FROZEN"
+  exit 0
+fi
 echo "L1: TIER-1 comparison against the shipped frozen gold"
 python3 - "$FROZEN" "gold/frozen_gold_${CORPUS}.json" <<'PY'
 import json, sys

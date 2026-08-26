@@ -650,3 +650,58 @@ class T9OwnRepo(unittest.TestCase):
         with self.assertRaises(ArmError):
             own_repo_flags("wf_b3")
 
+
+class T10DeriveGoldScript(unittest.TestCase):
+    """The L1 script actually RUNS end-to-end (the slow path rots silently:
+    its freezer invocation shipped broken because nothing executed it — caught
+    by the 2026-08-26 own-repo smoke, fixed, and pinned here with a stub
+    binary so it can never ship broken again)."""
+
+    def test_derive_gold_runs_with_a_stub_binary(self) -> None:
+        import subprocess
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            report = {
+                "dataset": "stub", "k": 25, "total_instances": 1,
+                "evaluated_instances": 1, "failed_instances": 0,
+                "gold_arm": "graph_gold", "graph_gold_derivation_version": 4,
+                "aggregate_semantics_version": 2, "total_time_secs": 0.1,
+                "results": [{
+                    "instance_id": "stub-1",
+                    "repo": "acme/stub",
+                    "gold_symbol_count": 2,
+                    "gold_symbols": ["b.ts:beta", "a.ts:alpha"],
+                    "retrieved_symbols": [],
+                }],
+                "aggregate": {},
+            }
+            stub = tmp / "stub-binary"
+            stub.write_text(
+                "#!/bin/sh\ncat <<'EOF'\n" + json.dumps(report) + "\nEOF\n"
+            )
+            stub.chmod(0o755)
+            jsonl = tmp / "instance.jsonl"
+            jsonl.write_text(
+                json.dumps({"instance_id": "stub-1", "repo": "acme/stub",
+                            "base_commit": "x", "problem_statement": "p",
+                            "patch": "d"}) + "\n"
+            )
+            proc = subprocess.run(
+                [str(PKG / "ttg" / "derive_gold.sh"),
+                 "--corpus", "stub_corpus", "--binary", str(stub),
+                 "--corpus-jsonl", str(jsonl), "--store", str(tmp / "store"),
+                 "--outdir", str(tmp / "gold")],
+                capture_output=True, text=True, cwd=PKG,
+            )
+            self.assertEqual(0, proc.returncode, proc.stdout + proc.stderr)
+            frozen = tmp / "gold" / "frozen_gold_stub_corpus.json"
+            self.assertTrue(frozen.exists(), proc.stdout)
+            doc = json.loads(frozen.read_text())
+            # freezer row 5: report order preserved, never sorted
+            self.assertEqual(["b.ts:beta", "a.ts:alpha"], doc["gold"]["stub-1"])
+            # an own/unknown corpus skips Tier-1 EXPLICITLY, never crashes on
+            # the missing shipped-gold file
+            self.assertIn("Tier-1 n/a", proc.stdout)
+
