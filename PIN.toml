@@ -1,49 +1,54 @@
 # Artifact pins.
 #
-# STATUS: the harness LOCATION is wired (private repo, below). The durable
-# artifact home (R2) and the released-binary attachment are NOT wired yet.
+# STATUS: the harness location, the released-binary attachment, and the
+# durable artifact home are ALL WIRED (GitHub release assets on this repo,
+# ruled acceptable as the "release attachment" home). The one remaining
+# marker is the PUBLIC FLIP itself.
 #
 # G3 is SIGNED (founder, 2026-08-20): page copy and claims are approved, and
-# the public flip is AUTHORIZED for the coordinated go-live once B8 and
-# packaging land. So the remaining markers are READY-TO-FLIP, not blocked —
-# but flipping them is the design owner's coordinated step, not a side effect
-# of a packaging commit.
+# the public flip is AUTHORIZED for the coordinated go-live. Flipping the
+# repo public is the coordinated go-live step — it makes every URL below
+# resolve for a logged-out reader at once (release assets ride the repo's
+# visibility).
 #
-# Nothing here may be cited as a PUBLIC location while a READY-TO-FLIP
-# remains: the repo is still private and the URLs do not resolve yet.
+# Nothing here may be cited as a PUBLIC location while the repo is private:
+# the URLs below resolve only for authenticated collaborators until the flip.
 
 [repo]
-# WIRED: the harness lives here. This is the HARNESS LOCATION, not a public
-# URL — the repo is private and the public flip rides the founder G3 sign-off.
+# WIRED: the harness lives here. The public flip rides the coordinated
+# go-live (founder-authorized at the G3 sign-off).
 name = "noodlbox/tokens-to-gold"
 visibility = "private"
 clone_url = "https://github.com/noodlbox/tokens-to-gold.git"
-# G3 SIGNED — authorized to flip at the coordinated go-live (B8 + packaging).
-public_url = "<READY-TO-FLIP-AT-GO-LIVE>"
+# At go-live this becomes the same URL with the repo public; recorded now so
+# the flip changes VISIBILITY, never a location.
+public_url = "https://github.com/noodlbox/tokens-to-gold"
 
 [binary]
-# The released noodl-eval a third party runs. Identity is pinned by digest;
-# the SHA of the binary FILE is not a reproduction target (OUT_DIR bakes in
-# the absolute build path) — see README.
-release_tag = "<READY-TO-FLIP-RELEASE-WIRING>"
-asset_name = "<READY-TO-FLIP-RELEASE-WIRING>"
-sha256 = "<READY-TO-FLIP-RELEASE-WIRING>"
+# The released noodl-eval a third party runs — the EXACT binary the pinned
+# acceptance numbers were measured with (main @ 3a3f01fd). Identity is pinned
+# by digest; the SHA of the binary FILE is not a reproduction target (OUT_DIR
+# bakes in the absolute build path) — see README.
+release_tag = "v1.0.0-rc1"
+asset_name = "noodl-eval-official"
+sha256 = "c5dbaf91d0502b1c792834d3c3f19e520e68eff50088fab8b1a2f731f04e7c65"
+url = "https://github.com/noodlbox/tokens-to-gold/releases/download/v1.0.0-rc1/noodl-eval-official"
 
 [artifacts]
-# Large derivation reports live in object storage, not in the repo.
-store = "r2"
-bucket = "<READY-TO-FLIP-R2>"
-prefix = "<READY-TO-FLIP-R2>"
+# Large derivation reports live as release attachments on this repo (the
+# founder-ruled alternative to R2: sha-pinned, README-pinned, not in git).
+store = "github-release"
+release_tag = "v1.0.0-rc1"
 
 [[artifacts.files]]
 name = "deepswe_frozen_ts40.json"
 sha256 = "fce361cb6cd0a9bdee57fb1d6d4a65d39cad0279299b7a25b694fd615eeb0e49"
-url = "<READY-TO-FLIP-R2>"
+url = "https://github.com/noodlbox/tokens-to-gold/releases/download/v1.0.0-rc1/deepswe_frozen_ts40.json"
 
 [[artifacts.files]]
 name = "deepswe_frozen_py_nosphinx.json"
 sha256 = "1874fb4e7bb44b349923ddf73f29622227a02b4318660c7cd1f87b5f91932af5"
-url = "<READY-TO-FLIP-R2>"
+url = "https://github.com/noodlbox/tokens-to-gold/releases/download/v1.0.0-rc1/deepswe_frozen_py_nosphinx.json"
 
 [gold]
 # Small enough to ship in the repo; digests also in gold/SHA256SUMS.
@@ -53,3 +58,9 @@ frozen_gold_ts40 = "fcc09bd98d5e648be1c46803b72140b233599ef91e2dd945ba4b52e72d02
 [provenance]
 gold_derived_at_commit = "0c061c57"
 sweep_binary_base_commit = "6d3ccaf0"
+# The acceptance record additionally pins the measured main SHA (3a3f01fd)
+# and the binary digest above; the retrieval policy is byte-identical from
+# 3a3f01fd through the released nbx v2.1.0 tag (rename-only diff, verified
+# 2026-08-26) — see the page's release-version provenance note.
+measured_main_sha = "3a3f01fdc69b0e100dde126b9dc6886bd1056d2f"
+policy_identical_through = "nbx v2.1.0"
