@@ -127,6 +127,30 @@ omission is declared in the arm table (`Curation.SHIPPED_DEFAULT`), so an
 > makes omission structurally impossible: every arm's flags come from
 > `arms/arm_matrix.py`, and `run_arm.sh` records the full invocation.
 
+## Run it on your own repo
+
+The gold model transfers to any **public repository with a merged PR** — the
+PR's diff is the reference-patch proxy for "the symbols this change actually
+needed", derived by the **same versioned freezer pipeline** as the published
+numbers (there is no manual-gold path):
+
+```sh
+# 1) one merged PR becomes a one-instance corpus (title+body = the query)
+python3 -m ttg.cli from-pr --repo owner/name --pr 123 --out runs/mine
+
+# 2..3) it prints the exact derive / run / score commands from there:
+#    derive+freeze YOUR gold (full index of the pre-change checkout),
+#    run the section-5 arms (shipped treatment / levers-off / native floor),
+#    score against YOUR frozen gold:
+python3 -m ttg.cli score-own --report runs/mine/shipped_treatment.json \
+   --gold runs/mine/gold/frozen_gold_own_repo.json
+```
+
+Read your readout with the same honesty rules as the published page: the
+gold is a reference-patch proxy; a body-less PR is a THIN query (disclosed);
+one instance is a coarse, largely binary readout (disclosed) — run several
+PRs before reading a trend. Wire ≠ billed tokens; coverage ≠ task success.
+
 ## Layout
 
 ```

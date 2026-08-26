@@ -20,6 +20,7 @@ from arms.arm_matrix import CORPORA, DEFAULT_ARMS, SWEEP_ARMS, ArmError, flags_f
 from ttg.acceptance import check_report_file, load_fixture, render_checks
 from ttg.curve_recompute import curve_parity_findings
 from ttg.acceptance import load_frozen_gold
+from ttg.own_repo import OWN_REPO_ARMS, OwnRepoError, fetch_pr, own_repo_flags
 from ttg.report_io import load_report
 from ttg.rollup import rollup
 
@@ -88,6 +89,67 @@ def cmd_score(args: argparse.Namespace) -> int:
     return 0 if reproduced and not findings else 1
 
 
+def cmd_from_pr(args: argparse.Namespace) -> int:
+    """B7: build a one-instance own-repo corpus from a public merged PR."""
+    try:
+        inst = fetch_pr(args.repo, args.pr)
+    except OwnRepoError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    jsonl = out / "instance.jsonl"
+    jsonl.write_text(inst.to_jsonl_row() + "\n")
+    print(f"wrote {jsonl}  ({inst.instance_id} @ {inst.base_commit[:12]})")
+    for note in inst.disclosures:
+        print(f"  DISCLOSURE: {note}")
+    print()
+    print("Next (the freezer path — gold always comes from the versioned pipeline):")
+    print(f"  1) derive + freeze YOUR gold (full index of the pre-change checkout):")
+    print(f"     ttg/derive_gold.sh --corpus own_repo --binary <noodl-eval> \\")
+    print(f"        --corpus-jsonl {jsonl} --store {out}/store --outdir {out}/gold")
+    print(f"  2) run the shipped treatment (and optionally the other section-5 arms):")
+    for arm in OWN_REPO_ARMS:
+        print(f"     # {arm}:")
+        print(
+            f"     NOODLBOX_DATA_DIR={out}/store <noodl-eval> swe-bench {jsonl} "
+            + " ".join(own_repo_flags(arm))
+            + f" --timeout 900 -f json > {out}/{arm}.json"
+        )
+    print(f"  3) score against YOUR frozen gold:")
+    print(f"     python3 -m ttg.cli score-own --report {out}/shipped_treatment.json \\")
+    print(f"        --gold {out}/gold/frozen_gold_own_repo.json")
+    return 0
+
+
+def cmd_score_own(args: argparse.Namespace) -> int:
+    """Score an own-repo report against the user's OWN frozen gold file."""
+    doc = json.loads(Path(args.gold).read_text())
+    gold = doc.get("gold", doc)
+    if not isinstance(gold, dict) or not gold:
+        print(f"ERROR: {args.gold}: no gold payload", file=sys.stderr)
+        return 2
+    report = load_report(args.report)
+    roll = rollup(report, frozen_instance_ids=list(gold))
+    print(roll.render("own-repo"))
+    print()
+    findings = curve_parity_findings(report)
+    if findings:
+        print(f"  G2 curve parity : FAIL ({len(findings)} findings)")
+        for finding in findings[:10]:
+            print(f"      {finding}")
+    else:
+        print("  G2 curve parity : PASS (offline recompute reproduces the binary)")
+    thin = [iid for iid, syms in gold.items() if len(syms) <= 2]
+    if thin:
+        print(
+            f"  THIN-GOLD GUARD : {len(thin)}/{len(gold)} instance(s) carry <=2 gold "
+            "symbols — per-instance coverage is largely binary (0/1); run more "
+            "PRs before reading a trend"
+        )
+    return 1 if findings else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="ttg", description=__doc__)
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -120,6 +182,21 @@ def main(argv: list[str] | None = None) -> int:
     p_fixture.set_defaults(
         func=lambda a: (print(json.dumps(load_fixture()["provenance"], indent=2)), 0)[1]
     )
+
+    p_frompr = sub.add_parser(
+        "from-pr", help="own repo: build a one-instance corpus from a merged PR"
+    )
+    p_frompr.add_argument("--repo", required=True, help="owner/name (public)")
+    p_frompr.add_argument("--pr", required=True, type=int)
+    p_frompr.add_argument("--out", required=True)
+    p_frompr.set_defaults(func=cmd_from_pr)
+
+    p_scoreown = sub.add_parser(
+        "score-own", help="own repo: score a report against YOUR frozen gold"
+    )
+    p_scoreown.add_argument("--report", required=True)
+    p_scoreown.add_argument("--gold", required=True)
+    p_scoreown.set_defaults(func=cmd_score_own)
 
     args = parser.parse_args(argv)
     try:

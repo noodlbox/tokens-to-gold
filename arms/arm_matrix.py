@@ -171,15 +171,20 @@ ARMS: Final[dict[str, Arm]] = {
     # by the same walk as every other arm. `--curation off` is EXPLICIT and
     # inert on the explorer path — it satisfies the lane invariant; omission
     # would silently mean the Waterfill treatment on the other paths.
-    # Protocol mirrors the ablation: REUSE the official store, NO --reindex,
-    # SCORED-ONLY corpora (MUST-NOT #2 / belt drift).
+    # Protocol: FRESH store + --reindex on the FULL corpora — the official
+    # protocol shape. (PROTOCOL REVISION 2026-08-26: the first wiring ran
+    # REUSE + scored-only to save ~15 min; a mid-run disk collapse turned the
+    # box-reuse fall-through into failing re-analysis that DELETED catalog
+    # rows from the reused store — see the incident note in the preservation
+    # tree. REUSE silently depends on a warm checkout cache and a stable
+    # disk, neither of which this arm can guarantee; FRESH is self-contained.)
     "native_floor": Arm(
         "native_floor", "off", None, "native-floor",
         extra_flags=("--explorer",),
         curation=Curation.EXPLICIT,
-        store_mode=StoreMode.REUSE,
-        reindex=False,
-        scored_only_corpus=True,
+        store_mode=StoreMode.FRESH,
+        reindex=True,
+        scored_only_corpus=False,
     ),
 }
 

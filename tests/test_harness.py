@@ -19,6 +19,9 @@ from arms.arm_matrix import (
     StoreMode, assert_corpus_matches_protocol, assert_lane_invariants, cells,
     char_budget, flags_for,
 )
+from ttg.own_repo import (
+    OWN_REPO_ARMS, OwnRepoError, build_instance, own_repo_flags,
+)
 from ttg.comparable_path import ComparablePath, PathComparison, compare_paths
 from ttg.curve_recompute import curve_parity_findings, recompute_wire_curve
 from ttg.gold_freezer import build_gold_map
@@ -262,25 +265,27 @@ class T3ArmFlags(unittest.TestCase):
         The arm is the in-binary R5 Explorer (`--explorer`: deterministic
         rg/glob/span retrieval, frozen policy per R5_EXPLORER_PREREG; span
         scoring vs graph-gold line ranges — range-less gold STAYS in the
-        denominator). PERMANENT NEGATIVE CONTROLS: (a) `--curation off` is
-        EXPLICIT — the floor can never silently take the shipped Waterfill
-        treatment via omission; (b) `--graph-gold` rides with `--explorer`
-        (the binary refuses `--explorer` alone); (c) a REUSE arm refuses the
-        full 40-instance corpus (belt-drift protection).
+        denominator). PROTOCOL (revised 2026-08-26 after the reuse-store
+        incident): FRESH store + `--reindex` on the FULL corpus — the arm is
+        self-contained and never depends on a reusable store's health.
+        PERMANENT NEGATIVE CONTROLS: (a) `--curation off` is EXPLICIT — the
+        floor can never silently take the shipped Waterfill treatment via
+        omission; (b) `--graph-gold` rides with `--explorer` (the binary
+        refuses `--explorer` alone); (c) as a FRESH arm it accepts the full
+        corpus (a REUSE floor was the incident — asserting FRESH here is the
+        control that stops it silently coming back).
         """
         arm = ARMS["native_floor"]
         self.assertTrue(arm.available)
-        self.assertIs(arm.store_mode, StoreMode.REUSE)
-        self.assertFalse(arm.reindex)
-        self.assertTrue(arm.scored_only_corpus)
+        self.assertIs(arm.store_mode, StoreMode.FRESH)  # control (c)
+        self.assertTrue(arm.reindex)
+        self.assertFalse(arm.scored_only_corpus)
         flags = flags_for("native_floor", "ts40")
         self.assertIn("--explorer", flags)
         self.assertIn("--graph-gold", flags)  # control (b)
         self.assertEqual("off", flags[flags.index("--curation") + 1])  # control (a)
-        self.assertNotIn("--reindex", flags)
-        with self.assertRaises(ArmError):  # control (c)
-            assert_corpus_matches_protocol("native_floor", "ts40", 40)
-        assert_corpus_matches_protocol("native_floor", "ts40", 37)  # scored-only OK
+        self.assertIn("--reindex", flags)
+        assert_corpus_matches_protocol("native_floor", "ts40", 40)  # full corpus OK
 
 
 class T4GoldImmutability(unittest.TestCase):
@@ -585,3 +590,63 @@ class T0Identity(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class T9OwnRepo(unittest.TestCase):
+    """B7: the bring-your-own-merged-PR flow (the freezer path, ruled)."""
+
+    PR = {
+        "merged_at": "2026-08-01T00:00:00Z",
+        "merge_commit_sha": "m" * 40,
+        "title": "Fix the widget resolver",
+        "body": "The resolver drops nested widgets.",
+    }
+    MERGE_COMMIT = {"parents": [{"sha": "p" * 40}]}
+    PATCH = "diff --git a/w.ts b/w.ts\n--- a/w.ts\n+++ b/w.ts\n@@ -1 +1 @@\n-x\n+y\n"
+
+    def test_instance_built_from_merged_pr(self) -> None:
+        inst = build_instance("acme/widgets", 7, self.PR, self.MERGE_COMMIT, self.PATCH)
+        self.assertEqual("acme-widgets-pr7", inst.instance_id)
+        self.assertEqual("p" * 40, inst.base_commit)  # FIRST PARENT, not base.sha
+        self.assertIn("Fix the widget resolver", inst.problem_statement)
+        self.assertIn("nested widgets", inst.problem_statement)
+        row = json.loads(inst.to_jsonl_row())
+        self.assertEqual(
+            {"instance_id", "repo", "base_commit", "problem_statement", "patch"},
+            set(row),
+        )
+
+    def test_unmerged_pr_refused(self) -> None:
+        """NEGATIVE CONTROL: an unmerged PR has no landed patch — no gold."""
+        pr = dict(self.PR, merged_at=None)
+        with self.assertRaises(OwnRepoError):
+            build_instance("acme/widgets", 7, pr, self.MERGE_COMMIT, self.PATCH)
+
+    def test_empty_patch_refused(self) -> None:
+        """NEGATIVE CONTROL: an empty diff means nothing landed."""
+        with self.assertRaises(OwnRepoError):
+            build_instance("acme/widgets", 7, self.PR, self.MERGE_COMMIT, "   ")
+
+    def test_thin_statement_is_disclosed_not_refused(self) -> None:
+        """A body-less PR runs, but the thin query is DISCLOSED with the readout."""
+        pr = dict(self.PR, body="")
+        inst = build_instance("acme/widgets", 7, pr, self.MERGE_COMMIT, self.PATCH)
+        self.assertTrue(any("THIN" in d for d in inst.disclosures))
+
+    def test_own_repo_flags_reuse_the_lane_invariants(self) -> None:
+        """The section-5 arms compose; omission stays unrepresentable."""
+        for arm in OWN_REPO_ARMS:
+            flags = own_repo_flags(arm)
+            self.assertIn("--graph-gold", flags)
+            if arm == "shipped_treatment":
+                self.assertNotIn("--curation", flags)  # measures the default
+            else:
+                self.assertEqual("off", flags[flags.index("--curation") + 1])
+        self.assertIn("--explorer", own_repo_flags("native_floor"))
+
+    def test_budgeted_sweep_arm_refused(self) -> None:
+        """NEGATIVE CONTROL: a char budget is a property of a FROZEN corpus;
+        an own-repo run has none, so a budgeted arm must fail loudly."""
+        with self.assertRaises(ArmError):
+            own_repo_flags("wf_b3")
+
