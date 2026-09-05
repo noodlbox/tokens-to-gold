@@ -146,9 +146,24 @@ def provision_instance(repo: str, base_commit: str, dest: Path) -> CheckoutFacts
     commit is unreachable rather than silently landing on a default branch."""
     url = _validated_url(repo)
     commit = _validated_commit(base_commit)
+    # Idempotent: a resumed run on a kept lease already has the checkout, and
+    # re-cloning 157 repos to regenerate a manifest column would be absurd. If
+    # the checkout is already at the right commit, inspect it and return.
+    if (dest / ".git").is_dir():
+        try:
+            head_tree = _git(dest, "rev-parse", "HEAD^{tree}")
+        except subprocess.CalledProcessError:
+            head_tree = ""
+        if head_tree:
+            return inspect_checkout(dest)
+
     dest.mkdir(parents=True, exist_ok=True)
     _git(dest, "init", "-q")
-    _git(dest, "remote", "add", "origin", url)
+    # `remote add` fails if the remote exists; a resumed run must not die on it.
+    try:
+        _git(dest, "remote", "add", "origin", url)
+    except subprocess.CalledProcessError:
+        _git(dest, "remote", "set-url", "origin", url)
     # commit is validated hex and url is validated scheme/slug, so neither can
     # be read as a git flag (git fetch takes no `--` refspec separator).
     _git(dest, "fetch", "-q", "--depth", "1", "origin", commit)

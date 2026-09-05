@@ -189,6 +189,15 @@ BUNDLE.md           the 14-row publication contract: every row filled or
 python3 -m unittest discover -s tests -t .
 ```
 
+## go34 — a disclosed exclusion rate
+
+34 tasks; 30 scored. 4 excluded as zero-gold — 11.8 %, above the pre-registered
+10 % alarm; all four are new-file-dominated reference patches (50–100 % of
+touched files created by the patch), for which the reference-patch proxy has no
+pre-existing symbols to score. The alarm fired as designed; the cause is
+disclosed here. The `new_file_fraction` column in `corpora/go34.manifest.jsonl`
+lets you recompute it.
+
 ## Changelog
 
 - **2026-09 re-certification.** Added `ttg/paired_stats.py` (paired bootstrap CI + exact sign test), homed byte-identical from the m23gate harness (sha `4d359404…`). V1 documented this tool as shipped; it was not — the regression report now carries per-metric paired 95% CI + sign test alongside the ±2.75pp floor.

@@ -147,3 +147,33 @@ head-only `@k`, `TokensToGold@80` (reach + median among reachers), per-language,
 N-carried, bound-labelled; whole-list recall stays internal. Arms: shipped
 treatment, levers-off ablation, native floor. Gold protocol as above (derive
 once, freeze, never sort, digest-pinned; reference-patch proxy).
+
+### Addendum — go34 zero-gold alarm, 2026-09-05 (before any go34 number)
+
+Written BEFORE any go34 arm number was read, per the alarm's own escalation
+rule. The tier's derivation fired the pre-registered alarm and was adjudicated:
+
+- **Rate:** 4 of 34 instances derived zero gold = **11.8 %**, above the
+  pre-registered `ZERO_GOLD_ALARM_RATE = 10 %`.
+- **The four:** `dasel-html-document-format`, `etree-xml-diff-patch`,
+  `go-critic-doc-link-checker`, `wazero-multi-module-snapshots`.
+- **Cause (measured, not asserted):** all four are *new-file-dominated*
+  reference patches — 4/4, 6/8, 2/4 and 13/14 of the files they touch are
+  created by the patch, against a 0.32 mean new-file fraction across the 30
+  instances that do carry gold. Gold resolves a patch's changed lines to symbol
+  definitions in the **pre-change** checkout, so a file the patch creates has no
+  pre-existing definition to score. Zero gold is the *correct* derivation for
+  such an instance.
+- **Not an analysis defect:** the same binary derived 207 gold symbols across
+  the other 30 Go instances, and reports `go` and `rust` among its analysis
+  languages.
+- **Ruling:** certify go34 at **N = 30** with the rate and cause disclosed —
+  `artifacts/TTG_RECERT_RULING_GO34_ALARM_2026-09-05.md`. The gold-kind
+  whitelist is **unchanged**; extending it would bump `DERIVATION_VERSION`,
+  retire the signed TS/Py numbers, and could not help, since these symbols do
+  not exist at `base_commit` under any whitelist.
+- **Scoring basis:** N = 30 gold-bearing instances, exactly as N = 37 / 39 are
+  for ts40 / py_nosphinx. The four are excluded as zero-gold, not scored 0.0.
+
+Every corpus's public manifest now carries a `new_file_fraction` column, so a
+third party can recompute this explanation from the reference patches alone.
