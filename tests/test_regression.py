@@ -17,6 +17,8 @@ import unittest
 
 from ttg.regression import (
     DEFAULT_METRICS,
+    paired_deltas_pp,
+    reach_at_coverage,
     NOISE_FLOOR_PP,
     Verdict,
     compare_reports,
@@ -97,6 +99,73 @@ class VerdictRuleTest(unittest.TestCase):
 
     def test_empty_pairing_is_indeterminate(self) -> None:
         self.assertEqual(verdict_for("none", []).verdict, Verdict.INDETERMINATE)
+
+
+class IntentionToTreatTest(unittest.TestCase):
+    """R-R1: an instance that errors on the new binary must count 0 against
+    EVERY metric, not vanish from some and score 0 in others.
+
+    Dropping it would let a binary raise its Gold@B average by failing outright
+    on its hardest instances — the average improves because the hard cases left
+    the denominator."""
+
+    _BASIS = ["ok", "errored"]
+
+    def _base(self):
+        row = {
+            "gold_symbols": ["a.py:alpha"],
+            "token_coverage_wire": {
+                "by_budget": {"8000": 0.90, "32000": 0.90},
+                "tokens_to_coverage": {"80": 5000},
+            },
+        }
+        return {"results": [dict(row, instance_id=i) for i in self._BASIS]}
+
+    def _current_missing_errored(self):
+        base = self._base()
+        return {"results": [r for r in base["results"] if r["instance_id"] == "ok"]}
+
+    def test_errored_instance_stays_in_every_metric(self) -> None:
+        verdicts = compare_reports(
+            self._base(), self._current_missing_errored(), DEFAULT_METRICS, self._BASIS)
+        for v in verdicts:
+            self.assertEqual(v.n, 2, f"{v.metric} dropped the errored instance")
+            self.assertEqual(v.n_missing_current, 1, v.metric)
+            self.assertEqual(v.n_missing_baseline, 0, v.metric)
+
+    def test_errored_instance_scores_zero_not_omitted(self) -> None:
+        # baseline 0.90 -> missing scores 0.0, i.e. a -90pp delta on that pair.
+        paired = paired_deltas_pp(
+            self._base(), self._current_missing_errored(),
+            gold_at_budget(8000)[1], self._BASIS)
+        self.assertEqual(len(paired.deltas), 2)
+        self.assertIn(-90.0, [round(d, 6) for d in paired.deltas])
+
+    def test_gold_and_reach_treat_a_fieldless_row_identically(self) -> None:
+        # A row present but carrying no wire block: both metrics must call it
+        # MISSING and score 0 — previously Gold skipped it and reach scored 0.
+        base = self._base()
+        current = {"results": [
+            dict(base["results"][0]),
+            {"instance_id": "errored", "gold_symbols": ["a.py:alpha"]},
+        ]}
+        for _, value in (gold_at_budget(8000), reach_at_coverage(80)):
+            paired = paired_deltas_pp(base, current, value, self._BASIS)
+            self.assertEqual(len(paired.deltas), 2)
+            self.assertEqual(paired.n_missing_current, 1)
+
+    def test_union_pairing_keeps_instances_absent_from_one_side(self) -> None:
+        # Without an explicit basis the pairing set is the UNION, so nothing
+        # silently disappears just by being absent from one report.
+        paired = paired_deltas_pp(
+            self._base(), self._current_missing_errored(), gold_at_budget(8000)[1])
+        self.assertEqual(len(paired.deltas), 2)
+
+    def test_missing_counts_are_rendered(self) -> None:
+        table = render_table(compare_reports(
+            self._base(), self._current_missing_errored(), DEFAULT_METRICS, self._BASIS))
+        self.assertIn("missing (base/cur)", table)
+        self.assertIn("0/1", table)
 
 
 if __name__ == "__main__":

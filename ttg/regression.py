@@ -53,6 +53,17 @@ class MetricVerdict:
     sign: SignTest
     verdict: Verdict
     floor_pp: float
+    n_missing_baseline: int = 0
+    n_missing_current: int = 0
+
+
+@dataclass(frozen=True)
+class PairedDeltas:
+    """Per-instance deltas plus how many were scored as missing on each side."""
+
+    deltas: list[float]
+    n_missing_baseline: int
+    n_missing_current: int
 
 
 RowValue = Callable[[Mapping[str, object]], float | None]
@@ -80,9 +91,12 @@ def reach_at_coverage(coverage: int) -> tuple[str, RowValue]:
     """Per-instance reach at a coverage level: 1.0 reached, 0.0 not."""
 
     def value(row: Mapping[str, object]) -> float | None:
-        ttc = _wire(row).get("tokens_to_coverage")
+        wire = row.get("token_coverage_wire")
+        if not isinstance(wire, Mapping):
+            return None  # no wire block at all: MISSING, not a genuine miss
+        ttc = wire.get("tokens_to_coverage")
         if not isinstance(ttc, Mapping):
-            return 0.0
+            return 0.0  # wire present, nothing reached: a genuine 0
         return 1.0 if isinstance(ttc.get(str(coverage)), (int, float)) else 0.0
 
     return (f"reach@{coverage}", value)
@@ -93,30 +107,37 @@ def paired_deltas_pp(
     current: Mapping[str, object],
     value: RowValue,
     instance_ids: Sequence[str] | None = None,
-) -> list[float]:
-    """Per-instance (current - baseline) in percentage points.
+) -> PairedDeltas:
+    """Per-instance (current - baseline) in percentage points, ITT-consistent.
 
-    Restricted to instances present in both reports — and, when given, to the
-    frozen-gold instance set, which is the binding denominator."""
+    A missing row or a missing metric value scores 0.0 rather than dropping the
+    instance, and is counted in `n_missing_*`."""
     base_rows = {r.get("instance_id"): r for r in result_rows(baseline)}
     cur_rows = {r.get("instance_id"): r for r in result_rows(current)}
-    keys = instance_ids if instance_ids is not None else sorted(
-        k for k in base_rows.keys() & cur_rows.keys() if isinstance(k, str)
+    keys = list(instance_ids) if instance_ids is not None else sorted(
+        k for k in base_rows.keys() | cur_rows.keys() if isinstance(k, str)
     )
+
     deltas: list[float] = []
+    missing_base = missing_cur = 0
     for key in keys:
         base, cur = base_rows.get(key), cur_rows.get(key)
-        if base is None or cur is None:
-            continue
-        b, c = value(base), value(cur)
-        if b is None or c is None:
-            continue
-        deltas.append((c - b) * 100.0)
-    return deltas
+        b = value(base) if base is not None else None
+        c = value(cur) if cur is not None else None
+        if b is None:
+            missing_base += 1
+        if c is None:
+            missing_cur += 1
+        deltas.append(((c or 0.0) - (b or 0.0)) * 100.0)
+    return PairedDeltas(deltas, missing_base, missing_cur)
 
 
 def verdict_for(
-    metric: str, deltas_pp: Sequence[float], floor_pp: float = NOISE_FLOOR_PP
+    metric: str,
+    deltas_pp: Sequence[float],
+    floor_pp: float = NOISE_FLOOR_PP,
+    n_missing_baseline: int = 0,
+    n_missing_current: int = 0,
 ) -> MetricVerdict:
     deltas = list(deltas_pp)
     ci = bootstrap_mean_ci(deltas)
@@ -137,6 +158,8 @@ def verdict_for(
     return MetricVerdict(
         metric=metric, n=len(deltas), mean_delta_pp=mean_delta, ci=ci,
         sign=sign, verdict=verdict, floor_pp=floor_pp,
+        n_missing_baseline=n_missing_baseline,
+        n_missing_current=n_missing_current,
     )
 
 
@@ -147,12 +170,14 @@ def compare_reports(
     instance_ids: Sequence[str] | None = None,
     floor_pp: float = NOISE_FLOOR_PP,
 ) -> list[MetricVerdict]:
-    return [
-        verdict_for(
-            name, paired_deltas_pp(baseline, current, value, instance_ids), floor_pp
-        )
-        for name, value in metrics
-    ]
+    verdicts: list[MetricVerdict] = []
+    for name, value in metrics:
+        paired = paired_deltas_pp(baseline, current, value, instance_ids)
+        verdicts.append(verdict_for(
+            name, paired.deltas, floor_pp,
+            paired.n_missing_baseline, paired.n_missing_current,
+        ))
+    return verdicts
 
 
 DEFAULT_METRICS: tuple[tuple[str, RowValue], ...] = (
@@ -166,16 +191,17 @@ def render_table(verdicts: Sequence[MetricVerdict]) -> str:
     """The published verdict table: every row carries its CI and sign test, so
     the floor is never read as an uncertainty statement."""
     head = (
-        "| Metric | n | Δ pp | 95% CI (pp) | sign test (up/down/ties, p) | Verdict |\n"
-        "|---|---|---|---|---|---|\n"
+        "| Metric | n | missing (base/cur) | Δ pp | 95% CI (pp) | "
+        "sign test (up/down/ties, p) | Verdict |\n"
+        "|---|---|---|---|---|---|---|\n"
     )
     lines = []
     for v in verdicts:
         ci = f"[{v.ci.lower:+.2f}, {v.ci.upper:+.2f}]" if v.ci else "n/a"
         s = f"{v.sign.up}/{v.sign.down}/{v.sign.ties}, p={v.sign.p_value:.4f}"
         lines.append(
-            f"| {v.metric} | {v.n} | {v.mean_delta_pp:+.2f} | {ci} | {s} | "
-            f"**{v.verdict.value}** |"
+            f"| {v.metric} | {v.n} | {v.n_missing_baseline}/{v.n_missing_current} "
+            f"| {v.mean_delta_pp:+.2f} | {ci} | {s} | **{v.verdict.value}** |"
         )
     return head + "\n".join(lines) + (
         f"\n\nFloor: ±{verdicts[0].floor_pp:.2f} pp (pre-registered). A verdict "
