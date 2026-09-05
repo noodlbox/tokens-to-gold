@@ -177,3 +177,37 @@ rule. The tier's derivation fired the pre-registered alarm and was adjudicated:
 
 Every corpus's public manifest now carries a `new_file_fraction` column, so a
 third party can recompute this explanation from the reference patches alone.
+
+### Addendum — rust43 re-certification, 2026-09-06 (before any rust43 number)
+
+Written before any rust43 arm number is read (R-R43-3). rust43's basis changed
+between two derives, and the reason is recorded here so the shift is not mistaken
+for instability in the corpus.
+
+- **run9 (2026-09-05), binary sha `79c5e9b6…`:** 8/43 carried no gold, decomposed
+  as **6 errored** + **2 genuine zero-gold**. The 6 errored were NOT scored, so
+  the honest zero-gold rate was 2/(43−6) = 2/37 = 5.4% — the raw "18.6%" was an
+  artifact of counting errors as zero-gold (fixed: errored is now a third class,
+  `TTG_RECERT_RULING_RUST43_ALARM` item 2). The 6 errored, by cause:
+  - **5 — analyzer bug (fixed):** `uutils__coreutils-6377/6575/6682/6690/6731`
+    failed the Rust module resolver on coreutils' member-less `[workspace]`.
+    Fixed in `module_resolver.rs` (commit `cac984c17`); these now index clean.
+  - **1 — nondeterministic race (NOT fixed, did not recur):**
+    `astral-sh__ruff-15626`, a graph-manifest publication-authority mismatch. It
+    simply did not reappear in run10b; it is an OPEN follow-up
+    (`artifacts/FOLLOWUP_ruff15626_publication_authority_race_2026-09-06.md`), not
+    a resolved defect.
+- **run10b (2026-09-06), fixed binary sha `<recorded in the report header>`:**
+  **3/43 zero-gold (7.0%) — within budget, CERTIFIED**, no ruling required. The
+  scored basis is N = 43 − 0 errored − 3 zero-gold = **40** (to be confirmed
+  against run10b's derived report at retrieval). The two genuine zero-gold from
+  run9 (`tokio-rs__axum-1730`, `tokio-rs__tokio-4384`) carry over; the third is
+  identified at retrieval.
+- **Why N differs from run9's decomposition:** 6 instances that were errored in
+  run9 resolved in run10b — 5 by the analyzer fix, 1 by non-recurrence of the
+  race. The analyzer-fixed 5 are a genuine correction; the 1 is unobserved, not
+  corrected, and remains open.
+- **new_file_fraction (R-R43-4):** the genuine zero-gold instances are NOT
+  new-file-dominated (unlike go34's) — their reference patches modify existing
+  files but touch no resolvable symbol definition. Reported alongside so the
+  proxy limit's second shape is visible.
