@@ -66,3 +66,38 @@ sweep_binary_base_commit = "6d3ccaf0"
 # 2026-08-26) — see the page's release-version provenance note.
 measured_main_sha = "3a3f01fdc69b0e100dde126b9dc6886bd1056d2f"
 policy_identical_through = "nbx v2.1.0"
+
+# ---------------------------------------------------------------------------
+# 2026-09 RE-CERTIFICATION (A4). Prepared BEFORE the lease run so the re-pin is
+# a fill-in, not a rewrite. The eval-binary identity fields below are explicit
+# PENDING-RUN sentinels: `ttg.pins.validate_recert` REFUSES them, so the
+# harness cannot accept a half-filled re-cert pin — and a blank is refused the
+# same way, because a silently-empty identity is the failure this prevents.
+# ---------------------------------------------------------------------------
+
+[recert]
+status = "PENDING-RUN"
+target_release = "v2.3.18"
+# The pre-registration witness: no derive/arm number predates this commit.
+preregistration_commit = "03356635876cc510cb48a7c3b94579f7dd445aec"
+
+[recert.cli_artifact]
+# The SHIPPED CLI the certification describes, for cross-reference. Verified by
+# rel2-t2g 2026-09-05. This is a published artifact, so its sha IS pinnable —
+# unlike the eval binary, whose file sha is identity, never a repro target.
+url = "https://install.noodlbox.io/releases/v2.3.18/macos-arm64/nbx.tar.gz"
+sha256 = "3c24c4124e173aa28229340b1293b4356de65310ad648743c146f136da4151bf"
+
+[recert.binary]
+# Filled by the lease run from provenance_header.txt. Until then these are
+# refused, not assumed.
+eval_features = "rust-analysis"
+build_commit = "PENDING-RUN"
+sha256 = "PENDING-RUN"
+
+[recert.corpora]
+# go34/rust43 join ts40/py_nosphinx at the re-cert. N and exclusions are the
+# pre-registered "confirmed on derive" values; the manifests are the public
+# checkout-set proof emitted by `ttg.cli provision`.
+go34 = "3f221ceed33cd0b34cf1f71acc47e51424090b36aae62be2f2e5b89e90d2b54d"
+rust43 = "32661b0c77aff0e5cdbad9e82c21be6a0ef493a7945a0923174629fc8f36ce03"
