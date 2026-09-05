@@ -78,6 +78,7 @@ class ManifestRow:
     base_commit: str
     tree_sha: str
     rs_file_count: int
+    new_file_fraction: float
 
 
 @dataclass(frozen=True)
@@ -96,6 +97,26 @@ class ProvisionError:
 class ProvisionResult:
     rows: list[ManifestRow]
     errors: list[ProvisionError]
+
+
+_DIFF_HEADER = re.compile(r"^diff --git a/\S+ b/(\S+)", re.M)
+_NEW_FILE = re.compile(r"^new file mode ", re.M)
+
+
+def new_file_fraction(patch: str) -> float:
+    """Files the reference patch CREATES divided by files it touches.
+
+    The mechanical explanation for a zero-gold instance: gold resolves the
+    patch's changed lines to symbol definitions in the PRE-change checkout, so a
+    file the patch creates has no pre-existing definitions to score. A high
+    fraction predicts zero gold (measured on go34: 0.79 mean among zero-gold
+    instances vs 0.32 among those with gold). Computed from the patch text, so
+    it discloses nothing the public manifest does not already imply.
+    """
+    touched = len(_DIFF_HEADER.findall(patch))
+    if touched == 0:
+        return 0.0
+    return round(len(_NEW_FILE.findall(patch)) / touched, 4)
 
 
 def _git(checkout: Path, *args: str) -> str:
@@ -162,6 +183,7 @@ def build_manifest(jsonl: Path, checkouts_dir: Path) -> ProvisionResult:
             instance_id=inst["instance_id"], repo=inst["repo"],
             base_commit=inst["base_commit"],
             tree_sha=facts.tree_sha, rs_file_count=facts.rs_file_count,
+            new_file_fraction=new_file_fraction(inst.get("patch", "")),
         ))
     return ProvisionResult(rows=rows, errors=errors)
 

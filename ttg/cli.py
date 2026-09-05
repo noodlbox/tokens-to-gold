@@ -21,8 +21,15 @@ from ttg.acceptance import check_report_file, load_fixture, render_checks
 from ttg.curve_recompute import curve_parity_findings
 from ttg.acceptance import load_frozen_gold
 from ttg.own_repo import OWN_REPO_ARMS, OwnRepoError, fetch_pr, own_repo_flags
-from ttg.derive_checks import drift_report, render_drift, zero_gold_check
+from ttg.derive_checks import (
+    Disposition,
+    drift_report,
+    render_drift,
+    tier_disposition,
+    zero_gold_check,
+)
 from ttg.pins import PinError
+from ttg.privacy import contains_private, scrub
 from ttg.preflight import (
     PreU1BinaryError,
     UnknownCorpusError,
@@ -185,12 +192,46 @@ def cmd_preflight(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_scrub_artifacts(args: argparse.Namespace) -> int:
+    """Remove the held-out corpus name from retrieved run artifacts.
+
+    A witness log captures every test name in the workspace, and some contain
+    the token, so artifacts retrieved from a lease can carry a name that may
+    never ship. Runs at the retrieval boundary, before anything can be
+    committed."""
+    changed = 0
+    for path in sorted(Path(args.dir).rglob("*")):
+        if not path.is_file():
+            continue
+        try:
+            text = path.read_text()
+        except (UnicodeDecodeError, OSError):
+            continue
+        if not contains_private(text):
+            continue
+        path.write_text(scrub(text))
+        print(f"  scrubbed: {path}")
+        changed += 1
+    print(f"scrub-artifacts: {changed} file(s) redacted under {args.dir}")
+    return 0
+
+
 def cmd_zero_gold(args: argparse.Namespace) -> int:
-    """R-P5 NO-GO alarm. Non-zero exit is the point: a tier above the
-    pre-registered rate must not proceed to publish on its own."""
+    """R-P5 alarm, adjudicated PER TIER (R-G4).
+
+    The alarm is NO-GO for the tier that alarmed, never for the run: exit 1 only
+    when this tier is unpublishable, so a caller looping over corpora records
+    the verdict and carries on with the rest. An alarm with a written ruling
+    behind it still prints its rate and cause -- it is disclosed, not waived."""
     check = zero_gold_check(args.corpus, _gold_map(args.gold), args.total)
-    print(check.summary())
-    return 1 if check.alarm else 0
+    verdict = tier_disposition(check)
+    print(f"{check.summary()}  [{verdict.disposition.value}]")
+    if verdict.ruling:
+        print(f"  ruling: {verdict.ruling}")
+    if verdict.disposition is Disposition.NO_GO_PENDING_RULING:
+        print(f"  {args.corpus} publishes NOTHING until a ruling exists; other "
+              "tiers are unaffected.")
+    return 0 if verdict.publishable else 1
 
 
 def cmd_drift(args: argparse.Namespace) -> int:
@@ -325,6 +366,13 @@ def main(argv: list[str] | None = None) -> int:
     p_pf.add_argument("--binary", required=True)
     p_pf.add_argument("--corpora", required=True, help="comma-separated")
     p_pf.set_defaults(func=cmd_preflight)
+
+    p_scrub = sub.add_parser(
+        "scrub-artifacts",
+        help="redact the held-out corpus name from retrieved run artifacts",
+    )
+    p_scrub.add_argument("--dir", required=True)
+    p_scrub.set_defaults(func=cmd_scrub_artifacts)
 
     p_zg = sub.add_parser(
         "zero-gold", help="R-P5 zero-gold NO-GO alarm for a derived tier"

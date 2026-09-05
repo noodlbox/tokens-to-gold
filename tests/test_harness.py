@@ -19,6 +19,7 @@ from arms.arm_matrix import (
     StoreMode, assert_corpus_matches_protocol, assert_lane_invariants, cells,
     char_budget, flags_for,
 )
+from ttg import privacy as _privacy
 from ttg.own_repo import (
     OWN_REPO_ARMS, OwnRepoError, build_instance, own_repo_flags,
 )
@@ -75,7 +76,7 @@ CORPUS_REPORT = {c: f"shipped_treatment_{c}.json" for c in ("ts40", "py_nosphinx
 
 # The private corpus name, as data — so the scan below can forbid it without
 # every other module having to spell it.
-PRIVATE_CORPUS = "til" + "la"
+PRIVATE_CORPUS = _privacy.PRIVATE_CORPUS
 
 
 def _naive_normalize(key: str) -> str:

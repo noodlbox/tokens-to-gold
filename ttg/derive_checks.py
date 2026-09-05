@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from enum import Enum
 
 ZERO_GOLD_ALARM_RATE = 0.10
 """Pre-registered NO-GO threshold for a tier's zero-gold fraction."""
@@ -35,7 +36,10 @@ class ZeroGoldCheck:
     alarm: bool
 
     def summary(self) -> str:
-        verdict = "ALARM — tier is NO-GO until ruled" if self.alarm else "within budget"
+        # States the FACT only; the verdict belongs to tier_disposition, which
+        # knows whether a ruling exists. Otherwise a ruled tier prints
+        # "NO-GO until ruled" next to its own ruling.
+        verdict = "ALARM (above threshold)" if self.alarm else "within budget"
         return (
             f"{self.corpus}: {self.zero_gold}/{self.total_instances} zero-gold "
             f"({self.rate:.1%}; threshold {ZERO_GOLD_ALARM_RATE:.0%}) — {verdict}"
@@ -59,6 +63,54 @@ def zero_gold_check(
         corpus=corpus, total_instances=total_instances, with_gold=with_gold,
         zero_gold=zero, rate=rate, alarm=rate > ZERO_GOLD_ALARM_RATE,
     )
+
+
+# A tier whose alarm has been ADJUDICATED. The alarm still fires and is still
+# reported; the ruling records that the cause was inspected and the tier ships
+# with its rate and cause disclosed. Adding an entry here is a design-owner
+# decision with a written ruling behind it -- never a lane's convenience.
+RULED_ALARM_EXCEPTIONS: dict[str, str] = {
+    "go34": (
+        "TTG_RECERT_RULING_GO34_ALARM_2026-09-05.md — 4/34 zero-gold (11.8%); "
+        "all four are new-file-dominated reference patches, for which the "
+        "reference-patch proxy has no pre-existing symbols to score"
+    ),
+}
+
+
+class Disposition(str, Enum):
+    CERTIFIED = "CERTIFIED"
+    """Within the pre-registered zero-gold budget."""
+    CERTIFIED_WITH_DISCLOSURE = "CERTIFIED-WITH-DISCLOSURE"
+    """Alarmed, adjudicated by a written ruling; ships with rate + cause."""
+    NO_GO_PENDING_RULING = "NO-GO-PENDING-RULING"
+    """Alarmed with no ruling. This tier publishes nothing until one exists."""
+
+
+@dataclass(frozen=True)
+class TierDisposition:
+    corpus: str
+    check: ZeroGoldCheck
+    disposition: Disposition
+    ruling: str | None
+
+    @property
+    def publishable(self) -> bool:
+        return self.disposition is not Disposition.NO_GO_PENDING_RULING
+
+
+def tier_disposition(check: ZeroGoldCheck) -> TierDisposition:
+    """Decide ONE tier's fate. Deliberately per-tier: an alarm is NO-GO for the
+    tier that alarmed, never for the run (R-P5/R-G4), so a single alarming tier
+    cannot discard the remaining tiers' hours of derivation and arm runs."""
+    if not check.alarm:
+        return TierDisposition(check.corpus, check, Disposition.CERTIFIED, None)
+    ruling = RULED_ALARM_EXCEPTIONS.get(check.corpus)
+    if ruling is not None:
+        return TierDisposition(
+            check.corpus, check, Disposition.CERTIFIED_WITH_DISCLOSURE, ruling)
+    return TierDisposition(
+        check.corpus, check, Disposition.NO_GO_PENDING_RULING, None)
 
 
 @dataclass(frozen=True)

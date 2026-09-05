@@ -25,6 +25,7 @@ from ttg.provision import (
     _validated_dest,
     _validated_url,
     inspect_checkout,
+    new_file_fraction,
     ts_py_discovery_equivalent,
 )
 
@@ -70,7 +71,7 @@ class InspectCheckoutTest(unittest.TestCase):
 
 class DiscoveryEquivalenceTest(unittest.TestCase):
     def _row(self, iid: str, rs: int) -> ManifestRow:
-        return ManifestRow(iid, "o/r", "c" * 40, "t" * 40, rs)
+        return ManifestRow(iid, "o/r", "c" * 40, "t" * 40, rs, 0.0)
 
     def test_all_zero_is_equivalent(self) -> None:
         rows = [self._row("a", 0), self._row("b", 0)]
@@ -105,6 +106,41 @@ class UntrustedInputTest(unittest.TestCase):
         for bad in ("..", ".", "../evil", "a/b", "/abs", "x/../..", ""):
             with self.assertRaises(UnsafeCorpusInputError):
                 _validated_dest(root, bad)
+
+
+class NewFileFractionTest(unittest.TestCase):
+    """R-G3: the mechanical explanation for a zero-gold instance, recomputable
+    by a third party from the patch alone."""
+
+    def _patch(self, entries: list[tuple[str, bool]]) -> str:
+        out = []
+        for path, is_new in entries:
+            out.append(f"diff --git a/{path} b/{path}")
+            if is_new:
+                out.append("new file mode 100644")
+            out.append(f"--- a/{path}\n+++ b/{path}\n@@ -1 +1 @@\n+x")
+        return "\n".join(out) + "\n"
+
+    def test_all_new_files_is_one(self) -> None:
+        self.assertEqual(
+            new_file_fraction(self._patch([("a.go", True), ("b.go", True)])), 1.0)
+
+    def test_no_new_files_is_zero(self) -> None:
+        self.assertEqual(
+            new_file_fraction(self._patch([("a.go", False), ("b.go", False)])), 0.0)
+
+    def test_mixed_patch(self) -> None:
+        self.assertEqual(new_file_fraction(self._patch(
+            [("a.go", True), ("b.go", False), ("c.go", False), ("d.go", True)])), 0.5)
+
+    def test_empty_patch_does_not_divide_by_zero(self) -> None:
+        self.assertEqual(new_file_fraction(""), 0.0)
+
+    def test_matches_the_measured_go34_zero_gold_shape(self) -> None:
+        # dasel-html-document-format: 4 of 4 touched files created.
+        self.assertEqual(new_file_fraction(self._patch(
+            [(f"parsing/html/{n}.go", True)
+             for n in ("html", "parser", "reader", "writer")])), 1.0)
 
 
 class ManifestEmissionTest(unittest.TestCase):
@@ -151,11 +187,12 @@ class ManifestEmissionTest(unittest.TestCase):
 
     def test_manifest_carries_only_public_fields(self) -> None:
         out = self.dir / "m.jsonl"
-        write_manifest([ManifestRow("i", "o/r", "c" * 40, "t" * 40, 3)], out)
+        write_manifest([ManifestRow("i", "o/r", "c" * 40, "t" * 40, 3, 0.25)], out)
         row = json.loads(out.read_text().splitlines()[0])
         self.assertEqual(
             sorted(row),
-            ["base_commit", "instance_id", "repo", "rs_file_count", "tree_sha"])
+            ["base_commit", "instance_id", "new_file_fraction", "repo",
+             "rs_file_count", "tree_sha"])
         # U3: a patch or problem statement must never reach the public manifest
         self.assertNotIn("patch", row)
         self.assertNotIn("problem_statement", row)

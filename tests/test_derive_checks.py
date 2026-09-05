@@ -32,7 +32,9 @@ class ZeroGoldAlarmTest(unittest.TestCase):
         self.assertEqual(check.zero_gold, 43)
         self.assertEqual(check.rate, 1.0)
         self.assertTrue(check.alarm)
-        self.assertIn("NO-GO", check.summary())
+        self.assertIn("ALARM", check.summary())
+        # the VERDICT lives in tier_disposition, not in the fact line
+        self.assertNotIn("NO-GO", check.summary())
 
     def test_threshold_is_strictly_greater_than(self) -> None:
         # Exactly at the pre-registered rate is within budget; one more alarms.
