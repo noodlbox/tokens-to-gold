@@ -21,6 +21,7 @@ from ttg.acceptance import check_report_file, load_fixture, render_checks
 from ttg.curve_recompute import curve_parity_findings
 from ttg.acceptance import load_frozen_gold
 from ttg.own_repo import OWN_REPO_ARMS, OwnRepoError, fetch_pr, own_repo_flags
+from ttg.regression import DEFAULT_METRICS, compare_reports, render_table
 from ttg.provision import (
     build_manifest,
     ts_py_discovery_equivalent,
@@ -156,6 +157,21 @@ def cmd_score_own(args: argparse.Namespace) -> int:
     return 1 if findings else 0
 
 
+def cmd_regress(args: argparse.Namespace) -> int:
+    """The R12 regression verdict table (HELD / IMPROVED / REGRESSED).
+
+    Paired per-instance deltas between two reports, each verdict decided by the
+    bootstrap 95% CI relative to the pre-registered floor and carrying the exact
+    paired sign test."""
+    baseline = load_report(args.baseline)
+    current = load_report(args.current)
+    ids = None
+    if args.gold:
+        ids = sorted(load_frozen_gold(args.gold))
+    print(render_table(compare_reports(baseline, current, DEFAULT_METRICS, ids)))
+    return 0
+
+
 def cmd_provision(args: argparse.Namespace) -> int:
     """Provision a corpus's checkouts and emit the PUBLIC manifest (R-P4).
 
@@ -250,6 +266,14 @@ def main(argv: list[str] | None = None) -> int:
     p_prov.add_argument("--checkouts", required=True, help="checkout root")
     p_prov.add_argument("--out", help="default: corpora/<corpus>.manifest.jsonl")
     p_prov.set_defaults(func=cmd_provision)
+
+    p_reg = sub.add_parser(
+        "regress", help="R12 per-metric HELD/IMPROVED/REGRESSED verdict table"
+    )
+    p_reg.add_argument("--baseline", required=True, help="Aug-20 anchor report")
+    p_reg.add_argument("--current", required=True, help="v2.3.18 report")
+    p_reg.add_argument("--gold", help="frozen gold: restrict to the binding basis")
+    p_reg.set_defaults(func=cmd_regress)
 
     args = parser.parse_args(argv)
     try:
