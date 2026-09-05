@@ -21,6 +21,7 @@ from ttg.acceptance import check_report_file, load_fixture, render_checks
 from ttg.curve_recompute import curve_parity_findings
 from ttg.acceptance import load_frozen_gold
 from ttg.own_repo import OWN_REPO_ARMS, OwnRepoError, fetch_pr, own_repo_flags
+from ttg.derive_checks import drift_report, render_drift, zero_gold_check
 from ttg.regression import DEFAULT_METRICS, compare_reports, render_table
 from ttg.provision import (
     build_manifest,
@@ -157,6 +158,28 @@ def cmd_score_own(args: argparse.Namespace) -> int:
     return 1 if findings else 0
 
 
+def _gold_map(path: str) -> dict[str, list[str]]:
+    doc = json.loads(Path(path).read_text())
+    gold = doc.get("gold", doc)
+    return {str(k): [str(x) for x in v] for k, v in gold.items()}
+
+
+def cmd_zero_gold(args: argparse.Namespace) -> int:
+    """R-P5 NO-GO alarm. Non-zero exit is the point: a tier above the
+    pre-registered rate must not proceed to publish on its own."""
+    check = zero_gold_check(args.corpus, _gold_map(args.gold), args.total)
+    print(check.summary())
+    return 1 if check.alarm else 0
+
+
+def cmd_drift(args: argparse.Namespace) -> int:
+    """U2/R-B4 sidecar. Drift is a reported FINDING, so this exits 0 and the
+    run continues on the frozen anchor."""
+    print(render_drift(drift_report(
+        args.corpus, _gold_map(args.frozen), _gold_map(args.rederived))))
+    return 0
+
+
 def cmd_regress(args: argparse.Namespace) -> int:
     """The R12 regression verdict table (HELD / IMPROVED / REGRESSED).
 
@@ -274,6 +297,22 @@ def main(argv: list[str] | None = None) -> int:
     p_reg.add_argument("--current", required=True, help="v2.3.18 report")
     p_reg.add_argument("--gold", help="frozen gold: restrict to the binding basis")
     p_reg.set_defaults(func=cmd_regress)
+
+    p_zg = sub.add_parser(
+        "zero-gold", help="R-P5 zero-gold NO-GO alarm for a derived tier"
+    )
+    p_zg.add_argument("--corpus", required=True)
+    p_zg.add_argument("--gold", required=True, help="derived/frozen gold json")
+    p_zg.add_argument("--total", type=int, required=True, help="corpus instances")
+    p_zg.set_defaults(func=cmd_zero_gold)
+
+    p_drift = sub.add_parser(
+        "drift", help="derivation-drift sidecar: SET-MATCH vs the frozen anchor"
+    )
+    p_drift.add_argument("--corpus", required=True)
+    p_drift.add_argument("--frozen", required=True)
+    p_drift.add_argument("--rederived", required=True)
+    p_drift.set_defaults(func=cmd_drift)
 
     args = parser.parse_args(argv)
     try:
