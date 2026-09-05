@@ -10,6 +10,14 @@ neither is allowed to resolve itself silently.
    `ZERO_GOLD_ALARM_RATE` the tier is NO-GO until ruled — whitelist vs
    version-bump vs language-scope — never a quiet publish.
 
+   ERRORED is a THIRD class, distinct from zero-gold (rust43 ruling, R-R43):
+   an instance the engine could not analyze (an `error` field in the derived
+   report) was never scored, so it is neither gold-bearing nor zero-gold. It is
+   excluded from the denominator and the rate is computed over (total −
+   errored). Counting an error as zero-gold conflates "the engine failed" with
+   "the reference patch had nothing to resolve" — a 5-repo indexing bug read as
+   a corpus property.
+
 2. DERIVATION DRIFT (U2/R-B4). The regression axis holds gold FIXED. A fresh
    re-derivation is a sidecar: per-instance SET-MATCH against the frozen gold,
    reported as a finding. There is deliberately NO write path in this module —
@@ -30,6 +38,8 @@ ZERO_GOLD_ALARM_RATE = 0.10
 class ZeroGoldCheck:
     corpus: str
     total_instances: int
+    errored: int
+    scored: int
     with_gold: int
     zero_gold: int
     rate: float
@@ -40,28 +50,44 @@ class ZeroGoldCheck:
         # knows whether a ruling exists. Otherwise a ruled tier prints
         # "NO-GO until ruled" next to its own ruling.
         verdict = "ALARM (above threshold)" if self.alarm else "within budget"
+        errored = f", {self.errored} errored (excluded)" if self.errored else ""
         return (
-            f"{self.corpus}: {self.zero_gold}/{self.total_instances} zero-gold "
-            f"({self.rate:.1%}; threshold {ZERO_GOLD_ALARM_RATE:.0%}) — {verdict}"
+            f"{self.corpus}: {self.zero_gold}/{self.scored} zero-gold"
+            f"{errored} ({self.rate:.1%}; threshold {ZERO_GOLD_ALARM_RATE:.0%}) "
+            f"— {verdict}"
         )
 
 
 def zero_gold_check(
-    corpus: str, gold: Mapping[str, Sequence[str]], total_instances: int
+    corpus: str,
+    gold: Mapping[str, Sequence[str]],
+    total_instances: int,
+    errored_instances: frozenset[str] = frozenset(),
 ) -> ZeroGoldCheck:
-    """Zero-gold rate over the WHOLE corpus.
+    """Zero-gold rate over the SCORED set (total − errored).
 
-    An instance missing from `gold` counts as zero-gold exactly like one mapped
-    to an empty list — otherwise a derivation that dropped instances entirely
-    would look cleaner than one that recorded them empty."""
+    Three classes, not two (R-R43): gold-bearing, scored-and-empty (zero-gold),
+    and errored. An errored instance was never scored, so it is excluded from
+    the denominator rather than counted as zero-gold — otherwise an engine
+    indexing failure reads as a corpus property. Among the scored, an instance
+    missing from `gold` counts as zero-gold exactly like one mapped to an empty
+    list, so a derivation that dropped instances cannot look cleaner than one
+    that recorded them empty."""
     if total_instances <= 0:
         raise ValueError("total_instances must be positive")
-    with_gold = sum(1 for iid in gold if gold[iid])
-    zero = total_instances - with_gold
-    rate = zero / total_instances
+    errored = len(errored_instances)
+    if errored > total_instances:
+        raise ValueError(
+            f"{errored} errored exceeds {total_instances} total instances")
+    scored = total_instances - errored
+    with_gold = sum(
+        1 for iid in gold if gold[iid] and iid not in errored_instances)
+    zero = scored - with_gold
+    rate = zero / scored if scored else 0.0
     return ZeroGoldCheck(
-        corpus=corpus, total_instances=total_instances, with_gold=with_gold,
-        zero_gold=zero, rate=rate, alarm=rate > ZERO_GOLD_ALARM_RATE,
+        corpus=corpus, total_instances=total_instances, errored=errored,
+        scored=scored, with_gold=with_gold, zero_gold=zero, rate=rate,
+        alarm=rate > ZERO_GOLD_ALARM_RATE,
     )
 
 

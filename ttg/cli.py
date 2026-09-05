@@ -14,6 +14,7 @@ import argparse
 import hashlib
 import json
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 
 from arms.arm_matrix import CORPORA, DEFAULT_ARMS, SWEEP_ARMS, ArmError, flags_for
@@ -43,7 +44,7 @@ from ttg.provision import (
     write_errors,
     write_manifest,
 )
-from ttg.report_io import load_report
+from ttg.report_io import ReportFormatError, load_report
 from ttg.rollup import rollup
 
 PKG = Path(__file__).resolve().parent.parent
@@ -244,6 +245,24 @@ def cmd_scrub_artifacts(args: argparse.Namespace) -> int:
     return 0
 
 
+def _errored_instances(report_path: str) -> frozenset[str]:
+    """The instance ids the engine could NOT analyze (an `error` field in the
+    derived report). They are the errored third class — excluded from the
+    zero-gold denominator (R-R43), not counted as zero-gold.
+
+    Reads the RAW results list, not result_rows(), which deliberately filters
+    error rows out — exactly the rows this function needs."""
+    report = load_report(report_path)
+    results = report.get("results")
+    if not isinstance(results, list):
+        raise ReportFormatError("report has no results[]")
+    return frozenset(
+        str(r["instance_id"])
+        for r in results
+        if isinstance(r, Mapping) and r.get("error")
+    )
+
+
 def cmd_zero_gold(args: argparse.Namespace) -> int:
     """R-P5 alarm, adjudicated PER TIER (R-G4).
 
@@ -251,7 +270,9 @@ def cmd_zero_gold(args: argparse.Namespace) -> int:
     when this tier is unpublishable, so a caller looping over corpora records
     the verdict and carries on with the rest. An alarm with a written ruling
     behind it still prints its rate and cause -- it is disclosed, not waived."""
-    check = zero_gold_check(args.corpus, _gold_map(args.gold), args.total)
+    errored = _errored_instances(args.report) if args.report else frozenset()
+    check = zero_gold_check(
+        args.corpus, _gold_map(args.gold), args.total, errored)
     verdict = tier_disposition(check)
     print(f"{check.summary()}  [{verdict.disposition.value}]")
     if verdict.ruling:
@@ -415,6 +436,8 @@ def main(argv: list[str] | None = None) -> int:
     p_zg.add_argument("--corpus", required=True)
     p_zg.add_argument("--gold", required=True, help="derived/frozen gold json")
     p_zg.add_argument("--total", type=int, required=True, help="corpus instances")
+    p_zg.add_argument("--report", help="derived report; its errored instances "
+                      "are excluded from the zero-gold denominator (R-R43)")
     p_zg.set_defaults(func=cmd_zero_gold)
 
     p_drift = sub.add_parser(
