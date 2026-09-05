@@ -80,6 +80,24 @@ class ManifestRow:
     rs_file_count: int
 
 
+@dataclass(frozen=True)
+class ProvisionError:
+    """An instance whose checkout could not be provisioned (unreachable commit,
+    network failure). Recorded by instance id and carried forward as an
+    `errored` exclusion — never silently dropped from the corpus."""
+
+    instance_id: str
+    repo: str
+    base_commit: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class ProvisionResult:
+    rows: list[ManifestRow]
+    errors: list[ProvisionError]
+
+
 def _git(checkout: Path, *args: str) -> str:
     return subprocess.run(
         ["git", "-C", str(checkout), *args],
@@ -117,24 +135,45 @@ def provision_instance(repo: str, base_commit: str, dest: Path) -> CheckoutFacts
     return inspect_checkout(dest)
 
 
-def build_manifest(jsonl: Path, checkouts_dir: Path) -> list[ManifestRow]:
+def build_manifest(jsonl: Path, checkouts_dir: Path) -> ProvisionResult:
+    """Provision every instance and return the manifest plus the errored set.
+
+    A provisioning FAILURE (unreachable commit, network) becomes a recorded
+    `ProvisionError`, so the instance is carried as an errored exclusion rather
+    than vanishing from the denominator. An UNSAFE corpus field is different:
+    it still raises, because that is a malformed corpus, not a flaky checkout."""
     rows: list[ManifestRow] = []
+    errors: list[ProvisionError] = []
     for line in jsonl.read_text().splitlines():
         if not line.strip():
             continue
         inst = json.loads(line)
         dest = _validated_dest(checkouts_dir, inst["instance_id"])
-        facts = provision_instance(inst["repo"], inst["base_commit"], dest)
+        try:
+            facts = provision_instance(inst["repo"], inst["base_commit"], dest)
+        except subprocess.CalledProcessError as exc:
+            errors.append(ProvisionError(
+                instance_id=inst["instance_id"], repo=inst["repo"],
+                base_commit=inst["base_commit"],
+                reason=(exc.stderr or "").strip()[:300] or f"git failed rc={exc.returncode}",
+            ))
+            continue
         rows.append(ManifestRow(
             instance_id=inst["instance_id"], repo=inst["repo"],
             base_commit=inst["base_commit"],
             tree_sha=facts.tree_sha, rs_file_count=facts.rs_file_count,
         ))
-    return rows
+    return ProvisionResult(rows=rows, errors=errors)
 
 
 def write_manifest(rows: list[ManifestRow], out: Path) -> None:
+    """The PUBLIC checkout-set proof: ids, repo, base_commit, tree_sha and
+    rs_file_count only — never patches or problem statements (U3)."""
     out.write_text("".join(json.dumps(asdict(r)) + "\n" for r in rows))
+
+
+def write_errors(errors: list[ProvisionError], out: Path) -> None:
+    out.write_text("".join(json.dumps(asdict(e)) + "\n" for e in errors))
 
 
 def ts_py_discovery_equivalent(rows: list[ManifestRow]) -> bool:

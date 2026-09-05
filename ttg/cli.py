@@ -21,6 +21,12 @@ from ttg.acceptance import check_report_file, load_fixture, render_checks
 from ttg.curve_recompute import curve_parity_findings
 from ttg.acceptance import load_frozen_gold
 from ttg.own_repo import OWN_REPO_ARMS, OwnRepoError, fetch_pr, own_repo_flags
+from ttg.provision import (
+    build_manifest,
+    ts_py_discovery_equivalent,
+    write_errors,
+    write_manifest,
+)
 from ttg.report_io import load_report
 from ttg.rollup import rollup
 
@@ -150,6 +156,44 @@ def cmd_score_own(args: argparse.Namespace) -> int:
     return 1 if findings else 0
 
 
+def cmd_provision(args: argparse.Namespace) -> int:
+    """Provision a corpus's checkouts and emit the PUBLIC manifest (R-P4).
+
+    The manifest is the third-party checkout-set proof and carries the
+    `rs_file_count` column that decides R-B2 comparability. Provisioning
+    failures are recorded as errored exclusions, never dropped."""
+    out = Path(args.out) if args.out else PKG / "corpora" / f"{args.corpus}.manifest.jsonl"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    result = build_manifest(Path(args.jsonl), Path(args.checkouts))
+    write_manifest(result.rows, out)
+    print(f"manifest: {out}  rows={len(result.rows)}")
+
+    if result.errors:
+        err_out = out.with_suffix(".errors.jsonl")
+        write_errors(result.errors, err_out)
+        print(f"ERRORED EXCLUSIONS: {len(result.errors)} -> {err_out}")
+        for e in result.errors:
+            print(f"  errored {e.instance_id}: {e.reason}")
+
+    with_rs = [r for r in result.rows if r.rs_file_count > 0]
+    total_rs = sum(r.rs_file_count for r in result.rows)
+    print(f"rs_file_count: {total_rs} across {len(with_rs)} checkout(s)")
+    if args.corpus in ("ts40", "py_nosphinx"):
+        # R-B2: rust ON/OFF is discovery-equivalent for the regression corpora
+        # iff no checkout carries a .rs file. Otherwise a --no-default-features
+        # sidecar build is ALSO required for the Aug-20-comparable numbers.
+        if ts_py_discovery_equivalent(result.rows):
+            print("R-B2: EQUIVALENT — no .rs in any checkout; the rust-ON "
+                  "certification binary carries the regression numbers.")
+        else:
+            print("R-B2: NOT EQUIVALENT — .rs present; a --no-default-features "
+                  "sidecar build is REQUIRED for ts40/py_nosphinx, reported "
+                  "separately from the as-shipped numbers.")
+            for r in with_rs:
+                print(f"  {r.instance_id}: {r.rs_file_count} .rs")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="ttg", description=__doc__)
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -197,6 +241,15 @@ def main(argv: list[str] | None = None) -> int:
     p_scoreown.add_argument("--report", required=True)
     p_scoreown.add_argument("--gold", required=True)
     p_scoreown.set_defaults(func=cmd_score_own)
+
+    p_prov = sub.add_parser(
+        "provision", help="clone a corpus's checkouts + emit the public manifest"
+    )
+    p_prov.add_argument("--corpus", required=True)
+    p_prov.add_argument("--jsonl", required=True, help="private corpus JSONL")
+    p_prov.add_argument("--checkouts", required=True, help="checkout root")
+    p_prov.add_argument("--out", help="default: corpora/<corpus>.manifest.jsonl")
+    p_prov.set_defaults(func=cmd_provision)
 
     args = parser.parse_args(argv)
     try:

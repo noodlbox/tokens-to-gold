@@ -8,14 +8,19 @@ silently mis-decide one-vs-two binaries — cannot ship.
 
 from __future__ import annotations
 
+import json
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from ttg.provision import (
+    CheckoutFacts,
     ManifestRow,
     UnsafeCorpusInputError,
+    build_manifest,
+    write_manifest,
     _validated_commit,
     _validated_dest,
     _validated_url,
@@ -100,6 +105,60 @@ class UntrustedInputTest(unittest.TestCase):
         for bad in ("..", ".", "../evil", "a/b", "/abs", "x/../..", ""):
             with self.assertRaises(UnsafeCorpusInputError):
                 _validated_dest(root, bad)
+
+
+class ManifestEmissionTest(unittest.TestCase):
+    """R-P4/R-P5: the manifest is the public checkout-set proof, and a
+    provisioning failure is a recorded exclusion — never a dropped instance."""
+
+    def setUp(self) -> None:
+        self.dir = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: subprocess.run(["rm", "-rf", str(self.dir)]))
+
+    def _jsonl(self, rows: list[dict]) -> Path:
+        p = self.dir / "corpus.jsonl"
+        p.write_text("".join(json.dumps(r) + "\n" for r in rows))
+        return p
+
+    def test_provisioning_failure_is_recorded_not_dropped(self) -> None:
+        jsonl = self._jsonl([
+            {"instance_id": "ok-one", "repo": "o/r", "base_commit": "a" * 40},
+            {"instance_id": "bad-one", "repo": "o/r", "base_commit": "b" * 40},
+        ])
+        good = CheckoutFacts(tree_sha="t" * 40, rs_file_count=0)
+
+        def fake(repo: str, base_commit: str, dest: Path) -> CheckoutFacts:
+            if base_commit.startswith("b"):
+                raise subprocess.CalledProcessError(
+                    128, ["git", "fetch"], stderr="fatal: could not read commit")
+            return good
+
+        with mock.patch("ttg.provision.provision_instance", side_effect=fake):
+            result = build_manifest(jsonl, self.dir / "checkouts")
+
+        self.assertEqual([r.instance_id for r in result.rows], ["ok-one"])
+        self.assertEqual([e.instance_id for e in result.errors], ["bad-one"])
+        # nothing vanished: every input instance is in exactly one bucket
+        self.assertEqual(len(result.rows) + len(result.errors), 2)
+        self.assertIn("could not read commit", result.errors[0].reason)
+
+    def test_unsafe_row_still_raises_rather_than_becoming_an_exclusion(self) -> None:
+        jsonl = self._jsonl(
+            [{"instance_id": "../evil", "repo": "o/r", "base_commit": "a" * 40}])
+        with mock.patch("ttg.provision.provision_instance"):
+            with self.assertRaises(UnsafeCorpusInputError):
+                build_manifest(jsonl, self.dir / "checkouts")
+
+    def test_manifest_carries_only_public_fields(self) -> None:
+        out = self.dir / "m.jsonl"
+        write_manifest([ManifestRow("i", "o/r", "c" * 40, "t" * 40, 3)], out)
+        row = json.loads(out.read_text().splitlines()[0])
+        self.assertEqual(
+            sorted(row),
+            ["base_commit", "instance_id", "repo", "rs_file_count", "tree_sha"])
+        # U3: a patch or problem statement must never reach the public manifest
+        self.assertNotIn("patch", row)
+        self.assertNotIn("problem_statement", row)
 
 
 if __name__ == "__main__":
