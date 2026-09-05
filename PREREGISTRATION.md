@@ -96,7 +96,7 @@ Gold is a **reference-patch proxy**, not human-labelled ground truth.
 
 ## Re-certification + Go/Rust tiers — 2026-09
 
-> **DRAFT — pending design-owner ack; fixed BEFORE any derive/arm run.**
+> ACKED — rel2-t2g, 2026-09-05 18:30. Fixed before any derive/arm run.
 > Append-only: the V1 section above (its corpora, numbers, metrics, criteria) is
 > unchanged. This section pre-registers (a) re-certifying the shipped CLI at a
 > new version and (b) two new language tiers.
