@@ -9,11 +9,14 @@ Requires the DeepSWE task tree; set DEEPSWE_TASKS to
 `…/noodlbox-evals/deep-swe/tasks`. Skips (does not fail) when absent, so the
 suite stays runnable on a fresh clone without the private task tree.
 
-Documented exception: one ts40 row (`eicrud-keyset-pagination-cursor`) carries
-a 7-char abbreviated `base_commit_hash` in its task.toml; the frozen ts40 holds
-the full 40-hex commit. They are the same commit (prefix), so that field is
-asserted prefix-equivalent rather than byte-equal. Every other field on every
-row — and every field of every non-abbreviated row — is byte-equal.
+The homed `ts40.jsonl` (sha `64a5a12d5cdd3cff9f1b1784962132d57e44d0eb03118c160fc3fa112454618b`)
+stays the authoritative corpus anchor. The converter reproduces it byte-for-byte
+*modulo one documented row*: `eicrud-keyset-pagination-cursor` carries a 7-char
+abbreviated `base_commit_hash` in its task.toml while the frozen ts40 holds the
+full 40-hex commit. They are the same commit, so that one field is asserted a
+STRICT prefix (shorter than, and a prefix of, the homed hash) — never byte-equal.
+Every other field on every row, and every field of every non-abbreviated row, is
+byte-equal.
 """
 
 from __future__ import annotations
@@ -66,9 +69,13 @@ class DeepSweConverterTest(unittest.TestCase):
             if len(got["base_commit"]) == 40:
                 self.assertEqual(got["base_commit"], want["base_commit"],
                                  f"{iid}.base_commit")
-            else:  # abbreviated task.toml hash — must be a prefix of the full
+            else:  # abbreviated task.toml hash — STRICT prefix of the full 40-hex
+                self.assertLess(len(got["base_commit"]), len(want["base_commit"]),
+                                f"{iid}.base_commit not shorter than homed")
+                self.assertNotEqual(got["base_commit"], want["base_commit"],
+                                    f"{iid}.base_commit unexpectedly byte-equal")
                 self.assertTrue(want["base_commit"].startswith(got["base_commit"]),
-                                f"{iid}.base_commit not prefix-equivalent")
+                                f"{iid}.base_commit not a prefix of the homed hash")
 
     def test_ts40_full_hash_rows_are_line_byte_identical(self) -> None:
         """Every row whose task.toml carries a full 40-hex commit must
