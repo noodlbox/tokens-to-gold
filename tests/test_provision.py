@@ -15,6 +15,10 @@ from pathlib import Path
 
 from ttg.provision import (
     ManifestRow,
+    UnsafeCorpusInputError,
+    _validated_commit,
+    _validated_dest,
+    _validated_url,
     inspect_checkout,
     ts_py_discovery_equivalent,
 )
@@ -70,6 +74,32 @@ class DiscoveryEquivalenceTest(unittest.TestCase):
     def test_any_nonzero_breaks_equivalence(self) -> None:
         rows = [self._row("a", 0), self._row("b", 3)]
         self.assertFalse(ts_py_discovery_equivalent(rows))
+
+
+class UntrustedInputTest(unittest.TestCase):
+    """The public 'run on your own repo' path feeds untrusted JSONL into git
+    args and paths — these must fail closed (argument-injection + traversal)."""
+
+    def test_commit_must_be_hex(self) -> None:
+        self.assertEqual(_validated_commit("68dafce"), "68dafce")
+        for bad in ("--upload-pack=x", "-e", "main", "68dafce; rm -rf /", ""):
+            with self.assertRaises(UnsafeCorpusInputError):
+                _validated_commit(bad)
+
+    def test_repo_rejects_flag_and_bad_slug(self) -> None:
+        self.assertEqual(_validated_url("o/r"), "https://github.com/o/r.git")
+        self.assertEqual(_validated_url("https://x/y"), "https://x/y")
+        for bad in ("--upload-pack=x", "-o/r", "not a slug", "a/b/c", "/etc"):
+            with self.assertRaises(UnsafeCorpusInputError):
+                _validated_url(bad)
+
+    def test_instance_id_cannot_escape_the_root(self) -> None:
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: subprocess.run(["rm", "-rf", str(root)]))
+        self.assertEqual(_validated_dest(root, "good-id"), (root / "good-id").resolve())
+        for bad in ("..", ".", "../evil", "a/b", "/abs", "x/../..", ""):
+            with self.assertRaises(UnsafeCorpusInputError):
+                _validated_dest(root, bad)
 
 
 if __name__ == "__main__":

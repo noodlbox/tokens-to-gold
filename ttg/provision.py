@@ -21,9 +21,48 @@ assembly are pure and unit-tested off-lease.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from dataclasses import asdict, dataclass
 from pathlib import Path
+
+# This script runs on a third party's own corpus JSONL (the "run on your own
+# repo" path), so every field is untrusted input flowing into git args and
+# filesystem paths. Validate at the boundary, fail closed.
+_INSTANCE_ID = re.compile(r"\A[A-Za-z0-9._-]+\Z")   # one path segment, no '..'
+_COMMIT = re.compile(r"\A[0-9a-f]{7,40}\Z")          # hex — cannot be a git flag
+_REPO_SLUG = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*\Z")
+
+
+class UnsafeCorpusInputError(ValueError):
+    """A corpus field would inject a git argument or escape the checkout root."""
+
+
+def _validated_commit(base_commit: str) -> str:
+    if not _COMMIT.fullmatch(base_commit):
+        raise UnsafeCorpusInputError(f"base_commit not a hex sha: {base_commit!r}")
+    return base_commit
+
+
+def _validated_url(repo: str) -> str:
+    if repo.startswith("-"):
+        raise UnsafeCorpusInputError(f"repo starts with '-': {repo!r}")
+    if repo.startswith(("https://", "git@")):
+        return repo
+    if not _REPO_SLUG.fullmatch(repo):
+        raise UnsafeCorpusInputError(f"repo not an owner/name slug or URL: {repo!r}")
+    return f"https://github.com/{repo}.git"
+
+
+def _validated_dest(checkouts_dir: Path, instance_id: str) -> Path:
+    if not _INSTANCE_ID.fullmatch(instance_id) or instance_id in {".", ".."}:
+        raise UnsafeCorpusInputError(f"unsafe instance_id: {instance_id!r}")
+    root = checkouts_dir.resolve()
+    dest = (root / instance_id).resolve()
+    if dest != root / instance_id or root not in dest.parents:
+        raise UnsafeCorpusInputError(
+            f"instance_id escapes the checkout root: {instance_id!r}")
+    return dest
 
 
 @dataclass(frozen=True)
@@ -66,12 +105,14 @@ def provision_instance(repo: str, base_commit: str, dest: Path) -> CheckoutFacts
 
     Fetches the single commit to keep provisioning cheap; fails closed if the
     commit is unreachable rather than silently landing on a default branch."""
+    url = _validated_url(repo)
+    commit = _validated_commit(base_commit)
     dest.mkdir(parents=True, exist_ok=True)
-    url = repo if repo.startswith(("http://", "https://", "git@")) \
-        else f"https://github.com/{repo}.git"
     _git(dest, "init", "-q")
     _git(dest, "remote", "add", "origin", url)
-    _git(dest, "fetch", "-q", "--depth", "1", "origin", base_commit)
+    # commit is validated hex and url is validated scheme/slug, so neither can
+    # be read as a git flag (git fetch takes no `--` refspec separator).
+    _git(dest, "fetch", "-q", "--depth", "1", "origin", commit)
     _git(dest, "checkout", "-q", "FETCH_HEAD")
     return inspect_checkout(dest)
 
@@ -82,10 +123,8 @@ def build_manifest(jsonl: Path, checkouts_dir: Path) -> list[ManifestRow]:
         if not line.strip():
             continue
         inst = json.loads(line)
-        facts = provision_instance(
-            inst["repo"], inst["base_commit"],
-            checkouts_dir / inst["instance_id"],
-        )
+        dest = _validated_dest(checkouts_dir, inst["instance_id"])
+        facts = provision_instance(inst["repo"], inst["base_commit"], dest)
         rows.append(ManifestRow(
             instance_id=inst["instance_id"], repo=inst["repo"],
             base_commit=inst["base_commit"],
