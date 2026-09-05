@@ -1,4 +1,9 @@
 __pycache__/
 *.py[cod]
 *.bak
-out/
+# Anchored: this rule exists for reproduce.sh's default scratch outdir at the
+# repo root (OUTDIR=./out). Unanchored, `out/` matched ANY directory named out
+# at any depth and silently hid every retrieved run artifact under
+# runs/<run>/out/ -- exactly the headers, manifests and sidecars R-S4 requires
+# to be committed.
+/out/
