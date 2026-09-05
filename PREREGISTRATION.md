@@ -93,3 +93,57 @@ that inflated recall by ~9pp when it was allowed. The freeze preserves report
 order and **never sorts the symbol lists**; the frozen file is digest-pinned.
 
 Gold is a **reference-patch proxy**, not human-labelled ground truth.
+
+## Re-certification + Go/Rust tiers — 2026-09
+
+> **DRAFT — pending design-owner ack; fixed BEFORE any derive/arm run.**
+> Append-only: the V1 section above (its corpora, numbers, metrics, criteria) is
+> unchanged. This section pre-registers (a) re-certifying the shipped CLI at a
+> new version and (b) two new language tiers.
+
+**Certification binary.** `noodl-eval` built from the **v2.3.18** tag (tag +
+commit + binary sha256 recorded in every report header, alongside
+`eval features = rust-analysis`). Rust analysis is **ON**, matching the shipped
+product's default (`nbx` `default = ["rust-analysis"]`) — the certified numbers
+must describe the config users run. "As shipped" is the headline framing.
+
+**New corpora** (single lineage each; instance IDs + digests pinned; the private
+JSONLs stay in the project's `corpora/`, the public package ships instance lists
++ digests only):
+
+| Corpus | Language | Source | Instances | Gold-bearing (scoring basis) |
+|---|---|---|---|---|
+| `go34` | Go | DataCurve DeepSWE (`language = "go"`) | 34 | confirmed on derive |
+| `rust43` | Rust | SWE-bench Multilingual (test split) | 43 | confirmed on derive |
+
+Digests: `go34.jsonl` sha256 `3f221cee…`, `rust43.jsonl` sha256 `32661b0c…`.
+N and any per-instance exclusions (errored / zero-gold) are recorded here as a
+dated addendum **before** the numbers exist. A tier is NO-GO for launch if its
+zero-gold rate exceeds the pre-registered `ZERO_GOLD_ALARM_RATE = 10%`; that
+escalates (whitelist vs version-bump vs language-scope), it does not silently
+publish. `is_definition_kind` (the gold-kind whitelist) is **unchanged** —
+extending it bumps `DERIVATION_VERSION` and retires the signed TS/Py numbers.
+
+**Regression axis (ts40, py_nosphinx).** The comparable quantity is the new
+binary's arms scored against the **existing frozen gold** with the shipped
+scorer — gold held fixed, not re-derived. A fresh `--reindex` re-derivation runs
+as a **sidecar**, per-instance SET-MATCH vs the frozen gold; derivation drift is
+a reported finding, never silently re-frozen. Regression floor is the
+pre-registered `NOISE_FLOOR = 2.75pp`.
+
+**Comparability is decided by measurement, not assumption.** The provisioning
+manifest records `rs_file_count` per checkout (`.rs` files on disk, excluding
+nothing — vendored included). If every ts40 + py_nosphinx checkout is `0`, the
+rust-ON certification binary is discovery-equivalent to a rust-OFF build for
+those corpora and one binary certifies the regression. If any is `> 0`, a
+rust-OFF (`--no-default-features`) build is ALSO run for ts40/py: its numbers
+are the Aug-20-comparable **regression** numbers, the rust-ON numbers are the
+**as-shipped** numbers, reported separately and never merged (a
+must-remain-separate row: "same-config vs as-shipped"). go34/rust43 have no
+Aug-20 anchor → rust-ON only.
+
+**Metrics / arms / claims language** are the V1 set, unchanged: `Gold@{8k,32k}_wire`,
+head-only `@k`, `TokensToGold@80` (reach + median among reachers), per-language,
+N-carried, bound-labelled; whole-list recall stays internal. Arms: shipped
+treatment, levers-off ablation, native floor. Gold protocol as above (derive
+once, freeze, never sort, digest-pinned; reference-patch proxy).
