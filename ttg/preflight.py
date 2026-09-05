@@ -32,6 +32,37 @@ class PreU1BinaryError(RuntimeError):
 # a genuinely broken binary rather than a forgotten flag.
 _FEATURE_FOR_LANGUAGE = {"rust": "rust-analysis"}
 
+# Which language a corpus's checkouts are, i.e. which analysis support the eval
+# binary must have compiled in for that corpus to yield gold at all. ts40 is
+# TS+JS: both are unconditional, so either name answers the same question.
+LANGUAGE_BY_CORPUS = {
+    "ts40": "typescript",
+    "py_nosphinx": "python",
+    "gauntlet_py56": "python",
+    "go34": "go",
+    "rust43": "rust",
+}
+
+
+class UnknownCorpusError(KeyError):
+    """No language is registered for this corpus, so the pre-flight cannot
+    vouch for it — refused rather than waved through."""
+
+
+def language_for_corpus(corpus: str) -> str:
+    try:
+        return LANGUAGE_BY_CORPUS[corpus]
+    except KeyError:
+        raise UnknownCorpusError(
+            f"no language registered for corpus {corpus!r}; add it to "
+            "LANGUAGE_BY_CORPUS before running it"
+        ) from None
+
+
+def require_corpus_support(binary: str, corpus: str) -> None:
+    """Pre-flight a corpus by name — the form the run path calls."""
+    require_language_support(binary, language_for_corpus(corpus))
+
 
 def analysis_languages(binary: str) -> set[str]:
     """Query the eval binary's compiled analysis capabilities.

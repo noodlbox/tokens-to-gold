@@ -15,9 +15,13 @@ import unittest
 from pathlib import Path
 
 from ttg.preflight import (
+    LANGUAGE_BY_CORPUS,
     PreU1BinaryError,
+    UnknownCorpusError,
     UnsupportedLanguageError,
     analysis_languages,
+    language_for_corpus,
+    require_corpus_support,
     require_language_support,
 )
 
@@ -80,6 +84,41 @@ class PreflightTest(unittest.TestCase):
             require_language_support(binary, "go")
         self.assertIn("broken", str(ctx.exception))
         self.assertNotIn("--features", str(ctx.exception))
+
+
+class CorpusPreflightTest(unittest.TestCase):
+    """The form the run path calls: pre-flight by CORPUS name, so reproduce.sh
+    never has to know which language a tier is."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+
+    def test_every_registered_corpus_maps_to_a_language(self) -> None:
+        for corpus in ("ts40", "py_nosphinx", "go34", "rust43"):
+            self.assertIn(corpus, LANGUAGE_BY_CORPUS)
+            self.assertTrue(language_for_corpus(corpus))
+
+    def test_rust_corpus_is_refused_on_the_sidecar_build(self) -> None:
+        binary = _fake_binary(self.dir, _OFF)
+        with self.assertRaises(UnsupportedLanguageError):
+            require_corpus_support(binary, "rust43")
+
+    def test_regression_corpora_pass_on_the_sidecar_build(self) -> None:
+        binary = _fake_binary(self.dir, _OFF)
+        for corpus in ("ts40", "py_nosphinx"):
+            require_corpus_support(binary, corpus)
+
+    def test_all_corpora_pass_on_the_certification_build(self) -> None:
+        binary = _fake_binary(self.dir, _ON)
+        for corpus in ("ts40", "py_nosphinx", "go34", "rust43"):
+            require_corpus_support(binary, corpus)
+
+    def test_unregistered_corpus_is_refused_not_waved_through(self) -> None:
+        binary = _fake_binary(self.dir, _ON)
+        with self.assertRaises(UnknownCorpusError):
+            require_corpus_support(binary, "some_new_tier")
 
 
 if __name__ == "__main__":

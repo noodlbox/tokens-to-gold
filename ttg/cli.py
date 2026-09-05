@@ -22,6 +22,13 @@ from ttg.curve_recompute import curve_parity_findings
 from ttg.acceptance import load_frozen_gold
 from ttg.own_repo import OWN_REPO_ARMS, OwnRepoError, fetch_pr, own_repo_flags
 from ttg.derive_checks import drift_report, render_drift, zero_gold_check
+from ttg.pins import PinError
+from ttg.preflight import (
+    PreU1BinaryError,
+    UnknownCorpusError,
+    UnsupportedLanguageError,
+    require_corpus_support,
+)
 from ttg.regression import DEFAULT_METRICS, compare_reports, render_table
 from ttg.provision import (
     build_manifest,
@@ -164,6 +171,20 @@ def _gold_map(path: str) -> dict[str, list[str]]:
     return {str(k): [str(x) for x in v] for k, v in gold.items()}
 
 
+def cmd_preflight(args: argparse.Namespace) -> int:
+    """U1: refuse a corpus the eval binary was not built to analyze.
+
+    Called by reproduce.sh before the run stage so the reproduction spine never
+    depends on the caller remembering a feature flag."""
+    for corpus in args.corpora.split(","):
+        corpus = corpus.strip()
+        if not corpus:
+            continue
+        require_corpus_support(args.binary, corpus)
+        print(f"preflight: {corpus} OK")
+    return 0
+
+
 def cmd_zero_gold(args: argparse.Namespace) -> int:
     """R-P5 NO-GO alarm. Non-zero exit is the point: a tier above the
     pre-registered rate must not proceed to publish on its own."""
@@ -298,6 +319,13 @@ def main(argv: list[str] | None = None) -> int:
     p_reg.add_argument("--gold", help="frozen gold: restrict to the binding basis")
     p_reg.set_defaults(func=cmd_regress)
 
+    p_pf = sub.add_parser(
+        "preflight", help="U1: refuse a corpus this binary cannot analyze"
+    )
+    p_pf.add_argument("--binary", required=True)
+    p_pf.add_argument("--corpora", required=True, help="comma-separated")
+    p_pf.set_defaults(func=cmd_preflight)
+
     p_zg = sub.add_parser(
         "zero-gold", help="R-P5 zero-gold NO-GO alarm for a derived tier"
     )
@@ -317,7 +345,15 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return int(args.func(args))
-    except ArmError as exc:
+    except (
+        ArmError,
+        PinError,
+        PreU1BinaryError,
+        UnknownCorpusError,
+        UnsupportedLanguageError,
+    ) as exc:
+        # A refusal is an operator-facing message, not a traceback: these are
+        # all "you asked for something this binary/pin cannot honour" errors.
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 
