@@ -13,6 +13,19 @@ seen is not in this file.
 Instance IDs are pinned in `corpora/*.instances.tsv` with digests. Both are
 derived from the public SWE-bench-style deep-swe set.
 
+> **Lineage correction (2026-09-05, pre-publication provenance audit; no
+> number, instance list, metric, or criterion changes).** The line above
+> blankets two distinct lineages under one internal corpus-family label
+> ("deep-swe"). Verified byte-for-byte against the source datasets:
+> `ts40` is 40 tasks from **DataCurve DeepSWE** (not SWE-bench; 35 TS + 5 JS
+> per DeepSWE task metadata), each `patch` byte-identical to that task's
+> held-out `solution/solution.patch` and each `problem_statement` to its
+> `instruction.md`. `py_nosphinx` is 40 tasks from **SWE-bench Lite**
+> (17 pytest + 23 scikit-learn; the source pool's 16 sphinx-doc tasks
+> excluded), fields byte-identical to Lite's records. See `README.md`
+> "Two corpora, two lineages". The pinned instance IDs and digests above
+> are unchanged — this note corrects the prose attribution only.
+
 A third, **private** corpus is held out and is deliberately absent from this
 package — no name, ID, number, or example. The criterion that depends on it
 (criterion 4, monorepo behaviour) is reported as **explained-absent** rather

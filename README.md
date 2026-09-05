@@ -72,12 +72,31 @@ against a frozen denominator, so there is no noise to absorb. Only a fresh
 python3 -m ttg.cli accept --report <r> --corpus ts40 --arm shipped_treatment
 ```
 
+### Two corpora, two lineages
+
+The two tiers come from **different benchmarks** and are never blended:
+
+- **`ts40`** — 40 tasks from [DataCurve DeepSWE](https://deepswe.datacurve.ai/)
+  (per DeepSWE's own task metadata: 35 TypeScript + 5 JavaScript). Its
+  reference patch is DeepSWE's **held-out reference solution** — a reference
+  implementation DeepSWE's behavioral verifier never grades against, so
+  alternate correct implementations are accepted by design.
+- **`py_nosphinx`** — 40 Python tasks from **SWE-bench Lite** (17 pytest,
+  23 scikit-learn; the source pool's 16 sphinx-doc tasks excluded). Its
+  reference patch is SWE-bench's **gold patch**, the historically merged fix.
+
+In both tiers the task's problem statement is the single retrieval query,
+verbatim, and gold is the reference patch's touched lines resolved to
+code-graph symbol definitions, frozen once per corpus.
+
 ### Gold is a reference-patch proxy
 
-Gold is derived from the symbols the SWE-bench **reference patch** touched.
-It is *not* human-labelled retrieval ground truth. A symbol a competent
-engineer would want to read, but which the reference patch did not modify,
-is not gold and is not credited.
+Gold is derived from the symbols the **reference patch** touched (per
+lineage above). It is *not* human-labelled retrieval ground truth. A symbol
+a competent engineer would want to read, but which the reference patch did
+not modify, is not gold and is not credited. The proxy caveat is *stronger*
+for `ts40`: DeepSWE accepts alternate implementations by design, so valid
+solutions may touch different code than the reference.
 
 ### What a third party can and cannot reproduce
 
