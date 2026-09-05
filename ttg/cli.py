@@ -11,6 +11,7 @@ Subcommands:
 from __future__ import annotations
 
 import argparse
+import itertools
 import hashlib
 import json
 import sys
@@ -18,10 +19,13 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from arms.arm_matrix import CORPORA, DEFAULT_ARMS, SWEEP_ARMS, ArmError, flags_for
-from ttg.acceptance import check_report_file, load_fixture, render_checks
+from ttg.acceptance import (
+    check_report_file,
+    load_fixture,
+    load_frozen_gold,
+    render_checks,
+)
 from ttg.curve_recompute import curve_parity_findings
-from ttg.acceptance import load_frozen_gold
-from ttg.own_repo import OWN_REPO_ARMS, OwnRepoError, fetch_pr, own_repo_flags
 from ttg.derive_checks import (
     Disposition,
     drift_report,
@@ -29,21 +33,23 @@ from ttg.derive_checks import (
     tier_disposition,
     zero_gold_check,
 )
-from ttg.pins import PinError
-from ttg.privacy import contains_private, scrub
+from ttg.own_repo import OWN_REPO_ARMS, OwnRepoError, fetch_pr, own_repo_flags
+from ttg.pins import PinError, load_pins, validate_recert
 from ttg.preflight import (
     PreU1BinaryError,
     UnknownCorpusError,
     UnsupportedLanguageError,
     require_corpus_support,
 )
-from ttg.regression import DEFAULT_METRICS, compare_reports, render_table
+from ttg.privacy import contains_private, scrub
 from ttg.provision import (
+    UnsafeCorpusInputError,
     build_manifest,
     ts_py_discovery_equivalent,
     write_errors,
     write_manifest,
 )
+from ttg.regression import DEFAULT_METRICS, compare_reports, render_table
 from ttg.report_io import ReportFormatError, load_report
 from ttg.rollup import rollup
 
@@ -147,9 +153,8 @@ def cmd_from_pr(args: argparse.Namespace) -> int:
 
 def cmd_score_own(args: argparse.Namespace) -> int:
     """Score an own-repo report against the user's OWN frozen gold file."""
-    doc = json.loads(Path(args.gold).read_text())
-    gold = doc.get("gold", doc)
-    if not isinstance(gold, dict) or not gold:
+    gold = _gold_map(args.gold)
+    if not gold:
         print(f"ERROR: {args.gold}: no gold payload", file=sys.stderr)
         return 2
     report = load_report(args.report)
@@ -205,12 +210,11 @@ def cmd_check_arms(args: argparse.Namespace) -> int:
     arms = _resolve_arms(args.arms)
     corpora = [c.strip() for c in args.corpora.split(",") if c.strip()]
     failures: list[str] = []
-    for arm in arms:
-        for corpus in corpora:
-            try:
-                flags_for(arm, corpus)
-            except ArmError as exc:
-                failures.append(f"  {arm} x {corpus}: {exc}")
+    for arm, corpus in itertools.product(arms, corpora):
+        try:
+            flags_for(arm, corpus)
+        except ArmError as exc:
+            failures.append(f"  {arm} x {corpus}: {exc}")
     if failures:
         print(f"check-arms: {len(failures)} unresolvable cell(s) — refusing "
               "before any stage runs:", file=sys.stderr)
@@ -291,6 +295,17 @@ def cmd_drift(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_validate_pins(args: argparse.Namespace) -> int:
+    """A4 gate: refuse a half-filled re-cert PIN before any number is trusted.
+
+    The module and PIN.toml advertise this guard; this is where it is enforced.
+    validate_recert raises PinError on a PENDING-RUN, blank, or malformed
+    identity, which main() turns into a clean refusal."""
+    validate_recert(load_pins())
+    print("validate-pins: re-cert PIN identity is complete and well-formed")
+    return 0
+
+
 def cmd_regress(args: argparse.Namespace) -> int:
     """The R12 regression verdict table (HELD / IMPROVED / REGRESSED).
 
@@ -300,8 +315,9 @@ def cmd_regress(args: argparse.Namespace) -> int:
     baseline = load_report(args.baseline)
     current = load_report(args.current)
     ids = None
-    if args.gold:
-        ids = sorted(load_frozen_gold(args.gold))
+    if args.corpus:
+        # Restrict the pairing to the corpus's frozen-gold binding basis.
+        ids = sorted(load_frozen_gold(args.corpus))
     print(render_table(compare_reports(baseline, current, DEFAULT_METRICS, ids)))
     return 0
 
@@ -406,8 +422,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_reg.add_argument("--baseline", required=True, help="Aug-20 anchor report")
     p_reg.add_argument("--current", required=True, help="v2.3.18 report")
-    p_reg.add_argument("--gold", help="frozen gold: restrict to the binding basis")
+    p_reg.add_argument("--corpus", choices=sorted(CORPORA),
+                       help="restrict pairing to this corpus's frozen-gold basis")
     p_reg.set_defaults(func=cmd_regress)
+
+    p_vp = sub.add_parser(
+        "validate-pins", help="A4: refuse a half-filled re-cert PIN (PENDING-RUN)"
+    )
+    p_vp.set_defaults(func=cmd_validate_pins)
 
     p_pf = sub.add_parser(
         "preflight", help="U1: refuse a corpus this binary cannot analyze"
@@ -456,6 +478,7 @@ def main(argv: list[str] | None = None) -> int:
         PinError,
         PreU1BinaryError,
         UnknownCorpusError,
+        UnsafeCorpusInputError,
         UnsupportedLanguageError,
     ) as exc:
         # A refusal is an operator-facing message, not a traceback: these are

@@ -14,10 +14,20 @@ becoming a leak itself.
 
 from __future__ import annotations
 
+import re
+
 PRIVATE_CORPUS = "til" + "la"
 """The held-out corpus name, lowercase, as data."""
 
 REDACTION = "<redacted-private-corpus>"
+
+
+# One matcher for both detection and redaction, so a casing scrub() misses can
+# never be a casing contains_private() reports: a mixed-case occurrence was
+# previously DETECTED but left un-redacted (only three fixed casings were
+# replaced), a false success on a leak-prevention guard. Case-insensitive
+# covers every casing, not three.
+_TOKEN = re.compile(re.escape(PRIVATE_CORPUS), re.IGNORECASE)
 
 
 def scrub(text: str) -> str:
@@ -27,12 +37,8 @@ def scrub(text: str) -> str:
     identifiers, so redacting it preserves everything the log is kept for --
     which test, and whether it passed -- while removing the one thing that may
     not ship."""
-    out = text
-    for variant in (PRIVATE_CORPUS, PRIVATE_CORPUS.upper(),
-                    PRIVATE_CORPUS.capitalize()):
-        out = out.replace(variant, REDACTION)
-    return out
+    return _TOKEN.sub(REDACTION, text)
 
 
 def contains_private(text: str) -> bool:
-    return PRIVATE_CORPUS in text.lower()
+    return _TOKEN.search(text) is not None

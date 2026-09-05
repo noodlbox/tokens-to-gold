@@ -31,19 +31,17 @@ from pathlib import Path
 _GH_PREFIX = "https://github.com/"
 
 
-def _find(mapping: dict, key: str) -> str:
-    """Return mapping[key], searching one level of nested tables.
-
-    task.toml keeps repository_url / base_commit_hash at the top level today;
-    the nested fallback keeps the converter working if a future schema tucks
-    them under a table, rather than silently emitting an empty field.
-    """
-    if key in mapping:
-        return mapping[key]
-    for value in mapping.values():
-        if isinstance(value, dict) and key in value:
-            return value[key]
-    raise KeyError(key)
+# DeepSWE task.toml keeps these under [metadata]; look there explicitly rather
+# than scanning every table. Explicit beats both a top-level-only lookup (which
+# misses them entirely) and a first-table-that-has-the-key scan (order-dependent,
+# and for a byte-identity corpus builder a silent wrong value is worse than a
+# KeyError). A missing key fails fast.
+def _find(toml_doc: dict, key: str) -> str:
+    """Return the [metadata] value for `key`, failing fast if absent."""
+    metadata = toml_doc.get("metadata")
+    if not isinstance(metadata, dict):
+        raise KeyError("task.toml has no [metadata] table")
+    return metadata[key]
 
 
 def task_to_row(task_dir: Path) -> dict[str, str]:
@@ -88,7 +86,10 @@ def select_by_ids(tasks_root: Path, ids: set[str]) -> list[Path]:
 
 
 def build_jsonl(task_dirs: list[Path]) -> str:
-    rows = [task_to_row(d) for d in task_dirs]
+    # Sort at the emission point so the "rows sorted by instance_id" invariant
+    # the module docstring promises holds regardless of caller ordering -- a
+    # caller passing unsorted dirs must not silently break byte-identity.
+    rows = [task_to_row(d) for d in sorted(task_dirs, key=lambda d: d.name)]
     return "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows)
 
 

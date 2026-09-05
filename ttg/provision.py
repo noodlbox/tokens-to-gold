@@ -147,14 +147,17 @@ def provision_instance(repo: str, base_commit: str, dest: Path) -> CheckoutFacts
     url = _validated_url(repo)
     commit = _validated_commit(base_commit)
     # Idempotent: a resumed run on a kept lease already has the checkout, and
-    # re-cloning 157 repos to regenerate a manifest column would be absurd. If
-    # the checkout is already at the right commit, inspect it and return.
+    # re-cloning 157 repos to regenerate a manifest column would be absurd. Only
+    # short-circuit when HEAD is actually AT the requested commit -- a checkout
+    # left at a different commit (the corpus JSONL's base_commit changed between
+    # runs) would otherwise record a tree_sha that does not match base_commit,
+    # silently corrupting the manifest's provenance guarantee.
     if (dest / ".git").is_dir():
         try:
-            head_tree = _git(dest, "rev-parse", "HEAD^{tree}")
+            head = _git(dest, "rev-parse", "HEAD")
         except subprocess.CalledProcessError:
-            head_tree = ""
-        if head_tree:
+            head = ""
+        if head.startswith(commit) or (len(commit) == 40 and head == commit):
             return inspect_checkout(dest)
 
     dest.mkdir(parents=True, exist_ok=True)
