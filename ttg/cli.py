@@ -192,6 +192,34 @@ def cmd_preflight(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_check_arms(args: argparse.Namespace) -> int:
+    """Resolve every requested arm against every requested corpus, at t=0.
+
+    An arm's flags may depend on per-corpus data (every waterfill and
+    per-file-caps cell derives its char budget from a corpus base_20k that only
+    the V1 tiers have). Without this, an unresolvable (arm, corpus) pair is
+    discovered by run_matrix AFTER provisioning, derivation and the sidecar --
+    hours in. Resolving the whole grid up front turns that into an immediate
+    refusal carrying the exact error it would have raised later."""
+    arms = _resolve_arms(args.arms)
+    corpora = [c.strip() for c in args.corpora.split(",") if c.strip()]
+    failures: list[str] = []
+    for arm in arms:
+        for corpus in corpora:
+            try:
+                flags_for(arm, corpus)
+            except ArmError as exc:
+                failures.append(f"  {arm} x {corpus}: {exc}")
+    if failures:
+        print(f"check-arms: {len(failures)} unresolvable cell(s) — refusing "
+              "before any stage runs:", file=sys.stderr)
+        print("\n".join(failures), file=sys.stderr)
+        return 2
+    print(f"check-arms: {len(arms)}x{len(corpora)} cells resolve "
+          f"({', '.join(arms)} over {', '.join(corpora)})")
+    return 0
+
+
 def cmd_scrub_artifacts(args: argparse.Namespace) -> int:
     """Remove the held-out corpus name from retrieved run artifacts.
 
@@ -366,6 +394,13 @@ def main(argv: list[str] | None = None) -> int:
     p_pf.add_argument("--binary", required=True)
     p_pf.add_argument("--corpora", required=True, help="comma-separated")
     p_pf.set_defaults(func=cmd_preflight)
+
+    p_arms = sub.add_parser(
+        "check-arms", help="resolve every (arm, corpus) cell before any stage runs"
+    )
+    p_arms.add_argument("--arms", required=True)
+    p_arms.add_argument("--corpora", required=True)
+    p_arms.set_defaults(func=cmd_check_arms)
 
     p_scrub = sub.add_parser(
         "scrub-artifacts",

@@ -58,6 +58,13 @@ PKG="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PKG"
 CORPUS_LIST="${CORPORA//,/ }"
 
+echo "== stage 0/5: resolve every (arm, corpus) cell =="
+# Before ANY stage: an arm whose flags depend on per-corpus data (every
+# waterfill / per-file-caps cell derives its budget from a corpus base_20k)
+# would otherwise fail in run_matrix after provisioning, derivation and the
+# sidecar. Refuse at t=0 with the exact error instead.
+python3 -m ttg.cli check-arms --arms "$ARMS" --corpora "$CORPORA"
+
 echo "== stage 1/5: verify shipped frozen gold =="
 python3 -m ttg.cli verify-gold
 
