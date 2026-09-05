@@ -22,6 +22,11 @@ class UnsupportedLanguageError(RuntimeError):
     """The eval binary cannot analyze a corpus's language under its build."""
 
 
+class PreU1BinaryError(RuntimeError):
+    """The eval binary predates the `capabilities` subcommand (U1), so its
+    analysis support cannot be introspected — including the Aug-20 anchor."""
+
+
 # The cargo feature that adds each cfg-gated language to a build. Languages not
 # listed are unconditional (no feature flag restores them), so their absence is
 # a genuinely broken binary rather than a forgotten flag.
@@ -29,13 +34,20 @@ _FEATURE_FOR_LANGUAGE = {"rust": "rust-analysis"}
 
 
 def analysis_languages(binary: str) -> set[str]:
-    """Query the eval binary's compiled analysis capabilities."""
+    """Query the eval binary's compiled analysis capabilities.
+
+    Raises PreU1BinaryError for a binary that predates the `capabilities`
+    subcommand (a pre-U1 build, including the Aug-20 anchor) — a typed error
+    naming the fix, not a raw CalledProcessError the caller must decode."""
     proc = subprocess.run(
-        [binary, "capabilities"],
-        capture_output=True, text=True, check=True,
+        [binary, "capabilities"], capture_output=True, text=True,
     )
-    payload = json.loads(proc.stdout)
-    return set(payload["analysis_languages"])
+    if proc.returncode != 0:
+        raise PreU1BinaryError(
+            f"{binary!r} has no `capabilities` subcommand — it predates U1; "
+            "rebuild from >= eval/ttg-recert-2.3."
+        )
+    return set(json.loads(proc.stdout)["analysis_languages"])
 
 
 def require_language_support(binary: str, corpus_language: str) -> None:

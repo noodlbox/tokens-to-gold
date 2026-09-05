@@ -15,6 +15,7 @@ import unittest
 from pathlib import Path
 
 from ttg.preflight import (
+    PreU1BinaryError,
     UnsupportedLanguageError,
     analysis_languages,
     require_language_support,
@@ -60,6 +61,16 @@ class PreflightTest(unittest.TestCase):
         for langs in (_ON, _OFF):
             for corpus_lang in ("python", "typescript", "go"):
                 require_language_support(_fake_binary(self.dir, langs), corpus_lang)
+
+    def test_pre_u1_binary_raises_typed_error(self) -> None:
+        # A binary with no `capabilities` subcommand (exits non-zero) — the
+        # Aug-20 anchor class — must raise a typed, actionable error.
+        script = self.dir / "old-eval"
+        script.write_text("#!/usr/bin/env bash\necho 'unknown subcommand' >&2\nexit 2\n")
+        script.chmod(script.stat().st_mode | stat.S_IXUSR)
+        with self.assertRaises(PreU1BinaryError) as ctx:
+            require_language_support(str(script), "rust")
+        self.assertIn("eval/ttg-recert-2.3", str(ctx.exception))
 
     def test_missing_unconditional_language_flags_broken_binary(self) -> None:
         # A binary somehow lacking Go (no feature restores it) is broken, not a
