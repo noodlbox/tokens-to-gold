@@ -188,3 +188,7 @@ BUNDLE.md           the 14-row publication contract: every row filled or
 ```sh
 python3 -m unittest discover -s tests -t .
 ```
+
+## Changelog
+
+- **2026-09 re-certification.** Added `ttg/paired_stats.py` (paired bootstrap CI + exact sign test), homed byte-identical from the m23gate harness (sha `4d359404…`). V1 documented this tool as shipped; it was not — the regression report now carries per-metric paired 95% CI + sign test alongside the ±2.75pp floor.
