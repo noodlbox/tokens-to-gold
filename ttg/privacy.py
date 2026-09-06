@@ -7,27 +7,90 @@ the workspace, and some of those test names contain the token. Retrieved run
 artifacts therefore pass through `scrub` before they can reach a repository
 that goes public.
 
-The token is built from fragments on purpose: the privacy scan looks for the
-contiguous string, so a module that must know the name can hold it without
-becoming a leak itself.
+## The token is RESOLVED, with an EXPLICIT mode (R18a)
+
+The token comes from one of two modes, and the mode is TOLD, never inferred:
+
+* **in-module** (the default): built from fragments in this module. The privacy
+  scan looks for the CONTIGUOUS assembled string, so a module that holds the
+  name in fragments (`"til" + "la"`) is not itself a leak.
+* **external**: read from `TTG_PRIVATE_CORPUS` when `TTG_PRIVATE_CORPUS_MODE`
+  selects it. External mode is WORKS-OR-THROWS: an absent OR empty value raises,
+  never a silent fallback to the in-module fragments -- a guard that silently
+  scrubbed the wrong token would be a false success on a leak-prevention path.
+
+Every consumer reports the resolved MODE NAME (`mode()`), never the token value.
+
+## One matcher, and a startup self-canary
+
+`scrub()` and `contains_private()` share ONE compiled case-insensitive matcher,
+so a casing `scrub()` misses can never be a casing `contains_private()` reports
+(the earlier mixed-case bug: DETECTED but left un-redacted). At import a
+self-canary asserts the resolved token is detected by its own matcher -- if the
+token and the matcher ever disagree the module ABORTS rather than run a privacy
+guard that cannot see its own token.
 """
 
 from __future__ import annotations
 
+import os
 import re
-
-PRIVATE_CORPUS = "til" + "la"
-"""The held-out corpus name, lowercase, as data."""
+from collections.abc import Callable
 
 REDACTION = "<redacted-private-corpus>"
 
+MODE_IN_MODULE = "in-module"
+MODE_EXTERNAL = "external"
+_MODE_ENV = "TTG_PRIVATE_CORPUS_MODE"
+_TOKEN_ENV = "TTG_PRIVATE_CORPUS"
 
-# One matcher for both detection and redaction, so a casing scrub() misses can
-# never be a casing contains_private() reports: a mixed-case occurrence was
-# previously DETECTED but left un-redacted (only three fixed casings were
-# replaced), a false success on a leak-prevention guard. Case-insensitive
-# covers every casing, not three.
-_TOKEN = re.compile(re.escape(PRIVATE_CORPUS), re.IGNORECASE)
+
+class PrivacyError(RuntimeError):
+    """The privacy token could not be resolved, or disagrees with its matcher."""
+
+
+def resolve() -> tuple[str, str]:
+    """Resolve `(mode_name, token)` from the EXPLICIT mode. Reads the
+    environment fresh on each call. External mode is works-or-throws."""
+    mode = os.environ.get(_MODE_ENV, MODE_IN_MODULE).strip().lower()
+    if mode == MODE_IN_MODULE:
+        # Fragment-built on purpose: holding the name here is not a leak because
+        # the scan looks for the contiguous assembled string.
+        return MODE_IN_MODULE, "til" + "la"
+    if mode == MODE_EXTERNAL:
+        raw = os.environ.get(_TOKEN_ENV)
+        if raw is None or not raw.strip():
+            raise PrivacyError(
+                f"{_MODE_ENV}=external but {_TOKEN_ENV} is absent or empty -- "
+                "external mode is works-or-throws, never a silent fallback to "
+                "the in-module fragments"
+            )
+        return MODE_EXTERNAL, raw.strip().lower()
+    raise PrivacyError(
+        f"unknown {_MODE_ENV}={mode!r}; expected "
+        f"{MODE_IN_MODULE!r} or {MODE_EXTERNAL!r}"
+    )
+
+
+def _matcher(token: str) -> re.Pattern[str]:
+    """One case-insensitive matcher for a token -- the shared unit both `scrub`
+    and `contains_private` are built on, so their casing can never disagree."""
+    if not token:
+        raise PrivacyError("refusing to build a privacy matcher for an empty token")
+    return re.compile(re.escape(token), re.IGNORECASE)
+
+
+MODE, PRIVATE_CORPUS = resolve()
+"""The resolved mode name and the held-out corpus name, as data."""
+
+_TOKEN = _matcher(PRIVATE_CORPUS)
+
+
+def mode() -> str:
+    """The resolved mode NAME (`in-module` / `external`) -- never the value.
+    Consumers print this so a run's provenance records HOW the token was
+    resolved without ever recording WHAT it is."""
+    return MODE
 
 
 def scrub(text: str) -> str:
@@ -42,3 +105,18 @@ def scrub(text: str) -> str:
 
 def contains_private(text: str) -> bool:
     return _TOKEN.search(text) is not None
+
+
+def _self_canary(token: str, detector: Callable[[str], bool]) -> None:
+    """Abort unless `detector` sees `token` inside a synthetic string. Guards the
+    invariant that the resolved token and the live matcher agree -- a privacy
+    guard that cannot detect its own token is worse than none, because it reads
+    as passing."""
+    if not detector(f"canary-{token}-canary"):
+        raise PrivacyError(
+            "privacy self-canary FAILED: the resolved token is not detected by "
+            "its own matcher -- refusing to run a guard blind to its own token"
+        )
+
+
+_self_canary(PRIVATE_CORPUS, contains_private)
