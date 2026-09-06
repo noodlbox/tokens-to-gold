@@ -34,7 +34,7 @@ _OFF = ["python", "typescript", "javascript", "go"]  # --no-default-features
 
 def _fake_binary(dirpath: Path, langs: list[str]) -> str:
     """A script that prints the capabilities JSON for `langs` on `capabilities`."""
-    payload = '{"analysis_languages": [%s]}' % ", ".join(f'"{l}"' for l in langs)
+    payload = '{"analysis_languages": [%s]}' % ", ".join(f'"{lang}"' for lang in langs)
     script = dirpath / "fake-eval"
     script.write_text(
         "#!/usr/bin/env bash\n"

@@ -32,11 +32,14 @@ def _filled() -> dict:
 
 
 class ShippedPinTest(unittest.TestCase):
-    def test_shipped_pin_is_pending_and_refused(self) -> None:
+    def test_committed_recert_pin_is_filled_and_valid(self) -> None:
+        # After A4 step 8 the committed [recert.binary] is filled from the
+        # certified lease artifacts: is_pending is False and validate_recert
+        # passes. The pending-refusal BEHAVIOR is covered by RefusalTest with
+        # synthetic docs, so this no longer depends on the committed pin's state.
         doc = load_pins()
-        self.assertTrue(is_pending(doc))
-        with self.assertRaises(PinError):
-            validate_recert(doc)
+        self.assertFalse(is_pending(doc))
+        validate_recert(doc)  # must not raise
 
     def test_cli_artifact_sha_is_pinned_and_well_formed(self) -> None:
         art = load_pins()["recert"]["cli_artifact"]

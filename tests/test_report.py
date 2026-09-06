@@ -190,11 +190,13 @@ class ProvenanceGateTest(unittest.TestCase):
     unverifiable provenance."""
 
     def test_render_refuses_on_pending_pin(self) -> None:
-        # K: PIN.toml [recert.binary] is PENDING-RUN until step 8, so the real
-        # build refuses (no mock). Step 8 fills it and this stops refusing.
-        with tempfile.TemporaryDirectory() as tmp:
-            with self.assertRaises(ProvenanceError):
-                build_report_doc(tmp)
+        # K: a PENDING [recert.binary] REFUSES the render. The committed pin is
+        # filled since step 8, so the pending state is injected (mock) rather
+        # than relied on — the behavior, not the current pin value, is the guard.
+        with mock.patch.object(report, "is_pending", return_value=True):
+            with tempfile.TemporaryDirectory() as tmp:
+                with self.assertRaises(ProvenanceError):
+                    build_report_doc(tmp)
 
     def test_harness_tip_equals_rev_parse_on_clean_tree(self) -> None:
         # P: the derived tip is exactly git rev-parse HEAD when tracked is clean.
