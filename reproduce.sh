@@ -78,7 +78,7 @@ else
     echo; echo "== stage 2/5: re-derive gold (L1, slow) =="
     # U1 first: a derivation on a binary that cannot analyze the corpus is
     # exactly how an all-empty gold gets frozen.
-    python3 -m ttg.cli preflight --binary "$BINARY" --corpora "$CORPORA"
+    python3 -m ttg.cli preflight --binary "$BINARY" --corpora "$CORPORA" --arms "$ARMS"
     for corpus in $CORPUS_LIST; do
       ttg/derive_gold.sh --corpus "$corpus" --binary "$BINARY" \
         --corpus-jsonl "$CORPUS_DIR/${corpus}.jsonl" --store "$STORE" \
@@ -89,7 +89,7 @@ else
     echo "   (run with --rederive-gold to re-derive it from the released binary)"
   fi
   echo; echo "== stage 2b/5: U1 preflight (refuse a corpus this binary cannot analyze) =="
-  python3 -m ttg.cli preflight --binary "$BINARY" --corpora "$CORPORA"
+  python3 -m ttg.cli preflight --binary "$BINARY" --corpora "$CORPORA" --arms "$ARMS"
 
   echo; echo "== stage 3/5: run arms (L3) =="
   arms/run_matrix.sh --arms "$ARMS" --corpora "$CORPORA" --binary "$BINARY" \

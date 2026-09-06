@@ -38,10 +38,12 @@ from ttg.derive_checks import (
 from ttg.own_repo import OWN_REPO_ARMS, OwnRepoError, fetch_pr, own_repo_flags
 from ttg.pins import PinError, load_pins, validate_recert
 from ttg.preflight import (
+    MissingToolError,
     PreU1BinaryError,
     UnknownCorpusError,
     UnsupportedLanguageError,
     require_corpus_support,
+    require_native_floor_tools,
 )
 from ttg.privacy import contains_private, scrub
 from ttg.provision import (
@@ -187,16 +189,21 @@ def _gold_map(path: str) -> dict[str, list[str]]:
 
 
 def cmd_preflight(args: argparse.Namespace) -> int:
-    """U1: refuse a corpus the eval binary was not built to analyze.
+    """U1: refuse a corpus the eval binary was not built to analyze, and refuse a
+    comparator arm whose external tool is missing.
 
     Called by reproduce.sh before the run stage so the reproduction spine never
-    depends on the caller remembering a feature flag."""
+    depends on the caller remembering a feature flag or a system tool."""
     for corpus in args.corpora.split(","):
         corpus = corpus.strip()
         if not corpus:
             continue
         require_corpus_support(args.binary, corpus)
         print(f"preflight: {corpus} OK")
+    arms = _resolve_arms(args.arms) if args.arms else []
+    if "native_floor" in arms:
+        require_native_floor_tools()
+        print("preflight: native_floor tooling (rg) OK")
     return 0
 
 
@@ -454,6 +461,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_pf.add_argument("--binary", required=True)
     p_pf.add_argument("--corpora", required=True, help="comma-separated")
+    p_pf.add_argument("--arms", help="if it includes native_floor, its external "
+                      "tools (rg) are pre-flighted too")
     p_pf.set_defaults(func=cmd_preflight)
 
     p_arms = sub.add_parser(
@@ -495,6 +504,7 @@ def main(argv: list[str] | None = None) -> int:
         ArmError,
         PinError,
         PreU1BinaryError,
+        MissingToolError,
         UnknownCorpusError,
         UnsafeCorpusInputError,
         UnsupportedLanguageError,

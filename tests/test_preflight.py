@@ -10,12 +10,14 @@ corpus: it MUST raise. A rust-ON binary vs the same corpus MUST pass.
 from __future__ import annotations
 
 import stat
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
 from ttg.preflight import (
     LANGUAGE_BY_CORPUS,
+    MissingToolError,
     PreU1BinaryError,
     UnknownCorpusError,
     UnsupportedLanguageError,
@@ -23,6 +25,7 @@ from ttg.preflight import (
     language_for_corpus,
     require_corpus_support,
     require_language_support,
+    require_native_floor_tools,
 )
 
 _ON = ["python", "typescript", "javascript", "go", "rust"]
@@ -119,6 +122,43 @@ class CorpusPreflightTest(unittest.TestCase):
         binary = _fake_binary(self.dir, _ON)
         with self.assertRaises(UnknownCorpusError):
             require_corpus_support(binary, "some_new_tier")
+
+
+class NativeFloorToolPreflightTest(unittest.TestCase):
+    """1c: the native_floor arm refuses to start without rg on PATH (PreU1
+    class), so a missing comparator tool cannot silently score the floor 0."""
+
+    def test_missing_rg_refuses_native_floor(self) -> None:
+        import os
+        original = os.environ.get("PATH", "")
+        # An empty PATH makes shutil.which('rg') None regardless of the host.
+        os.environ["PATH"] = ""
+        try:
+            with self.assertRaises(MissingToolError) as ctx:
+                require_native_floor_tools()
+        finally:
+            os.environ["PATH"] = original
+        self.assertIn("ripgrep", str(ctx.exception))
+        self.assertIn("native_floor", str(ctx.exception))
+
+    def test_a_stub_rg_on_path_passes(self) -> None:
+        # Host-independent, no skip-if-absent: build a temp dir with an
+        # executable named `rg` and put it FIRST on PATH, so the check finds it
+        # whether or not the host has ripgrep. shutil.which only needs the name
+        # present + executable.
+        import os
+        import stat
+        stub_dir = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: subprocess.run(["rm", "-rf", str(stub_dir)]))
+        rg = stub_dir / "rg"
+        rg.write_text("#!/usr/bin/env bash\nexit 0\n")
+        rg.chmod(rg.stat().st_mode | stat.S_IXUSR)
+        original = os.environ.get("PATH", "")
+        os.environ["PATH"] = f"{stub_dir}{os.pathsep}{original}"
+        try:
+            require_native_floor_tools()  # no raise -- a stub rg is on PATH
+        finally:
+            os.environ["PATH"] = original
 
 
 if __name__ == "__main__":

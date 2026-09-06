@@ -15,6 +15,7 @@ under its compiled features.
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 
 
@@ -62,6 +63,26 @@ def language_for_corpus(corpus: str) -> str:
 def require_corpus_support(binary: str, corpus: str) -> None:
     """Pre-flight a corpus by name — the form the run path calls."""
     require_language_support(binary, language_for_corpus(corpus))
+
+
+class MissingToolError(RuntimeError):
+    """A comparator arm's external tool is not on PATH; refuse before any run."""
+
+
+def require_native_floor_tools() -> None:
+    """The native_floor (explorer) arm shells out to ripgrep. A missing rg made
+    the eval binary emit an empty comparator floor (run10b) that would inflate
+    every lift claim, so refuse the arm at t=0 rather than run it blind — the
+    same fail-closed pattern as the language pre-flight (U1). The eval binary
+    also errors per-instance without rg (defence in depth); this catches it
+    before a checkout is even provisioned."""
+    if shutil.which("rg") is None:
+        raise MissingToolError(
+            "the native_floor arm requires ripgrep (`rg`) on PATH; it is absent. "
+            "Install it (warmup-remote.sh declares it) — a silent empty floor "
+            "understates the baseline and inflates every lift claim measured "
+            "against it"
+        )
 
 
 def analysis_languages(binary: str) -> set[str]:
