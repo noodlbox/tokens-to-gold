@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    # The clone-green unit suite + lint. Runs on every push and PR; needs no
+    # release attachments (nothing here touches the certified reports).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history for the privacy history scan (T6 + R18b)
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"  # tomllib needs >= 3.11
+      - name: install ruff
+        run: pipx install ruff
+      - name: lint
+        run: ruff check ttg/ tests/ acceptance/ arms/
+      - name: unit suite
+        run: python3 -m unittest discover -s tests
+
+  acceptance:
+    # The acceptance suite: fetch the pinned release attachments (the 12
+    # certified reports + the V1 pair), sha-verify them, then run the tests that
+    # need them. Runs when the R16 release is published (its attachments exist)
+    # or on manual dispatch — not on every push (there is nothing to fetch yet).
+    needs: unit
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: fetch + verify pinned attachments
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # gh release download on this repo
+        run: python3 -m ttg.cli fetch-artifacts --out runs/fetched
+      - name: acceptance suite
+        run: TTG_REPORTS_DIR=runs/fetched python3 -m unittest discover -s acceptance -p 'test_*.py' -t .
