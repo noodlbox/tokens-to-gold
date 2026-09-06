@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import statistics
+import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -38,6 +39,7 @@ from ttg.acceptance import (
     load_frozen_gold,
     score_arm,
 )
+from ttg.pins import is_pending, load_pins
 from ttg.regression import DEFAULT_METRICS, compare_reports, render_table
 from ttg.report_io import load_report
 from ttg.rollup import rollup
@@ -51,13 +53,6 @@ CORPUS_LANG: Final[dict[str, str]] = {
     "go34": "Go",
     "rust43": "Rust",
 }
-# The gold-bearing denominator per corpus (S7: ts40 37 / py 39; new tiers 30/40).
-CORPUS_N: Final[dict[str, int]] = {
-    "ts40": 37,
-    "py_nosphinx": 39,
-    "go34": 30,
-    "rust43": 40,
-}
 NATIVE_FLOOR: Final = "native_floor"
 ARMS: Final[tuple[str, ...]] = (
     "shipped_treatment",
@@ -65,28 +60,11 @@ ARMS: Final[tuple[str, ...]] = (
     NATIVE_FLOOR,
 )
 BOUND: Final = "ttg_wire"
-ONE_BINARY_SHA: Final = (
-    "bf920e4a765b0fa5a403ee95ddfbb3d3a66449d07d2286da2bce878520e30783"
-)
 
-# The frozen gold each tier's distribution is read FROM (not from memory). ts40
-# and py live in the canonical gold/ dir; the new tiers' gold still lives in
-# their run artifacts until A4 commits them to gold/, so those are the fallback.
-_GOLD_FALLBACKS: Final[dict[str, Path]] = {
-    "go34": PKG
-    / "runs"
-    / "recert-2026-09"
-    / "run8"
-    / "out"
-    / "gold"
-    / "frozen_gold_go34.json",
-    "rust43": PKG
-    / "runs"
-    / "recert-2026-09"
-    / "certified"
-    / "harbor-hermit-ts40py"
-    / "frozen_gold_rust43.json",
-}
+# The certified lease trees whose per-lease provenance headers must AGREE on the
+# one binary sha (K + the cross-lease "one binary" assertion).
+_CERTIFIED = PKG / "runs" / "recert-2026-09" / "certified"
+_LEASES: Final[tuple[str, ...]] = ("harbor-hermit-ts40py", "quick-shrimp-go34rust43")
 
 
 @dataclass(frozen=True)
@@ -102,12 +80,117 @@ class GoldDistribution:
     max_per_instance: int
 
 
-def _resolve_gold_path(corpus: str, gold_dir: Path) -> Path | None:
+def _gold_path(corpus: str, gold_dir: Path) -> Path | None:
+    """The ONE canonical gold path for a corpus. All four tiers' gold is
+    committed under gold/ (A4 step 6), so there is no fallback to an uncertified
+    run dir; absent means genuinely not staged."""
     canonical = gold_dir / f"frozen_gold_{corpus}.json"
-    if canonical.is_file():
-        return canonical
-    fallback = _GOLD_FALLBACKS.get(corpus)
-    return fallback if fallback is not None and fallback.is_file() else None
+    return canonical if canonical.is_file() else None
+
+
+class ProvenanceError(RuntimeError):
+    """The published artifact's provenance cannot be derived — the report REFUSES
+    to render rather than stamp a hardcoded or unverifiable provenance."""
+
+
+@dataclass(frozen=True)
+class Provenance:
+    """Derived provenance for the published artifact — every field READ, never a
+    literal, so the stamp cannot drift from the tree/pins it describes."""
+
+    harness_tip: str
+    binary_sha: str
+    untracked_count: int
+
+
+def _git(pkg: Path, *args: str) -> str:
+    out = subprocess.run(
+        ["git", *args], cwd=pkg, capture_output=True, text=True
+    )
+    if out.returncode != 0:
+        raise ProvenanceError(
+            f"git {' '.join(args)} failed: {out.stderr.strip() or out.returncode}"
+        )
+    return out.stdout
+
+
+def _derive_harness_tip(pkg: Path) -> str:
+    """The harness HEAD sha (P). Refuses on a failed rev-parse OR a dirty TRACKED
+    tree — the scorer code the artifact is rendered from must match the stamped
+    sha. Untracked paths (runs/ is untracked by design) do NOT refuse; they are
+    stamped as a fact instead."""
+    tip = _git(pkg, "rev-parse", "HEAD").strip()
+    if not tip:
+        raise ProvenanceError("harness rev-parse HEAD returned empty")
+    dirty = _git(pkg, "status", "--porcelain", "--untracked-files=no").strip()
+    if dirty:
+        raise ProvenanceError(
+            "harness has uncommitted TRACKED changes — the rendered artifact "
+            f"would not match its stamped sha:\n{dirty}"
+        )
+    return tip
+
+
+def _count_untracked(pkg: Path) -> int:
+    lines = _git(pkg, "status", "--porcelain", "--untracked-files=all").splitlines()
+    return sum(1 for line in lines if line.startswith("??"))
+
+
+def _cross_lease_binary_sha(pkg: Path, doc: Mapping[str, object]) -> str:
+    """The one eval-binary sha256 (K + the cross-lease assertion). Reads the
+    pinned value from PIN.toml [recert.binary], asserts EVERY certified lease's
+    provenance_header cert_binary_sha256 is identical AND equals it AND equals
+    bin/noodl-eval.sha256 — the "one binary, every cell" claim, verified not
+    stated. Any disagreement REFUSES."""
+    recert = doc.get("recert")
+    binary = recert.get("binary") if isinstance(recert, Mapping) else None
+    pinned = binary.get("sha256") if isinstance(binary, Mapping) else None
+    if not isinstance(pinned, str) or not pinned.strip():
+        raise ProvenanceError("PIN.toml [recert.binary].sha256 is missing")
+    seen: dict[str, str] = {}
+    for lease in _LEASES:
+        header = _CERTIFIED / lease / "provenance_header.txt"
+        if not header.is_file():
+            raise ProvenanceError(f"certified provenance header absent: {header}")
+        stamped = _header_binary_sha(header.read_text())
+        if stamped is None:
+            raise ProvenanceError(f"{header}: no cert_binary_sha256 line")
+        seen[lease] = stamped
+    bin_sha_file = _CERTIFIED / "harbor-hermit-ts40py" / "bin" / "noodl-eval.sha256"
+    if bin_sha_file.is_file():
+        seen["bin/noodl-eval.sha256"] = bin_sha_file.read_text().split()[0]
+    uniques = set(seen.values()) | {pinned}
+    if len(uniques) != 1:
+        raise ProvenanceError(
+            "the 'one binary' claim FAILED: binary sha disagreement across "
+            f"leases/pin: {seen} vs pin {pinned}"
+        )
+    return pinned
+
+
+def _header_binary_sha(text: str) -> str | None:
+    for line in text.splitlines():
+        if "cert_binary_sha256" in line:
+            for token in line.replace(":", " ").replace("=", " ").split():
+                if len(token) == 64 and all(c in "0123456789abcdef" for c in token):
+                    return token
+    return None
+
+
+def resolve_provenance(pkg: Path = PKG) -> Provenance:
+    """Derive the published artifact's provenance, or REFUSE. Refuses on: a
+    pending [recert.binary] pin (K), a dirty tracked tree / failed rev-parse (P),
+    or a cross-lease binary-sha disagreement. Step 8 fills the pin, which is what
+    makes this stop refusing."""
+    doc = load_pins()
+    if is_pending(doc):
+        raise ProvenanceError(
+            "PIN.toml [recert.binary] is still PENDING-RUN — fill it (A4 step 8) "
+            "before the published artifact can be rendered"
+        )
+    binary_sha = _cross_lease_binary_sha(pkg, doc)
+    tip = _derive_harness_tip(pkg)
+    return Provenance(tip, binary_sha, _count_untracked(pkg))
 
 
 def gold_distribution(gold_path: str | Path) -> GoldDistribution:
@@ -227,7 +310,25 @@ def _cell_by(cells: Sequence[Cell], corpus: str, arm: str) -> Cell:
     raise KeyError(f"no cell for {arm} x {corpus}")
 
 
-def render_language_table(cells: Sequence[Cell]) -> str:
+def _corpus_n(corpus: str, cells: Sequence[Cell], gold_dir: Path) -> int:
+    """The corpus N, from the ONE source: the frozen gold (GoldDistribution.n).
+    Every scored cell's own n is ASSERTED equal to it (L) — a discrepancy REFUSES
+    rather than rendering two different denominators."""
+    gp = _gold_path(corpus, gold_dir)
+    if gp is None:
+        raise ProvenanceError(f"{corpus}: frozen gold not staged — cannot derive N")
+    gold_n = gold_distribution(gp).n
+    for cell in cells:
+        if cell.corpus == corpus and cell.score is not None:
+            if cell.score.n != gold_n:
+                raise ProvenanceError(
+                    f"{corpus}/{cell.arm}: scored n={cell.score.n} != "
+                    f"GoldDistribution.n={gold_n}"
+                )
+    return gold_n
+
+
+def render_language_table(cells: Sequence[Cell], gold_dir: Path) -> str:
     """The 4-language coverage table, one block per LANGUAGE (never blended),
     bound-labelled, with N. Whole-list recall is not printed (INTERNAL)."""
     out: list[str] = [
@@ -240,7 +341,7 @@ def render_language_table(cells: Sequence[Cell]) -> str:
         "",
     ]
     for corpus, language in CORPUS_LANG.items():
-        out.append(f"### {language}  (corpus `{corpus}`, N={CORPUS_N[corpus]})")
+        out.append(f"### {language}  (corpus `{corpus}`, N={_corpus_n(corpus, cells, gold_dir)})")
         out.append("")
         out.append(
             "| Arm | Gold@8k_wire | Gold@32k_wire | head-only@10 | head-only@25 "
@@ -384,11 +485,10 @@ def render_gold_distribution(gold_dir: Path) -> str:
         "|---|---|---|---|---|---|",
     ]
     for corpus, language in CORPUS_LANG.items():
-        path = _resolve_gold_path(corpus, gold_dir)
+        path = _gold_path(corpus, gold_dir)
         if path is None:
             out.append(
-                f"| {language} | `{corpus}` | {CORPUS_N[corpus]} "
-                "| _gold not staged_ | | |"
+                f"| {language} | `{corpus}` | _gold not staged_ | | | |"
             )
             continue
         dist = gold_distribution(path)
@@ -405,19 +505,22 @@ def render_gold_distribution(gold_dir: Path) -> str:
     return "\n".join(out)
 
 
-def render_provenance() -> str:
+def render_provenance(prov: Provenance) -> str:
     return "\n".join(
         [
             "## Provenance",
             "",
             f"- **One binary, every cell.** eval `noodl-eval` sha256 "
-            f"`{ONE_BINARY_SHA}` (features: rust-analysis). Built on lease 1, "
-            "sha-verified onto lease 2 -- one binary by construction.",
+            f"`{prov.binary_sha}` (features: rust-analysis) — read from PIN.toml "
+            "[recert.binary] and asserted identical across every certified "
+            "lease's provenance header and bin/noodl-eval.sha256.",
             "- **Cell leases.** ts40 + py_nosphinx arms and the rust43 frozen "
             "gold: lease `harbor-hermit` (`cbx_cf3818ae73ee`). go34 frozen gold: "
             "reused from run8 (`bf8de741…`, adjudicated). go34 + rust43 arms: "
             "lease `quick-shrimp` (`cbx_165584a56d81`).",
-            "- **Harness.** pinned tip `015ab18` (tokens-to-gold origin/main).",
+            f"- **Harness.** tip `{prov.harness_tip}` (git rev-parse HEAD at "
+            f"render; tracked tree clean, {prov.untracked_count} untracked paths "
+            "present — the by-design run/ artifacts).",
             "- **Frozen-gold protocol.** derived once per corpus (`--reindex`, "
             "stamped), every arm scores set-membership against it; denominators "
             "are the gold-bearing counts (ts40 37 / py 39 / go34 30 / rust43 40).",
@@ -469,6 +572,10 @@ def build_report_doc(
     `gold_dir` holds `frozen_gold_{corpus}.json` (default: the harness gold/)."""
     reports = Path(reports_dir)
     gold = Path(gold_dir) if gold_dir is not None else PKG / "gold"
+    # REFUSE to render an un-provenanced published artifact: a pending binary pin,
+    # a dirty tracked tree, or a cross-lease binary-sha disagreement all raise
+    # here, before any number is composed (K + P + the one-binary assertion).
+    prov = resolve_provenance()
     cells = collect_cells(reports, gold)
     scored = sum(1 for c in cells if c.score is not None)
     header = "\n".join(
@@ -483,11 +590,11 @@ def build_report_doc(
     return "\n".join(
         [
             header,
-            render_language_table(cells),
+            render_language_table(cells, gold),
             render_gold_distribution(gold),
             render_regression_witness(reports),
             render_lever_effect(reports),
-            render_provenance(),
+            render_provenance(prov),
             render_disclosures(),
         ]
     )

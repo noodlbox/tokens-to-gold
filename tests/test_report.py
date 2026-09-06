@@ -11,22 +11,39 @@ clone; the render test skips unless the lease-1 certified reports are present.
 from __future__ import annotations
 
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
-from ttg.report import ARMS, CORPUS_LANG, build_report_doc, gold_distribution
+from ttg import report
+from ttg.report import (
+    ARMS,
+    CORPUS_LANG,
+    Cell,
+    CellScore,
+    Provenance,
+    ProvenanceError,
+    build_report_doc,
+    gold_distribution,
+)
 
 PKG = Path(__file__).resolve().parent.parent
 GOLD = PKG / "gold"
+
+# A stand-in provenance so the table/plumbing tests exercise the full compose
+# without depending on the pending PIN (the gate is tested separately below).
+_FAKE_PROV = Provenance(harness_tip="deadbeefcafe", binary_sha="ab" * 32, untracked_count=3)
 
 
 class PendingPlumbingTest(unittest.TestCase):
     """No run artifact needed: an empty reports dir is 12 PENDING cells."""
 
     def test_empty_reports_dir_is_all_pending(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            doc = build_report_doc(tmp)
+        with mock.patch.object(report, "resolve_provenance", return_value=_FAKE_PROV):
+            with tempfile.TemporaryDirectory() as tmp:
+                doc = build_report_doc(tmp)
         self.assertEqual(len(CORPUS_LANG) * len(ARMS), 12)
         self.assertIn("0 of 12 cells scored", doc)
         # all 12 table cells (plus the 4 ts40/py regression rows) are PENDING
@@ -126,10 +143,11 @@ class SyntheticRenderTest(unittest.TestCase):
         self.fail(f"no rendered row for {arm}")
 
     def test_scored_pending_and_floor_shape(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            out = Path(tmp)
-            self._write_fixture(out)
-            doc = build_report_doc(out)
+        with mock.patch.object(report, "resolve_provenance", return_value=_FAKE_PROV):
+            with tempfile.TemporaryDirectory() as tmp:
+                out = Path(tmp)
+                self._write_fixture(out)
+                doc = build_report_doc(out)
 
         # 3 ts40 cells present + scored; the other 9 are PENDING.
         self.assertIn("3 of 12 cells scored", doc)
@@ -165,6 +183,79 @@ class SyntheticRenderTest(unittest.TestCase):
         # and independent of which arm reports are staged.
         self.assertIn("Gold-symbol distribution (thin-keys caveat)", doc)
         self.assertIn("| TypeScript | `ts40` |", doc)
+
+
+class ProvenanceGateTest(unittest.TestCase):
+    """P/K/L: the published artifact REFUSES rather than stamp a hardcoded or
+    unverifiable provenance."""
+
+    def test_render_refuses_on_pending_pin(self) -> None:
+        # K: PIN.toml [recert.binary] is PENDING-RUN until step 8, so the real
+        # build refuses (no mock). Step 8 fills it and this stops refusing.
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ProvenanceError):
+                build_report_doc(tmp)
+
+    def test_harness_tip_equals_rev_parse_on_clean_tree(self) -> None:
+        # P: the derived tip is exactly git rev-parse HEAD when tracked is clean.
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=PKG, capture_output=True, text=True
+        ).stdout.strip()
+
+        def fake_git(pkg: Path, *args: str) -> str:
+            return head + "\n" if args[0] == "rev-parse" else ""  # clean status
+
+        with mock.patch.object(report, "_git", side_effect=fake_git):
+            self.assertEqual(report._derive_harness_tip(PKG), head)
+
+    def test_refuses_on_dirty_tracked_tree(self) -> None:
+        # P: a non-empty `status --porcelain --untracked-files=no` REFUSES.
+        def dirty_git(pkg: Path, *args: str) -> str:
+            return "abc123\n" if args[0] == "rev-parse" else " M ttg/report.py\n"
+
+        with mock.patch.object(report, "_git", side_effect=dirty_git):
+            with self.assertRaises(ProvenanceError):
+                report._derive_harness_tip(PKG)
+
+    def test_untracked_only_tree_does_not_refuse(self) -> None:
+        # P nuance: untracked paths (runs/ by design) NEVER refuse — the
+        # tracked-only status is clean, so the tip derives.
+        head = "cafef00d"
+
+        def untracked_only_git(pkg: Path, *args: str) -> str:
+            if args[0] == "rev-parse":
+                return head + "\n"
+            if "--untracked-files=no" in args:
+                return ""  # tracked clean
+            return "?? runs/x\n?? runs/y\n"  # untracked present
+
+        with mock.patch.object(report, "_git", side_effect=untracked_only_git):
+            self.assertEqual(report._derive_harness_tip(PKG), head)
+            self.assertEqual(report._count_untracked(PKG), 2)
+
+    def test_n_equality_scored_vs_gold_distribution(self) -> None:
+        # L: a scored cell whose n != GoldDistribution.n REFUSES. ts40 gold n = 37.
+        good = Cell("ts40", "shipped_treatment", _cellscore(n=37), None)
+        self.assertEqual(report._corpus_n("ts40", [good], GOLD), 37)
+        bad = Cell("ts40", "shipped_treatment", _cellscore(n=999), None)
+        with self.assertRaises(ProvenanceError):
+            report._corpus_n("ts40", [bad], GOLD)
+
+
+def _cellscore(n: int) -> CellScore:
+    return CellScore(
+        corpus="ts40",
+        arm="shipped_treatment",
+        n=n,
+        gold_at_8k=1.0,
+        gold_at_32k=1.0,
+        head_at_10=0.0,
+        head_at_25=0.0,
+        reach_at_80_whole_list=0.0,
+        reach_at_80_within_32k=0.0,
+        ttg80_median_wire=None,
+        whole_list_internal=0.0,
+    )
 
 
 if __name__ == "__main__":
