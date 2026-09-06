@@ -1,25 +1,62 @@
 #!/usr/bin/env bash
-# Refuse a commit message that names the held-out corpus.
+# Refuse a commit message that names the held-out corpus -- and be DIAGNOSABLE.
 #
-# Commit messages ship with a public repo (they are readable in the history of
-# every clone), so the held-out corpus name in a message is a real leak vector,
-# not a local artifact -- exactly the T6 privacy invariant, enforced at the
-# keyboard so it cannot reach a commit in the first place. The token lives in
-# one place, ttg/privacy.py, so this hook cannot itself spell it.
+# Three outcomes, three distinct verdicts (the earlier hook collapsed the last
+# two, so a BROKEN check refused with a message claiming a privacy violation):
+#   * clean message                -> exit 0 (the ONE allow path)
+#   * message names the corpus      -> exit 1, "names the held-out corpus"
+#   * the check itself could not run -> exit 1, "check could not run"
+# The verdict is 0 ONLY for a verified-clean message: a broken/aborted check
+# NEVER allows a commit (fail-closed). The resolved token MODE is reported (never
+# the value), so an operator sees how the token was resolved. The token lives
+# only in ttg/privacy.py, so this hook cannot spell it.
 #
 # Install:  git config core.hooksPath scripts/git-hooks
 set -euo pipefail
 msg_file="$1"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-if python3 -c "
+
+# argv, not string interpolation, so a path with a quote cannot break the check.
+set +e
+output="$(python3 - "$msg_file" "$here" <<'PY' 2>&1
 import sys
-sys.path.insert(0, '$here')
-from ttg.privacy import contains_private
-sys.exit(1 if contains_private(open('$msg_file', encoding='utf-8', errors='ignore').read()) else 0)
-"; then
-  exit 0
-fi
-echo "commit-msg: REFUSED — the message names the held-out corpus, which would" >&2
-echo "  leak it into public history. Refer to it as 'the held-out corpus' or" >&2
-echo "  'the private tier' instead." >&2
-exit 1
+
+msg_file, here = sys.argv[1], sys.argv[2]
+sys.path.insert(0, here)
+# `except Exception`, never BaseException: the import triggers the startup
+# self-canary (a PrivacyError, an Exception) and must be caught, while the
+# sys.exit verdicts below (SystemExit, a BaseException) must NOT be — the verdict
+# is decided outside the try so a check-failure can never masquerade as one.
+try:
+    from ttg.privacy import contains_private, mode
+except Exception as exc:  # import error, startup self-canary abort, resolver throw
+    sys.stderr.write(f"CHECKFAIL: import: {type(exc).__name__}: {exc}\n")
+    sys.exit(20)
+try:
+    sys.stderr.write(f"privacy: token resolved via {mode()} mode\n")
+    with open(msg_file, encoding="utf-8", errors="ignore") as fh:
+        text = fh.read()
+    violated = contains_private(text)
+except Exception as exc:
+    sys.stderr.write(f"CHECKFAIL: check: {type(exc).__name__}: {exc}\n")
+    sys.exit(20)
+sys.exit(10 if violated else 0)
+PY
+)"
+rc=$?
+set -e
+
+[ -n "$output" ] && printf '%s\n' "$output" >&2
+case "$rc" in
+  0)
+    exit 0 ;;
+  10)
+    echo "commit-msg: REFUSED — the message names the held-out corpus, which would" >&2
+    echo "  leak it into public history. Refer to it as 'the held-out corpus' or" >&2
+    echo "  'the private tier' instead." >&2
+    exit 1 ;;
+  *)
+    echo "commit-msg: REFUSED — the privacy check could not run (rc=$rc); see the" >&2
+    echo "  CHECKFAIL line above. Fail-closed: a broken check never allows a commit." >&2
+    exit 1 ;;
+esac
