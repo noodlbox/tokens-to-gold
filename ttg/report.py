@@ -548,6 +548,11 @@ def render_disclosures() -> str:
             "(new-file-dominated). The coreutils indexing fix (workspace-without-"
             "members) took the errored count from 6 to 1 -- the 5 coreutils "
             "instances now derive.",
+            "- **ts40 engine-vs-frozen drift (DISCLOSED).** Published numbers are "
+            "on the frozen N=37 anchor; the 2.3.18 engine additionally derives "
+            "gold for two instances V1 could not — `effect-sse-httpapi-streaming`, "
+            "`query-persist-restored-query-state` — excluded from the published "
+            "basis until the next re-freeze.",
             "- **levers_off_ablation reproduction witness: LOST, disclosed.** The "
             "run9 baseline reports the ablation's reproduction was to be paired "
             "against were destroyed by a shared-OUT copy-back; levers_off is not "

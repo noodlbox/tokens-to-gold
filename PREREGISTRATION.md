@@ -269,3 +269,13 @@ commit-message hook, and the history-scan CLI (R18b) are its SOLE evidence, not 
 defence in depth — the narrow claim raises the load on those guards. The harness
 keeps its in-module name fragments and the explicit-mode resolver is unchanged
 (Option 1, final).
+
+### Addendum — ts40 engine-vs-frozen drift, 2026-09-07 (disclosed)
+
+Published numbers are on the frozen N=37 anchor; the 2.3.18 engine additionally
+derives gold for two instances V1 could not — `effect-sse-httpapi-streaming`,
+`query-persist-restored-query-state` — excluded from the published basis until
+the next re-freeze. Binding stays on the frozen basis (scoring against
+re-derived gold is the own-gold inflation the protocol forbids); the drift is
+asserted to be EXACTLY these two (T1 `test_difference_is_exactly_the_known_addendum_drift`;
+source: harness commit 47d29d7 + the drift sidecar).

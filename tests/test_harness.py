@@ -27,7 +27,10 @@ from ttg.comparable_path import ComparablePath, PathComparison, compare_paths
 from ttg.curve_recompute import curve_parity_findings, recompute_wire_curve
 from ttg.gold_freezer import build_gold_map
 from ttg.matcher import match_gold, split_identity
-from ttg.report_io import ReportFormatError, gold_bearing_rows, load_report, loads_report, result_rows
+from ttg.report_io import (
+    ReportFormatError, gold_bearing_rows, load_report, loads_report, result_rows,
+    wire_curve,
+)
 from ttg.acceptance import (
     FIXTURE_PATH, LOCKED_METRICS, NOISE_FLOOR_PP, REPLAY_TOL, AcceptanceError,
     _pinned_digest, check_report_file, load_fixture, load_frozen_gold,
@@ -80,6 +83,18 @@ CORPUS_REPORT = {c: f"shipped_treatment_{c}.json" for c in ("ts40", "py_nosphinx
 PRIVATE_CORPUS = _privacy.PRIVATE_CORPUS
 
 
+# The KNOWN, DISCLOSED engine-vs-frozen drift: instances the 2.3.18 engine
+# derives gold for that the frozen V1 basis lacks. Binding stays on the frozen-37
+# anchor (scoring against re-derived gold is the own-gold inflation the protocol
+# forbids); these are excluded from the published basis until the next re-freeze.
+# Source: harness commit 47d29d7 (ts40 addendum — 2 V1-errored instances now
+# derive) + the drift sidecar (37/37, exactly two only-in-re-derived).
+KNOWN_DRIFT: dict[str, set[str]] = {
+    "ts40": {"effect-sse-httpapi-streaming", "query-persist-restored-query-state"},
+    "py_nosphinx": set(),
+}
+
+
 def _naive_normalize(key: str) -> str:
     """NEGATIVE CONTROL: the light normalize B3 replaced (strip + leading ./)."""
     s = key.strip()
@@ -127,23 +142,38 @@ class T1InstanceBasis(unittest.TestCase):
                 )
 
     @unittest.skipUnless(_reports_available(), "official reports not staged")
-    def test_difference_is_denominator_only(self) -> None:
-        """Numerators are identical; only the denominator differs."""
+    def test_difference_is_exactly_the_known_addendum_drift(self) -> None:
+        """The engine basis exceeds the frozen basis by EXACTLY the pre-registered
+        addendum drift — not merely 'engine >= binding'. Both directions bite: a
+        THIRD only-in-engine gold instance, or EITHER of the two missing, is a
+        STOP. The Gold@8k numerator delta must equal exactly those instances'
+        wire contribution."""
         for corpus in MEASURER:
             with self.subTest(corpus=corpus):
-                roll = rollup(
-                    load_report(REPORTS / CORPUS_REPORT[corpus]),
-                    frozen_instance_ids=list(load_frozen_gold(corpus)),
+                report = load_report(REPORTS / CORPUS_REPORT[corpus])
+                frozen = load_frozen_gold(corpus)
+                roll = rollup(report, frozen_instance_ids=list(frozen))
+                # The drift set: gold-bearing engine rows absent from the frozen
+                # basis. Must be EXACTLY the pre-registered addendum ids.
+                drift = {r.get("instance_id") for r in gold_bearing_rows(report)} - set(frozen)
+                self.assertEqual(
+                    drift, KNOWN_DRIFT[corpus],
+                    f"{corpus}: engine-vs-frozen drift != the pre-registered addendum",
+                )
+                # The Gold@8k numerator delta must equal EXACTLY the drift rows'
+                # wire contribution (zero when the drift set is empty).
+                rows = {r.get("instance_id"): r for r in result_rows(report)}
+                drift_contrib = sum(
+                    float((wire_curve(rows[iid]).get("by_budget") or {}).get("8000", 0.0) or 0.0)
+                    for iid in drift
+                )
+                delta = (
+                    roll.engine_basis.gold_at_budget[8000] * roll.engine_basis.n
+                    - roll.binding.gold_at_budget[8000] * roll.binding.n
                 )
                 self.assertAlmostEqual(
-                    roll.binding.gold_at_budget[8000] * roll.binding.n,
-                    roll.engine_basis.gold_at_budget[8000] * roll.engine_basis.n,
-                    places=6,
-                )
-                self.assertAlmostEqual(
-                    roll.binding.reach_at_coverage[80] * roll.binding.n,
-                    roll.engine_basis.reach_at_coverage[80] * roll.engine_basis.n,
-                    places=6,
+                    delta, drift_contrib, places=6,
+                    msg=f"{corpus}: numerator delta != the drift rows' contribution",
                 )
 
     @unittest.skipUnless(_reports_available(), "official reports not staged")
