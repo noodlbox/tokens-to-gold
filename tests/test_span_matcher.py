@@ -177,7 +177,7 @@ class FloorCellNonZeroTest(unittest.TestCase):
         if not (path.is_file() and _gold_present("go34")):
             self.skipTest("go34 native_floor report or frozen gold not staged")
         metrics = score_arm(load_report(path), "go34")
-        self.assertGreater(metrics.reach_at_80, 0.0)
+        self.assertGreater(metrics.reach_at_80_whole_list, 0.0)
         self.assertGreater(metrics.whole_list_INTERNAL, 0.0)
 
     def test_all_staged_floor_cells_are_non_zero(self) -> None:

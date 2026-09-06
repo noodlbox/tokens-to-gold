@@ -63,6 +63,22 @@ def result_rows(report: Mapping[str, object]) -> list[Mapping[str, object]]:
     return [r for r in results if isinstance(r, Mapping) and "error" not in r]
 
 
+def wire_curve(row: Mapping[str, object]) -> Mapping[str, object]:
+    """The binding wire curve for a result row.
+
+    `token_coverage_wire` when the arm prices retrieval by wire (shipped/levers),
+    else `token_coverage` — the native_floor comparator delivers spans whose wire
+    price IS their source-text token count (wire == read for spans, B5 §5),
+    carried as `token_coverage`. This is the single reader both the rollup and
+    the within-budget reach consume, so the two can never disagree on which curve
+    is binding for an arm."""
+    wire = row.get("token_coverage_wire")
+    if isinstance(wire, Mapping) and wire.get("by_budget"):
+        return wire
+    tc = row.get("token_coverage")
+    return tc if isinstance(tc, Mapping) else {}
+
+
 def gold_bearing_rows(
     report: Mapping[str, object],
 ) -> Iterator[Mapping[str, object]]:

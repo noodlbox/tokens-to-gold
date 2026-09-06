@@ -44,7 +44,7 @@ from ttg.matcher import (
     parse_span,
     split_identity,
 )
-from ttg.report_io import load_report, result_rows
+from ttg.report_io import load_report, result_rows, wire_curve
 from ttg.rollup import rollup
 
 # A gold key present in the frozen basis but absent from a report row carries no
@@ -67,7 +67,8 @@ LOCKED_METRICS: Final[tuple[str, ...]] = (
     "head_only_at_25",
     "gold_at_8k_wire",
     "gold_at_32k_wire",
-    "reach_at_80",
+    "reach_at_80_whole_list",
+    "reach_at_80_within_32k",
     "whole_list_INTERNAL",
 )
 
@@ -135,14 +136,27 @@ def load_frozen_gold(corpus: str) -> dict[str, list[str]]:
 
 @dataclass(frozen=True)
 class ArmMetrics:
-    """The six locked metrics for one (arm, corpus) cell."""
+    """The locked metrics for one (arm, corpus) cell.
+
+    reach@80 is TWO qualified fields, never one bare number, because the two are
+    the same only for a CAPPED arm:
+    * `reach_at_80_whole_list` — fraction of instances whose offline WHOLE-LIST
+      recall (uncapped) clears 0.8. The Waterfill delivery cap is a curation
+      lever, so shipped_treatment's whole list never exceeds 32k and this equals
+      its within-cap reach; the levers-off ablation is UNCAPPED, so its whole
+      list can reach gold beyond 32k and the two diverge (that divergence is the
+      point of the split, not a discrepancy).
+    * `reach_at_80_within_32k` — fraction of instances whose binding wire curve
+      covers ≥ 0.8 of gold WITHIN the 32k budget (`by_budget["32000"] >= 0.8`).
+    """
 
     n: int
     head_only_at_10: float
     head_only_at_25: float
     gold_at_8k_wire: float
     gold_at_32k_wire: float
-    reach_at_80: float
+    reach_at_80_whole_list: float
+    reach_at_80_within_32k: float
     whole_list_INTERNAL: float
 
     def as_dict(self) -> dict[str, float]:
@@ -192,6 +206,36 @@ def _instance_matches(
     return matches
 
 
+def within_budget_reach(
+    rows_by_id: Mapping[object, Mapping[str, object]],
+    gold_ids: Sequence[str],
+    budget: str = "32000",
+    coverage: float = REACH_COVERAGE,
+) -> float:
+    """Fraction of frozen-gold instances whose BINDING wire curve covers
+    ≥ `coverage` of gold within `budget` (`by_budget[budget] >= coverage`).
+
+    Uses `wire_curve`, so the floor's `token_coverage` counts as its wire curve.
+    Distinct from whole-list reach: a row whose whole list recalls the gold but
+    delivers < `coverage` inside the budget (e.g. `by_budget["32000"] = 0.79`)
+    counts for whole_list yet NOT here — the divergence the reach split exposes."""
+    n = len(gold_ids)
+    if not n:
+        return 0.0
+    hit = sum(
+        1
+        for iid in gold_ids
+        if float(
+            (wire_curve(rows_by_id.get(iid, {})).get("by_budget") or {}).get(
+                budget, 0.0
+            )
+            or 0.0
+        )
+        >= coverage
+    )
+    return hit / n
+
+
 def score_arm(report: Mapping[str, object], corpus: str) -> ArmMetrics:
     """Score one arm's report against the PINNED frozen gold.
 
@@ -207,18 +251,23 @@ def score_arm(report: Mapping[str, object], corpus: str) -> ArmMetrics:
     if not n:
         raise AcceptanceError(f"{corpus}: frozen gold is empty")
     roll = rollup(report, frozen_instance_ids=list(gold))
+    rows = {r.get("instance_id"): r for r in result_rows(report)}
+    within = within_budget_reach(rows, list(gold))
     return ArmMetrics(
         n=n,
         head_only_at_10=sum(m.recall_at(10) for m in matches) / n,
         head_only_at_25=sum(m.recall_at(25) for m in matches) / n,
         gold_at_8k_wire=roll.binding.gold_at_budget[8_000],
         gold_at_32k_wire=roll.binding.gold_at_budget[32_000],
-        # FROZEN-DECIDABLE reach: the fraction of frozen-gold instances whose
-        # OFFLINE whole recall clears the bar. NOT the report's own
-        # `tokens_to_coverage`, which a reuse arm computes against its own
-        # drifted gold -- on the py ablation the two differ by exactly one
-        # instance (2.56pp). Verified equal on all four reference cells.
-        reach_at_80=sum(1 for m in matches if m.recall >= REACH_COVERAGE) / n,
+        # FROZEN-DECIDABLE whole-list reach: the fraction of frozen-gold instances
+        # whose OFFLINE whole recall clears the bar. NOT the report's own
+        # `tokens_to_coverage`, which a reuse arm computes against its own drifted
+        # gold. This is the UNCAPPED reach; the ablation's whole list exceeds 32k.
+        reach_at_80_whole_list=sum(1 for m in matches if m.recall >= REACH_COVERAGE) / n,
+        # WITHIN-CAP reach: gold covered ≥ 0.8 inside the 32k wire budget. Equals
+        # whole_list for the capped shipped arm; strictly ≤ it for the uncapped
+        # ablation.
+        reach_at_80_within_32k=within,
         whole_list_INTERNAL=sum(m.recall for m in matches) / n,
     )
 

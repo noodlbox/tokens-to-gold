@@ -59,7 +59,7 @@ _FIXTURE = load_fixture()
 MEASURER = {
     corpus: {
         "gold_at_8k": arms["shipped_treatment"]["gold_at_8k_wire"],
-        "reach_at_80": arms["shipped_treatment"]["reach_at_80"],
+        "reach_at_80_whole_list": arms["shipped_treatment"]["reach_at_80_whole_list"],
         "n": arms["shipped_treatment"]["n"],
     }
     for corpus, arms in _FIXTURE["arms"].items()
@@ -106,7 +106,7 @@ class T1InstanceBasis(unittest.TestCase):
                 self.assertTrue(roll.binding.basis.is_binding)
                 self.assertEqual(roll.binding.n, want["n"])
                 self.assertAlmostEqual(roll.binding.gold_at_budget[8000], want["gold_at_8k"], places=4)
-                self.assertAlmostEqual(roll.binding.reach_at_coverage[80], want["reach_at_80"], places=4)
+                self.assertAlmostEqual(roll.binding.reach_at_coverage[80], want["reach_at_80_whole_list"], places=4)
 
     @unittest.skipUnless(_reports_available(), "official reports not staged")
     def test_negative_control_all_rows_basis_misses_measurer(self) -> None:
@@ -123,7 +123,7 @@ class T1InstanceBasis(unittest.TestCase):
                     roll.engine_basis.gold_at_budget[8000], want["gold_at_8k"], places=4
                 )
                 self.assertNotAlmostEqual(
-                    roll.engine_basis.reach_at_coverage[80], want["reach_at_80"], places=4
+                    roll.engine_basis.reach_at_coverage[80], want["reach_at_80_whole_list"], places=4
                 )
 
     @unittest.skipUnless(_reports_available(), "official reports not staged")

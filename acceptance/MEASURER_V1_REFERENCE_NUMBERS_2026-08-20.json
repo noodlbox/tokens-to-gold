@@ -31,7 +31,8 @@
         "head_only_at_25": 0.136768,
         "gold_at_8k_wire": 0.789118,
         "gold_at_32k_wire": 0.889274,
-        "reach_at_80": 0.783784,
+        "reach_at_80_whole_list": 0.783784,
+        "reach_at_80_within_32k": 0.783784,
         "whole_list_INTERNAL": 0.889274
       },
       "levers_off_ablation": {
@@ -40,7 +41,8 @@
         "head_only_at_25": 0.136768,
         "gold_at_8k_wire": 0.444371,
         "gold_at_32k_wire": 0.444371,
-        "reach_at_80": 0.216216,
+        "reach_at_80_whole_list": 0.216216,
+        "reach_at_80_within_32k": 0.216216,
         "whole_list_INTERNAL": 0.451321
       }
     },
@@ -51,7 +53,8 @@
         "head_only_at_25": 0.25641,
         "gold_at_8k_wire": 0.833333,
         "gold_at_32k_wire": 0.910256,
-        "reach_at_80": 0.897436,
+        "reach_at_80_whole_list": 0.897436,
+        "reach_at_80_within_32k": 0.897436,
         "whole_list_INTERNAL": 0.910256
       },
       "levers_off_ablation": {
@@ -60,7 +63,8 @@
         "head_only_at_25": 0.089744,
         "gold_at_8k_wire": 0.384615,
         "gold_at_32k_wire": 0.384615,
-        "reach_at_80": 0.358974,
+        "reach_at_80_whole_list": 0.358974,
+        "reach_at_80_within_32k": 0.333333,
         "whole_list_INTERNAL": 0.401709
       }
     }
@@ -68,7 +72,8 @@
   "tolerance": {
     "head_only_at_k": "EXACT to 4 decimals \u2014 deterministic set-match; any drift is a real semantic change, not noise",
     "gold_at_budget_wire": "EXACT to 4 decimals \u2014 read from the report's own token_coverage_wire",
-    "reach_at_80": "EXACT to 4 decimals; note 1 instance = 2.70pp (ts40) / 2.56pp (py), so a single-instance move is visible",
+    "reach_at_80_whole_list": "EXACT to 4 decimals; the UNCAPPED whole-list reach; note 1 instance = 2.70pp (ts40) / 2.56pp (py), so a single-instance move is visible",
+    "reach_at_80_within_32k": "EXACT to 4 decimals; the within-32k-wire reach; equals whole_list for the capped shipped arm, strictly \u2264 it for the uncapped ablation",
     "cross_run_reproduction": "a DIFFERENT run of the same config may move within the pre-registered NOISE_FLOOR = 2.75pp (criteria.py:49); a harness REPLAYING these reports must be EXACT"
   },
   "harness_must_not": [

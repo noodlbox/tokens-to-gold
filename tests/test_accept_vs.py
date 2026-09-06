@@ -19,7 +19,8 @@ _BASE = ArmMetrics(
     head_only_at_25=0.1368,
     gold_at_8k_wire=0.7891,
     gold_at_32k_wire=0.8893,
-    reach_at_80=0.7838,
+    reach_at_80_whole_list=0.7838,
+    reach_at_80_within_32k=0.7838,
     whole_list_INTERNAL=0.8893,
 )
 
@@ -43,7 +44,7 @@ class CompareMetricsTest(unittest.TestCase):
 
     def test_a_1e_6_perturbation_is_within_replay_tol(self) -> None:
         # 1e-6 < REPLAY_TOL: exact-to-4dp tolerates it (pins the tolerance).
-        nudged = ArmMetrics(**{**_BASE.__dict__, "reach_at_80": 0.7838 + 1e-6})
+        nudged = ArmMetrics(**{**_BASE.__dict__, "reach_at_80_whole_list": 0.7838 + 1e-6})
         checks = compare_metrics(nudged, _expected(_BASE), corpus="ts40")
         self.assertTrue(all(c.ok for c in checks))
 

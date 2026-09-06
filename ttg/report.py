@@ -147,7 +147,8 @@ class CellScore:
     gold_at_32k: float
     head_at_10: float
     head_at_25: float
-    reach_at_80: float
+    reach_at_80_whole_list: float
+    reach_at_80_within_32k: float
     ttg80_median_wire: int | None
     whole_list_internal: float
 
@@ -183,7 +184,8 @@ def score_cell(report: Mapping[str, object], corpus: str, arm: str) -> CellScore
         gold_at_32k=metrics.gold_at_32k_wire,
         head_at_10=metrics.head_only_at_10,
         head_at_25=metrics.head_only_at_25,
-        reach_at_80=metrics.reach_at_80,
+        reach_at_80_whole_list=metrics.reach_at_80_whole_list,
+        reach_at_80_within_32k=metrics.reach_at_80_within_32k,
         ttg80_median_wire=roll.binding.median_ttg_at_coverage[80],
         whole_list_internal=metrics.whole_list_INTERNAL,
     )
@@ -242,13 +244,14 @@ def render_language_table(cells: Sequence[Cell]) -> str:
         out.append("")
         out.append(
             "| Arm | Gold@8k_wire | Gold@32k_wire | head-only@10 | head-only@25 "
-            "| reach@80 | cost-to-coverage (median TtG@80) |"
+            "| reach@80 (whole-list) | reach@80 (within-32k) "
+            "| cost-to-coverage (median TtG@80) |"
         )
-        out.append("|---|---|---|---|---|---|---|")
+        out.append("|---|---|---|---|---|---|---|---|")
         for arm in ARMS:
             cell = _cell_by(cells, corpus, arm)
             if cell.score is None:
-                out.append(f"| {arm} | _PENDING ({cell.pending_reason})_ | | | | | |")
+                out.append(f"| {arm} | _PENDING ({cell.pending_reason})_ | | | | | | |")
                 continue
             s = cell.score
             g8 = _f(s.gold_at_8k)
@@ -257,19 +260,21 @@ def render_language_table(cells: Sequence[Cell]) -> str:
             if arm == NATIVE_FLOOR:
                 # The span comparator IS wire-priced (coverage@budget + TtG), but
                 # its head-only@k is not comparable to a symbol arm's, so it is
-                # omitted; its reach@80 shown here is the UNBOUNDED whole-list
-                # reach. (Basis + the span/symbol non-comparability: footnote ².)
+                # omitted. Both reach fields are shown: whole-list is the
+                # UNBOUNDED reach (footnote ²), within-32k the capped reach.
                 out.append(
                     f"| {arm} | {g8} | {g32} | — ² | — ² "
-                    f"| {_f(s.reach_at_80)} ² | {ttg} |"
+                    f"| {_f(s.reach_at_80_whole_list)} ² "
+                    f"| {_f(s.reach_at_80_within_32k)} | {ttg} |"
                 )
                 continue
             h10 = _f(s.head_at_10)
             if SUPERIORITY_CLAIMABLE.get((corpus, "head_only_at_10")) is False:
                 h10 += " ¹"
             out.append(
-                f"| {arm} | {g8} | {g32} | {h10} "
-                f"| {_f(s.head_at_25)} | {_f(s.reach_at_80)} | {ttg} |"
+                f"| {arm} | {g8} | {g32} | {h10} | {_f(s.head_at_25)} "
+                f"| {_f(s.reach_at_80_whole_list)} | {_f(s.reach_at_80_within_32k)} "
+                f"| {ttg} |"
             )
         out.append("")
     if any(

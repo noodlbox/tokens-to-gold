@@ -38,7 +38,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Final
 
-from ttg.report_io import gold_bearing_rows, result_rows
+from ttg.report_io import gold_bearing_rows, result_rows, wire_curve
 
 DEFAULT_BUDGETS: Final[tuple[int, ...]] = (2_000, 8_000, 32_000)
 DEFAULT_COVERAGES: Final[tuple[int, ...]] = (50, 80, 100)
@@ -104,17 +104,7 @@ def _rollup_rows(
     frozen gold but absent from the report counts as a ZERO rather than
     vanishing from the denominator."""
     n = denominator if denominator is not None else len(rows)
-    covers: list[Mapping[str, object]] = []
-    for row in rows:
-        # The binding wire curve is `token_coverage_wire` when the arm prices
-        # retrieval by wire (shipped/levers). The native_floor comparator
-        # delivers spans — read content whose wire price IS its source-text
-        # token count (same shared tokenizer; wire == read for spans, B5 §5) —
-        # so it emits only `token_coverage`, which is that same wire curve.
-        wire = row.get("token_coverage_wire")
-        if not (isinstance(wire, Mapping) and wire.get("by_budget")):
-            wire = row.get("token_coverage")
-        covers.append(wire if isinstance(wire, Mapping) else {})
+    covers = [wire_curve(row) for row in rows]
 
     gold_at: dict[int, float] = {}
     for budget in budgets:
