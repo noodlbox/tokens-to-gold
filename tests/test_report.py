@@ -53,44 +53,70 @@ class GoldDistributionTest(unittest.TestCase):
 
 class SyntheticRenderTest(unittest.TestCase):
     """Runs EVERYWHERE (no run artifact, no skipUnless): a synthetic ts40
-    fixture built from the committed frozen gold exercises the SCORED path
-    (shipped/levers, wire-priced), the n/a path (native_floor present but NOT
-    wire-priced), and the PENDING path (go34/rust43 absent). Asserts SHAPE, never
-    pinned values -- the real numbers are A4 evidence, not a unit-test constant."""
+    fixture built from the committed frozen gold exercises the SCORED symbol
+    path (shipped/levers, `token_coverage_wire`), the SCORED span path
+    (native_floor, span-form retrieval + `token_coverage`), and the PENDING path
+    (go34/rust43 absent). Asserts SHAPE, never pinned values -- the real numbers
+    are A4 evidence, not a unit-test constant."""
 
     @staticmethod
-    def _rows(gold: dict[str, list[str]], *, wire_priced: bool) -> list[dict]:
-        """One result row per frozen-gold instance. retrieved == gold so scoring
-        produces real (non-pinned) numbers; the wire block is present only when
-        priced, so native_floor (unpriced) renders n/a, not a measured zero."""
+    def _symbol_rows(gold: dict[str, list[str]]) -> list[dict]:
+        """One symbol-arm row per frozen-gold instance. retrieved == gold so
+        scoring produces real (non-pinned) numbers; the wire block is populated
+        so shipped/levers render numeric coverage@budget."""
         rows: list[dict] = []
         for iid, symbols in gold.items():
-            row: dict = {
-                "instance_id": iid,
-                "gold_symbols": list(symbols),
-                "retrieved_symbols": list(symbols),
-            }
-            row["token_coverage_wire"] = (
+            rows.append(
                 {
-                    "by_budget": {"2000": 1.0, "8000": 1.0, "32000": 1.0},
-                    "tokens_to_coverage": {"50": 500, "80": 800, "100": 1000},
+                    "instance_id": iid,
+                    "gold_symbols": list(symbols),
+                    "retrieved_symbols": list(symbols),
+                    "token_coverage_wire": {
+                        "by_budget": {"2000": 1.0, "8000": 1.0, "32000": 1.0},
+                        "tokens_to_coverage": {"50": 500, "80": 800, "100": 1000},
+                    },
                 }
-                if wire_priced
-                else {}
             )
-            rows.append(row)
+        return rows
+
+    @staticmethod
+    def _floor_rows(gold: dict[str, list[str]]) -> list[dict]:
+        """One span-arm (native_floor) row per instance: each gold symbol gets a
+        distinct range and a covering `file:span:a-b`, and the arm carries only
+        `token_coverage` (spans are read content; wire == read). Every gold is
+        covered, so the floor scores real non-zero coverage@budget and reach."""
+        rows: list[dict] = []
+        for iid, symbols in gold.items():
+            ranges = [[10 + i * 100, 30 + i * 100] for i in range(len(symbols))]
+            retrieved = [
+                f"{sym.split(':', 1)[0]}:span:{ranges[i][0]}-{ranges[i][1]}"
+                for i, sym in enumerate(symbols)
+            ]
+            rows.append(
+                {
+                    "instance_id": iid,
+                    "gold_symbols": list(symbols),
+                    "gold_symbol_ranges": ranges,
+                    "retrieved_symbols": retrieved,
+                    "token_coverage": {
+                        "by_budget": {"2000": 0.5, "8000": 1.0, "32000": 1.0},
+                        "tokens_to_coverage": {"50": 500, "80": 800, "100": 1000},
+                    },
+                }
+            )
         return rows
 
     def _write_fixture(self, out: Path) -> None:
         gold = json.loads((GOLD / "frozen_gold_ts40.json").read_text())["gold"]
-        for arm, priced in (
-            ("shipped_treatment", True),
-            ("levers_off_ablation", True),
-            ("native_floor", False),  # present, not wire-priced -> n/a
-        ):
-            (out / f"{arm}_ts40.json").write_text(
-                json.dumps({"results": self._rows(gold, wire_priced=priced)})
-            )
+        (out / "shipped_treatment_ts40.json").write_text(
+            json.dumps({"results": self._symbol_rows(gold)})
+        )
+        (out / "levers_off_ablation_ts40.json").write_text(
+            json.dumps({"results": self._symbol_rows(gold)})
+        )
+        (out / "native_floor_ts40.json").write_text(
+            json.dumps({"results": self._floor_rows(gold)})
+        )
         # go34/rust43: no arm reports -> PENDING.
 
     def _row_line(self, doc: str, arm: str) -> str:
@@ -99,7 +125,7 @@ class SyntheticRenderTest(unittest.TestCase):
                 return line
         self.fail(f"no rendered row for {arm}")
 
-    def test_scored_pending_and_na_shape(self) -> None:
+    def test_scored_pending_and_floor_shape(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp)
             self._write_fixture(out)
@@ -108,15 +134,24 @@ class SyntheticRenderTest(unittest.TestCase):
         # 3 ts40 cells present + scored; the other 9 are PENDING.
         self.assertIn("3 of 12 cells scored", doc)
 
-        # SCORED path: ts40 shipped renders numeric wire coverage, not PENDING
-        # (retrieved == gold -> Gold@8k_wire = 1.0000).
+        # SCORED symbol path: ts40 shipped renders numeric wire coverage, not
+        # PENDING (retrieved == gold -> Gold@8k_wire = 1.0000).
         shipped = self._row_line(doc, "shipped_treatment")
         self.assertNotIn("PENDING", shipped)
         self.assertIn("1.0000", shipped)
 
-        # n/a path: native_floor is present but not wire-priced -> coverage@budget
-        # and cost-to-coverage are n/a, never a measured-looking 0.0000.
-        self.assertIn("n/a", self._row_line(doc, "native_floor"))
+        # SCORED span path: native_floor is wire-priced via token_coverage, so it
+        # renders numeric coverage@budget (Gold@8k = 1.0000 here), NEVER "n/a"
+        # and never a PENDING. Its head-only@k is omitted (rendered as "—") and
+        # its reach carries the unbounded-reach footnote marker.
+        floor = self._row_line(doc, "native_floor")
+        self.assertNotIn("PENDING", floor)
+        self.assertNotIn("n/a", floor)
+        self.assertIn("1.0000", floor)
+        self.assertIn("—", floor)
+        # The reworded footnote states the pricing basis, not an "n/a" excuse.
+        self.assertIn("wire == read for spans", doc)
+        self.assertNotIn("does not price retrieval by", doc)
 
         # PENDING path: go34/rust43 have no arm report.
         self.assertIn("Go  (corpus `go34`, N=30)", doc)

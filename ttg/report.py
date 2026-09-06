@@ -58,10 +58,11 @@ CORPUS_N: Final[dict[str, int]] = {
     "go34": 30,
     "rust43": 40,
 }
+NATIVE_FLOOR: Final = "native_floor"
 ARMS: Final[tuple[str, ...]] = (
     "shipped_treatment",
     "levers_off_ablation",
-    "native_floor",
+    NATIVE_FLOOR,
 )
 BOUND: Final = "ttg_wire"
 ONE_BINARY_SHA: Final = (
@@ -130,11 +131,14 @@ class CellScore:
     """One (corpus, arm) cell in the locked language. whole_list_internal is
     carried for completeness but is INTERNAL and never rendered.
 
-    `wire_priced` distinguishes a measured wire zero from an arm that does not
-    price by wire at all: the native_floor (rg) arm emits retrieval but no
-    `token_coverage_wire` budget block, so its coverage@budget and
-    cost-to-coverage are n/a, NOT a measured 0.0000 -- while its head-only@k and
-    reach@80 (offline set-match) are genuine comparator-floor values."""
+    Every arm prices retrieval by wire. shipped/levers deliver a curated wire
+    index (`token_coverage_wire`); the native_floor (rg) comparator delivers
+    spans — read content whose wire price IS its source-text token count under
+    the same shared tokenizer (wire == read for spans, B5 §5) — carried as
+    `token_coverage`. `rollup` treats both as the binding wire curve, so
+    coverage@budget and cost-to-coverage are genuine wire-priced values for the
+    floor, never a measured-looking 0.0000. Its head-only@k is NOT rendered: a
+    span head and a symbol head are not comparable in one head-only row."""
 
     corpus: str
     arm: str
@@ -146,7 +150,6 @@ class CellScore:
     reach_at_80: float
     ttg80_median_wire: int | None
     whole_list_internal: float
-    wire_priced: bool
 
 
 @dataclass(frozen=True)
@@ -167,21 +170,6 @@ def _gold_available(corpus: str, gold_dir: Path) -> bool:
     return (gold_dir / f"frozen_gold_{corpus}.json").is_file()
 
 
-def _is_wire_priced(report: Mapping[str, object]) -> bool:
-    """True iff at least one non-error row carries a populated
-    `token_coverage_wire.by_budget` -- i.e. the arm prices retrieval by wire.
-    The native_floor (rg) arm does not, so its wire metrics are n/a."""
-    from ttg.report_io import result_rows
-
-    for row in result_rows(report):
-        wire = row.get("token_coverage_wire")
-        if isinstance(wire, Mapping):
-            by_budget = wire.get("by_budget")
-            if isinstance(by_budget, Mapping) and by_budget:
-                return True
-    return False
-
-
 def score_cell(report: Mapping[str, object], corpus: str, arm: str) -> CellScore:
     """Score one cell against its FROZEN gold. Recall metrics + N from
     `score_arm`; cost-to-coverage (median TtG@80) from the binding rollup."""
@@ -198,7 +186,6 @@ def score_cell(report: Mapping[str, object], corpus: str, arm: str) -> CellScore
         reach_at_80=metrics.reach_at_80,
         ttg80_median_wire=roll.binding.median_ttg_at_coverage[80],
         whole_list_internal=metrics.whole_list_INTERNAL,
-        wire_priced=_is_wire_priced(report),
     )
 
 
@@ -264,14 +251,22 @@ def render_language_table(cells: Sequence[Cell]) -> str:
                 out.append(f"| {arm} | _PENDING ({cell.pending_reason})_ | | | | | |")
                 continue
             s = cell.score
+            g8 = _f(s.gold_at_8k)
+            g32 = _f(s.gold_at_32k)
+            ttg = _ttg(s.ttg80_median_wire)
+            if arm == NATIVE_FLOOR:
+                # The span comparator IS wire-priced (coverage@budget + TtG), but
+                # its head-only@k is not comparable to a symbol arm's, so it is
+                # omitted; its reach@80 shown here is the UNBOUNDED whole-list
+                # reach. (Basis + the span/symbol non-comparability: footnote ².)
+                out.append(
+                    f"| {arm} | {g8} | {g32} | — ² | — ² "
+                    f"| {_f(s.reach_at_80)} ² | {ttg} |"
+                )
+                continue
             h10 = _f(s.head_at_10)
             if SUPERIORITY_CLAIMABLE.get((corpus, "head_only_at_10")) is False:
                 h10 += " ¹"
-            # An un-wire-priced arm (native_floor) has no coverage@budget or
-            # cost-to-coverage: render n/a, never a measured-looking 0.0000.
-            g8 = _f(s.gold_at_8k) if s.wire_priced else "n/a ²"
-            g32 = _f(s.gold_at_32k) if s.wire_priced else "n/a ²"
-            ttg = _ttg(s.ttg80_median_wire) if s.wire_priced else "n/a ²"
             out.append(
                 f"| {arm} | {g8} | {g32} | {h10} "
                 f"| {_f(s.head_at_25)} | {_f(s.reach_at_80)} | {ttg} |"
@@ -284,12 +279,16 @@ def render_language_table(cells: Sequence[Cell]) -> str:
             "¹ head-only@10 is NOT superiority-claimable on this corpus "
             "(p=0.125); the claimable head-only superiority is @25 only."
         )
-    if any(cell.score is not None and not cell.score.wire_priced for cell in cells):
+    if any(cell.arm == NATIVE_FLOOR and cell.score is not None for cell in cells):
         out.append(
-            "² n/a: the native_floor (rg) comparator does not price retrieval by "
-            "wire, so coverage@budget and cost-to-coverage are undefined for it "
-            "(never a measured zero). Its head-only@k and reach@80 are genuine "
-            "offline set-match floor values."
+            "² native_floor (rg + targeted reads) delivers SPANS, not symbols. A "
+            "span is read content, so its wire price is its source-text token "
+            "count under the SAME shared tokenizer as the curated wire path "
+            "(wire == read for spans, B5 §5); coverage@budget and cost-to-"
+            "coverage are therefore genuine wire-priced floor values, never a "
+            "measured zero. head-only@k is omitted because a span head and a "
+            "symbol head are not comparable in one head-only row; the reach@80 "
+            "shown for the floor is the UNBOUNDED whole-list reach."
         )
     out.append("")
     return "\n".join(out)

@@ -37,9 +37,20 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
-from ttg.matcher import match_gold
+from ttg.matcher import (
+    MatchResult,
+    match_gold,
+    match_gold_spans,
+    parse_span,
+    split_identity,
+)
 from ttg.report_io import load_report, result_rows
 from ttg.rollup import rollup
+
+# A gold key present in the frozen basis but absent from a report row carries no
+# range; this sentinel range overlaps no span, so the key is scored as a miss on
+# the authoritative frozen denominator rather than crashing the span matcher.
+_NO_RANGE: Final[tuple[int, int]] = (-1, -2)
 
 PKG = Path(__file__).resolve().parent.parent
 FIXTURE_PATH: Final = PKG / "acceptance" / "MEASURER_V1_REFERENCE_NUMBERS_2026-08-20.json"
@@ -115,19 +126,60 @@ class ArmMetrics:
         return {name: float(getattr(self, name)) for name in LOCKED_METRICS}
 
 
+def _report_is_span_form(rows: Mapping[object, Mapping[str, object]]) -> bool:
+    """True iff the arm delivers spans (`file:span:a-b`) rather than named
+    symbols (`file:name`). The native_floor (rg) comparator is the only span-
+    form arm; shipped/levers emit `file:name` identities whose names never parse
+    as `span:a-b` (a symbol name colon is always `::`)."""
+    for row in rows.values():
+        for key in row.get("retrieved_symbols") or []:
+            if parse_span(split_identity(str(key))[1]) is not None:
+                return True
+    return False
+
+
+def _instance_matches(
+    report: Mapping[str, object], corpus: str
+) -> list[MatchResult]:
+    """One MatchResult per FROZEN-gold instance, in frozen order.
+
+    Span-form arms (native_floor) are matched by RANGE OVERLAP against the
+    row's `gold_symbol_ranges` (index-aligned to its `gold_symbols`), looked up
+    per frozen-gold key; name-form arms use the two-arm `match_gold`. Both keep
+    the frozen gold as the authoritative denominator (MUST-NOT #1)."""
+    gold = load_frozen_gold(corpus)
+    rows = {r.get("instance_id"): r for r in result_rows(report)}
+    span_form = _report_is_span_form(rows)
+    matches: list[MatchResult] = []
+    for iid, symbols in gold.items():
+        row = rows.get(iid, {})
+        retrieved = [str(s) for s in (row.get("retrieved_symbols") or [])]
+        if span_form:
+            row_gold = [str(s) for s in (row.get("gold_symbols") or [])]
+            row_ranges = row.get("gold_symbol_ranges") or []
+            by_symbol = {
+                sym: row_ranges[i]
+                for i, sym in enumerate(row_gold)
+                if i < len(row_ranges)
+            }
+            ranges = [by_symbol.get(key, _NO_RANGE) for key in symbols]
+            matches.append(match_gold_spans(symbols, ranges, retrieved))
+        else:
+            matches.append(match_gold(symbols, retrieved))
+    return matches
+
+
 def score_arm(report: Mapping[str, object], corpus: str) -> ArmMetrics:
     """Score one arm's report against the PINNED frozen gold.
 
     Recall metrics come from offline set-match (frozen denominators,
-    first-occurrence-per-gold-identity). Wire metrics are rolled up from the
-    report's own `token_coverage_wire` over the gold-bearing basis.
+    first-occurrence-per-gold-identity) — name-based for symbol-delivering arms,
+    range-overlap for the span-delivering native_floor comparator. Wire metrics
+    are rolled up from the report's own delivered-wire curve over the gold-
+    bearing basis.
     """
     gold = load_frozen_gold(corpus)
-    rows = {r.get("instance_id"): r for r in result_rows(report)}
-    matches = [
-        match_gold(symbols, [str(s) for s in (rows.get(iid, {}).get("retrieved_symbols") or [])])
-        for iid, symbols in gold.items()
-    ]
+    matches = _instance_matches(report, corpus)
     n = len(matches)
     if not n:
         raise AcceptanceError(f"{corpus}: frozen gold is empty")

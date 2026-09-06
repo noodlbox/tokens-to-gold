@@ -106,7 +106,14 @@ def _rollup_rows(
     n = denominator if denominator is not None else len(rows)
     covers: list[Mapping[str, object]] = []
     for row in rows:
+        # The binding wire curve is `token_coverage_wire` when the arm prices
+        # retrieval by wire (shipped/levers). The native_floor comparator
+        # delivers spans — read content whose wire price IS its source-text
+        # token count (same shared tokenizer; wire == read for spans, B5 §5) —
+        # so it emits only `token_coverage`, which is that same wire curve.
         wire = row.get("token_coverage_wire")
+        if not (isinstance(wire, Mapping) and wire.get("by_budget")):
+            wire = row.get("token_coverage")
         covers.append(wire if isinstance(wire, Mapping) else {})
 
     gold_at: dict[int, float] = {}
