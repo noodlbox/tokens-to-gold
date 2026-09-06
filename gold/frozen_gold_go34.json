@@ -1,0 +1,277 @@
+{
+ "corpus": "go34",
+ "binary": "noodl-eval 75b16f83",
+ "protocol": "deepswe-frozen ForceReindex",
+ "graph_gold_derivation_version": 4,
+ "total_gold_symbols": 207,
+ "instances_with_gold": 30,
+ "gold": {
+  "abs-module-cache-flags": [
+   "evaluator/functions.go:init",
+   "evaluator/functions.go:GetFns",
+   "evaluator/functions.go:sourceFn",
+   "evaluator/functions.go:requireFn",
+   "evaluator/functions.go:doSource",
+   "repl/repl.go:BeginRepl"
+  ],
+  "abs-stepped-slices": [
+   "ast/ast.go:String",
+   "evaluator/evaluator.go:evalIndexAssignment",
+   "evaluator/evaluator.go:evalIndexExpression",
+   "evaluator/evaluator.go:evalStringIndexExpression",
+   "evaluator/evaluator.go:evalArrayIndexExpression",
+   "evaluator/evaluator.go:evalHashLiteral",
+   "parser/parser.go:parseIndexExpression"
+  ],
+  "actionlint-action-pinning-lint": [
+   "command.go:<closure_in_Main>",
+   "config.go:ParseConfig",
+   "config.go:writeDefaultConfigFile",
+   "linter.go:NewLinter",
+   "linter.go:check"
+  ],
+  "anko-default-function-arguments": [
+   "core/core.go:<closure_in_Import>",
+   "parser/lexer.go:Parse"
+  ],
+  "anko-typed-variable-bindings": [
+   "env/env.go:Copy",
+   "env/envValues.go:DefineValue",
+   "vm/vmLetExpr.go:invokeLetExpr",
+   "vm/vmStmt.go:runSingleStmt"
+  ],
+  "arcane-drift-detection-baselines": [
+   "backend/internal/bootstrap/jobs_bootstrap.go:registerJobs",
+   "backend/internal/bootstrap/router_bootstrap.go:setupRouter",
+   "backend/internal/bootstrap/services_bootstrap.go:initializeServices",
+   "backend/internal/services/settings_service.go:getDefaultSettings"
+  ],
+  "expr-try-catch-errors": [
+   "ast/visitor.go:Walk",
+   "builtin/lib.go:minMax",
+   "checker/checker.go:visit",
+   "checker/checker.go:builtinNode",
+   "compiler/compiler.go:Compile",
+   "compiler/compiler.go:compile",
+   "compiler/compiler.go:BuiltinNode",
+   "compiler/compiler.go:optimize",
+   "parser/parser.go:parseExpression",
+   "parser/parser.go:parseConditional",
+   "vm/program.go:NewProgram",
+   "vm/program.go:DisassembleWriter",
+   "vm/vm.go:<closure_in_Run>",
+   "vm/vm.go:Run"
+  ],
+  "geo-shapeindex-serialization": [
+   "s2/lax_loop.go:typeTag",
+   "s2/lax_loop.go:privateInterface",
+   "s2/loop.go:typeTag"
+  ],
+  "go-genai-streamed-function-args": [
+   "chats.go:<closure_in_SendStream>",
+   "live.go:Connect",
+   "live.go:Receive"
+  ],
+  "go-git-worktree-merge-conflicts": [
+   "worktree_commit.go:Commit",
+   "worktree_status.go:addOrUpdateFileToIndex",
+   "worktree_status.go:doAddFileToIndex"
+  ],
+  "goreleaser-retry-publish-auditing": [
+   "internal/http/http.go:uploadAsset",
+   "internal/http/http.go:executeHTTPRequest",
+   "internal/pipe/blob/upload.go:urlFor",
+   "internal/pipe/blob/upload.go:doUpload",
+   "internal/pipe/blob/upload.go:<closure_in_doUpload>",
+   "internal/pipe/blob/upload.go:artifactList",
+   "internal/pipe/metadata/metadata.go:<closure_in_writeArtifacts>"
+  ],
+  "helm-array-merge-strategies": [
+   "internal/chart/v3/lint/rules/chartfile.go:Chartfile",
+   "pkg/action/install.go:RunWithContext",
+   "pkg/action/upgrade.go:prepareUpgrade",
+   "pkg/action/upgrade.go:reuseValues",
+   "pkg/action/upgrade.go:validateManifest",
+   "pkg/chart/common.go:structToMap",
+   "pkg/chart/common/util/coalesce.go:coalesceDeps",
+   "pkg/chart/common/util/coalesce.go:coalesceGlobals",
+   "pkg/chart/common/util/coalesce.go:coalesceValues",
+   "pkg/chart/v2/lint/rules/chartfile.go:Chartfile",
+   "pkg/cmd/install.go:addInstallFlags",
+   "pkg/cmd/upgrade.go:newUpgradeCmd"
+  ],
+  "helm-unified-manifest-stream": [
+   "pkg/action/action.go:renderResources",
+   "pkg/action/install.go:RunWithContext",
+   "pkg/action/rollback.go:performRollback",
+   "pkg/action/status.go:Run",
+   "pkg/action/uninstall.go:deleteRelease",
+   "pkg/action/upgrade.go:prepareUpgrade",
+   "pkg/action/upgrade.go:performUpgrade",
+   "pkg/cmd/get_manifest.go:<closure_in_newGetManifestCmd>",
+   "pkg/cmd/status.go:WriteTable",
+   "pkg/cmd/template.go:<closure_in_newTemplateCmd>",
+   "pkg/cmd/upgrade.go:<closure_in_newUpgradeCmd>",
+   "pkg/release/v1/util/manifest_sorter.go:SortManifests",
+   "pkg/release/v1/util/manifest_sorter.go:sort"
+  ],
+  "kcp-go-multiplexed-kcp-streams": [
+   "snmp.go:Header",
+   "snmp.go:ToSlice",
+   "snmp.go:Copy",
+   "snmp.go:Reset"
+  ],
+  "kgateway-consistent-hash-policy": [
+   "pkg/kgateway/extensions2/plugins/trafficpolicy/constructor.go:ConstructIR",
+   "pkg/kgateway/extensions2/plugins/trafficpolicy/merge.go:MergeTrafficPolicies",
+   "pkg/kgateway/extensions2/plugins/trafficpolicy/traffic_policy_plugin.go:Equals",
+   "pkg/kgateway/extensions2/plugins/trafficpolicy/traffic_policy_plugin.go:Validate",
+   "pkg/kgateway/extensions2/plugins/trafficpolicy/traffic_policy_plugin.go:handlePerRoutePolicies"
+  ],
+  "onedump-dump-encryption-pipeline": [
+   "config/job.go:Validate",
+   "config/job.go:WithDumpOptions",
+   "config/job.go:validate",
+   "fileutil/filenutil.go:EnsureFileSuffix",
+   "fileutil/filenutil.go:EnsureFileName",
+   "handler/jobhandler.go:storageReadWriteCloser",
+   "handler/jobhandler.go:save",
+   "handler/jobhandler.go:<closure_in_save>",
+   "storage/storage.go:PathGenerator",
+   "storage/storage.go:<closure_in_PathGenerator>"
+  ],
+  "opa-rego-rule-profiling": [
+   "v1/rego/rego.go:RawInput",
+   "v1/rego/rego.go:<closure_in_EvalPartialNamespace>",
+   "v1/rego/rego.go:Runtime",
+   "v1/rego/rego.go:Eval",
+   "v1/rego/rego.go:eval",
+   "v1/rego/rego.go:evalWasm"
+  ],
+  "opa-template-string-reconstruction": [
+   "v1/rego/rego.go:partialResult",
+   "v1/rego/rego.go:partial"
+  ],
+  "participle-grammar-conflict-analysis": [
+   "parser.go:Build"
+  ],
+  "pebble-durability-wait-apis": [
+   "commit.go:Commit",
+   "commit.go:publish",
+   "db.go:applyInternal",
+   "db.go:Close",
+   "db.go:Metrics",
+   "event.go:EnsureDefaults",
+   "event.go:<closure_in_MakeLoggingEventListener>",
+   "event.go:TeeEventListener",
+   "open.go:Open"
+  ],
+  "prometheus-typed-label-sorting": [
+   "promql/functions.go:<closure_in_funcSortByLabel>",
+   "promql/functions.go:<closure_in_funcSortByLabelDesc>"
+  ],
+  "scc-bounded-memory-spilling": [
+   "main.go:main",
+   "processor/formatters.go:toCSVStream",
+   "processor/formatters.go:fileSummarize",
+   "processor/processor.go:processFlags"
+  ],
+  "scriggo-method-declarations": [
+   "ast/ast.go:NewFunc",
+   "ast/ast.go:String",
+   "internal/compiler/checker_expressions.go:checkCallExpression",
+   "internal/compiler/checker_expressions.go:checkMethodExpression",
+   "internal/compiler/checker_expressions.go:checkMethodValue",
+   "internal/compiler/checker_package.go:checkPackage",
+   "internal/compiler/checker_statements.go:checkFunc",
+   "internal/compiler/compiler.go:emitProgram",
+   "internal/compiler/compiler.go:emitTemplate",
+   "internal/compiler/emitter.go:emitPackage",
+   "internal/compiler/emitter.go:emitCallNode",
+   "internal/compiler/emitter_expressions.go:emitSelector",
+   "internal/compiler/parser_func.go:parseFunc",
+   "internal/compiler/types/defined.go:DefinedOf",
+   "internal/compiler/types/defined.go:Name",
+   "internal/compiler/types/defined.go:AssignableTo",
+   "internal/compiler/types/defined.go:ConvertibleTo",
+   "internal/compiler/types/defined.go:Implements",
+   "internal/compiler/types/defined.go:MethodByName",
+   "internal/compiler/types/defined.go:String",
+   "internal/compiler/types/defined.go:GoType",
+   "internal/compiler/types/defined.go:Unwrap",
+   "internal/compiler/types/defined.go:Wrap",
+   "internal/compiler/types/ptr.go:Wrap",
+   "internal/compiler/types/types.go:Implements",
+   "internal/compiler/types/types.go:TypeOf",
+   "internal/compiler/types/wrapper.go:wrap",
+   "internal/compiler/types/wrapper.go:unwrap",
+   "internal/runtime/run.go:run",
+   "internal/runtime/vm.go:Run",
+   "internal/runtime/vm.go:<closure_in_Value>",
+   "internal/runtime/vm.go:packageName",
+   "programs.go:Build",
+   "programs.go:Run",
+   "templates.go:BuildTemplate",
+   "templates.go:Run"
+  ],
+  "task-task-graph-export": [
+   "cmd/task/task.go:run",
+   "internal/flags/flags.go:init",
+   "internal/flags/flags.go:Validate",
+   "internal/flags/flags.go:ApplyToExecutor"
+  ],
+  "tengo-callable-instance-isolation": [
+   "objects.go:Copy",
+   "script.go:Clone",
+   "script.go:Set",
+   "vm.go:NewVM",
+   "vm.go:Run",
+   "vm.go:run"
+  ],
+  "tengo-destructuring-bindings": [
+   "compiler.go:Compile",
+   "compiler.go:compileAssign",
+   "compiler.go:compileForStmt",
+   "parser/parser.go:parseFuncType",
+   "parser/parser.go:parseStmt",
+   "parser/parser.go:parseSimpleStmt",
+   "parser/parser.go:expect",
+   "vm.go:run"
+  ],
+  "termenv-preserve-ansi-resets": [
+   "output.go:Write",
+   "style.go:Styled",
+   "templatehelper.go:TemplateFuncs",
+   "templatehelper.go:<closure_in_TemplateFuncs>",
+   "templatehelper.go:styleFunc",
+   "templatehelper.go:<closure_in_styleFunc>"
+  ],
+  "updo-policy-alerting": [
+   "cmd/monitor/monitor.go:<closure>",
+   "cmd/root/root.go:init",
+   "config/config.go:LoadConfig",
+   "config/config.go:GetRefreshInterval",
+   "notifications/webhook.go:SendWebhook",
+   "simple/monitoring.go:StartMultiTargetMonitoring",
+   "simple/monitoring.go:<closure_in_StartMultiTargetMonitoring>",
+   "simple/monitoring.go:monitorTargetSimple",
+   "simple/monitoring.go:<closure_in_monitorTargetSimple>",
+   "simple/simple.go:PrintResult",
+   "tui/manager.go:updateActiveTarget",
+   "tui/manager.go:UpdateTarget",
+   "tui/manager.go:updateCurrentTargetWidgets",
+   "tui/monitoring.go:StartMonitoring",
+   "tui/monitoring.go:<closure_in_StartMonitoring>",
+   "tui/monitoring.go:monitorTargetTUI",
+   "tui/monitoring.go:<closure_in_monitorTargetTUI>"
+  ],
+  "yaegi-go-embed-directives": [
+   "interp/program.go:compileSrc",
+   "interp/program.go:CompileAST",
+   "interp/program.go:Execute"
+  ],
+  "ytt-jsonpath-query-api": [
+   "pkg/yttlibrary/all.go:NewAPI"
+  ]
+ }
+}

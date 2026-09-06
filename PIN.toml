@@ -54,7 +54,12 @@ url = "https://github.com/noodlbox/tokens-to-gold/releases/download/v1.0.0-rc1/d
 
 [gold]
 # Small enough to ship in the repo; digests also in gold/SHA256SUMS.
+# go34/rust43 join at the 2026-09 re-cert (A4): go34 from run8 (adjudicated),
+# rust43 from the lease-1 certified derivation — each sha-verified against the
+# bytes the certification consumed before pinning.
+frozen_gold_go34 = "bf8de741a03597d5db62b5c0dceee901799a12188fbae6b9253e9b094d422a8e"
 frozen_gold_py_nosphinx = "05033580302881b919729bdbd9b485c2b89e0531bd338f3e19acedbcebe67736"
+frozen_gold_rust43 = "7b45f6abbd8f3700fabfac37c292a91e523fae940588b44fb6565768fcb239fe"
 frozen_gold_ts40 = "fcc09bd98d5e648be1c46803b72140b233599ef91e2dd945ba4b52e72d02a0e3"
 
 [provenance]

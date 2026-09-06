@@ -1,0 +1,229 @@
+{
+ "corpus": "rust43",
+ "binary": "noodl-eval bf920e4a",
+ "protocol": "deepswe-frozen ForceReindex",
+ "graph_gold_derivation_version": 4,
+ "total_gold_symbols": 139,
+ "instances_with_gold": 40,
+ "gold": {
+  "astral-sh__ruff-15309": [
+   "crates/ruff_linter/src/rules/pyflakes/fixes.rs:remove_unused_positional_arguments_from_format_call",
+   "crates/ruff_linter/src/rules/pyflakes/fixes.rs:closure_L73_C47_in_remove_unused_positional_arguments_from_format_call"
+  ],
+  "astral-sh__ruff-15330": [
+   "crates/ruff_linter/src/rules/eradicate/rules/commented_out_code.rs:skip_script_comments",
+   "crates/ruff_linter/src/rules/eradicate/rules/commented_out_code.rs:closure_L115_C40_in_skip_script_comments",
+   "crates/ruff_linter/src/rules/eradicate/rules/commented_out_code.rs:is_valid_script_line"
+  ],
+  "astral-sh__ruff-15356": [
+   "crates/ruff_linter/src/rules/pycodestyle/rules/logical_lines/mod.rs:visit_token_kind"
+  ],
+  "astral-sh__ruff-15394": [
+   "crates/ruff_linter/src/rules/flake8_pie/rules/unnecessary_spread.rs:unnecessary_spread_fix"
+  ],
+  "astral-sh__ruff-15443": [
+   "crates/ruff_linter/src/rules/flake8_bandit/rules/exec_used.rs:exec_used",
+   "crates/ruff_linter/src/rules/flake8_bandit/rules/exec_used.rs:closure_L39_C21_in_exec_used",
+   "crates/ruff_linter/src/rules/flake8_use_pathlib/rules/replaceable_by_pathlib.rs:closure_L24_C18_in_replaceable_by_pathlib"
+  ],
+  "astral-sh__ruff-15543": [
+   "crates/ruff_linter/src/rules/pyupgrade/rules/yield_in_for_loop.rs:yield_in_for_loop"
+  ],
+  "burntsushi__ripgrep-2209": [
+   "crates/printer/src/util.rs:replace_all",
+   "crates/printer/src/util.rs:closure_L91_C20_in_replace_all",
+   "crates/printer/src/util.rs:closure_L94_C28_in_replace_all"
+  ],
+  "burntsushi__ripgrep-2576": [
+   "crates/regex/src/word.rs:fast_find"
+  ],
+  "nushell__nushell-12901": [
+   "crates/nu-command/src/system/run_external.rs:spawn_simple_command"
+  ],
+  "nushell__nushell-12950": [
+   "crates/nu-command/src/system/run_external.rs:expand_glob",
+   "crates/nu-command/src/system/run_external.rs:test_expand_glob"
+  ],
+  "nushell__nushell-13246": [
+   "crates/nu-command/src/filters/find.rs:examples",
+   "crates/nu-command/src/filters/find.rs:find_with_rest_and_highlight"
+  ],
+  "nushell__nushell-13605": [
+   "crates/nu-command/src/filesystem/ls.rs:closure_L344_C38_in_ls_for_one_pattern",
+   "crates/nu-command/src/filesystem/ls.rs:dir_entry_dict"
+  ],
+  "nushell__nushell-13831": [
+   "crates/nu-command/src/strings/split/column.rs:signature",
+   "crates/nu-command/src/strings/split/column.rs:examples",
+   "crates/nu-command/src/strings/split/column.rs:run",
+   "crates/nu-command/src/strings/split/column.rs:run_const",
+   "crates/nu-command/src/strings/split/column.rs:closure_L172_C8_in_split_column",
+   "crates/nu-command/src/strings/split/column.rs:split_column",
+   "crates/nu-command/src/strings/split/column.rs:split_column_helper",
+   "crates/nu-command/src/strings/split/column.rs:closure_L187_C20_in_split_column_helper",
+   "crates/nu-command/src/strings/split/column.rs:closure_L189_C49_in_split_column_helper"
+  ],
+  "sharkdp__bat-1892": [
+   "src/assets.rs:get_syntax_for_path",
+   "src/assets.rs:closure_L207_C28_in_get_syntax_for_path",
+   "src/assets.rs:get_syntax_for_file_name",
+   "src/assets.rs:closure_L283_C57_in_get_syntax_for_file_name",
+   "src/assets.rs:get_syntax_for_file_extension",
+   "src/assets.rs:closure_L296_C57_in_get_syntax_for_file_extension",
+   "src/assets/ignored_suffixes.rs:try_with_stripped_suffix",
+   "src/bin/bat/app.rs:config",
+   "src/bin/bat/clap_app.rs:build_app"
+  ],
+  "sharkdp__bat-2201": [
+   "src/bin/bat/clap_app.rs:build_app"
+  ],
+  "sharkdp__bat-2260": [
+   "src/syntax_mapping.rs:get_syntax_for"
+  ],
+  "sharkdp__bat-2393": [
+   "src/bin/bat/assets.rs:config_dir",
+   "src/bin/bat/assets.rs:cache_dir",
+   "src/bin/bat/assets.rs:clear_assets",
+   "src/bin/bat/assets.rs:assets_from_cache_or_binary",
+   "src/bin/bat/assets.rs:clear_asset",
+   "src/bin/bat/main.rs:build_assets",
+   "src/bin/bat/main.rs:closure_L48_C24_in_build_assets",
+   "src/bin/bat/main.rs:closure_L52_C24_in_build_assets",
+   "src/bin/bat/main.rs:run_cache_subcommand",
+   "src/bin/bat/main.rs:get_languages",
+   "src/bin/bat/main.rs:list_themes",
+   "src/bin/bat/main.rs:run_controller",
+   "src/bin/bat/main.rs:invoke_bugreport",
+   "src/bin/bat/main.rs:run"
+  ],
+  "sharkdp__bat-2650": [
+   "src/syntax_mapping.rs:insert"
+  ],
+  "sharkdp__bat-2835": [
+   "src/printer.rs:print_header_component_indent",
+   "src/printer.rs:preprocess",
+   "src/printer.rs:closure_L380_C46_in_print_header",
+   "src/printer.rs:print_header"
+  ],
+  "sharkdp__bat-3108": [
+   "src/bin/bat/app.rs:closure_L101_C77_in_config",
+   "src/bin/bat/app.rs:config",
+   "src/bin/bat/clap_app.rs:build_app"
+  ],
+  "sharkdp__bat-562": [
+   "src/clap_app.rs:build_app"
+  ],
+  "tokio-rs__axum-1119": [
+   "axum/src/routing/mod.rs:call",
+   "axum/src/routing/mod.rs:replace_path",
+   "axum/src/routing/mod.rs:test_replace_trailing_slash",
+   "axum/src/routing/route.rs:from_response"
+  ],
+  "tokio-rs__axum-1934": [
+   "axum/src/routing/path_router.rs:merge",
+   "axum/src/routing/path_router.rs:nest",
+   "axum/src/routing/path_router.rs:layer",
+   "axum/src/routing/path_router.rs:with_state",
+   "axum/src/routing/path_router.rs:call_with_state",
+   "axum/src/routing/path_router.rs:default",
+   "axum/src/routing/path_router.rs:fmt",
+   "axum/src/routing/path_router.rs:clone"
+  ],
+  "tokio-rs__axum-2096": [
+   "axum/src/routing/mod.rs:merge",
+   "axum/src/routing/path_router.rs:set_fallback",
+   "axum/src/routing/path_router.rs:merge"
+  ],
+  "tokio-rs__axum-682": [
+   "axum/src/response/redirect.rs:found",
+   "axum/src/routing/mod.rs:call",
+   "examples/oauth/src/main.rs:main",
+   "examples/oauth/src/main.rs:oauth_client",
+   "examples/oauth/src/main.rs:discord_auth",
+   "examples/oauth/src/main.rs:logout",
+   "examples/oauth/src/main.rs:login_authorized",
+   "examples/oauth/src/main.rs:into_response",
+   "examples/oauth/src/main.rs:from_request"
+  ],
+  "tokio-rs__axum-691": [
+   "axum/src/routing/mod.rs:nest"
+  ],
+  "tokio-rs__axum-734": [
+   "axum/src/routing/future.rs:from_future",
+   "axum/src/routing/future.rs:from_response",
+   "axum/src/routing/method_routing.rs:call",
+   "axum/src/routing/route.rs:call",
+   "axum/src/routing/route.rs:new",
+   "axum/src/routing/route.rs:poll",
+   "axum/src/routing/route.rs:closure_L111_C28_in_poll"
+  ],
+  "tokio-rs__tokio-4867": [
+   "tokio/src/sync/broadcast.rs:channel",
+   "tokio/src/sync/broadcast.rs:send",
+   "tokio/src/sync/broadcast.rs:closure_L541_C21_in_send",
+   "tokio/src/sync/broadcast.rs:send2",
+   "tokio/src/sync/broadcast.rs:closure_L635_C26_in_send2",
+   "tokio/src/sync/broadcast.rs:closure_L642_C30_in_send2",
+   "tokio/src/sync/broadcast.rs:drop",
+   "tokio/src/sync/broadcast.rs:recv_ref"
+  ],
+  "tokio-rs__tokio-4898": [
+   "tokio/src/signal/unix/driver.rs:new"
+  ],
+  "tokio-rs__tokio-6551": [
+   "tokio/src/runtime/scheduler/multi_thread/handle/metrics.rs:num_blocking_threads",
+   "tokio/src/runtime/scheduler/multi_thread_alt/handle/metrics.rs:num_blocking_threads"
+  ],
+  "tokio-rs__tokio-6603": [
+   "tokio/src/sync/mpsc/block.rs:has_value"
+  ],
+  "tokio-rs__tokio-6724": [
+   "tokio/src/io/util/write_all_buf.rs:poll"
+  ],
+  "tokio-rs__tokio-6752": [
+   "tokio-util/src/time/delay_queue.rs:remove"
+  ],
+  "tokio-rs__tokio-6838": [
+   "tokio/src/net/unix/listener.rs:bind",
+   "tokio/src/net/unix/stream.rs:connect"
+  ],
+  "tokio-rs__tokio-7139": [
+   "tokio/src/fs/file.rs:poll_read"
+  ],
+  "uutils__coreutils-6377": [
+   "src/uu/env/src/env.rs:load_config_file",
+   "src/uu/env/src/env.rs:uu_app",
+   "src/uu/env/src/env.rs:run_env",
+   "src/uu/env/src/env.rs:make_options"
+  ],
+  "uutils__coreutils-6575": [
+   "src/uu/cksum/src/cksum.rs:cksum",
+   "src/uu/cksum/src/cksum.rs:had_reset",
+   "src/uu/cksum/src/cksum.rs:handle_tag_text_binary_flags",
+   "src/uu/cksum/src/cksum.rs:uumain",
+   "src/uu/cksum/src/cksum.rs:closure_L302_C12_in_uumain",
+   "src/uu/cksum/src/cksum.rs:uu_app",
+   "src/uu/cksum/src/cksum.rs:closure_L477_C17_in_test_had_reset",
+   "src/uu/cksum/src/cksum.rs:test_had_reset",
+   "src/uu/cksum/src/cksum.rs:closure_L483_C17_in_test_had_reset",
+   "src/uu/cksum/src/cksum.rs:closure_L489_C17_in_test_had_reset",
+   "src/uu/cksum/src/cksum.rs:closure_L495_C17_in_test_had_reset",
+   "src/uu/cksum/src/cksum.rs:closure_L501_C17_in_test_had_reset",
+   "src/uu/cksum/src/cksum.rs:closure_L507_C17_in_test_had_reset",
+   "src/uu/cksum/src/cksum.rs:closure_L513_C17_in_test_had_reset",
+   "src/uu/cksum/src/cksum.rs:closure_L519_C17_in_test_had_reset",
+   "src/uu/cksum/src/cksum.rs:closure_L525_C17_in_test_had_reset",
+   "src/uucore/src/lib/lib.rs:os_str_as_bytes"
+  ],
+  "uutils__coreutils-6682": [
+   "src/uu/mkdir/src/mkdir.rs:mkdir",
+   "src/uu/mkdir/src/mkdir.rs:create_dir"
+  ],
+  "uutils__coreutils-6690": [
+   "src/uu/cp/src/cp.rs:uu_app"
+  ],
+  "uutils__coreutils-6731": [
+   "src/uu/tr/src/tr.rs:uumain"
+  ]
+ }
+}
