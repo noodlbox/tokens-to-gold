@@ -204,12 +204,20 @@ lets you recompute it.
 
 ## Commit-message privacy guard
 
-The held-out corpus name must never enter git history (commit messages ship with
-a public clone). Install the guard once:
+The canonical claim about the held-out corpus is stated once in `BUNDLE.md`
+("Held-out corpus (canonical claim)"): **it is not named in any public
+artifact** — a mechanical not-named property, enforced by the guards below, not
+a secrecy claim. Commit messages ship with a public clone, so the name must
+never enter git history. Arm the guards once:
 
 ```sh
-git config core.hooksPath scripts/git-hooks
+bash scripts/setup.sh
 ```
 
-`scripts/git-hooks/commit-msg` refuses any message containing the token (checked
-via `ttg.privacy`, so the hook itself never spells it).
+That sets `core.hooksPath` to `scripts/git-hooks` and prints the release gate.
+`scripts/git-hooks/commit-msg` then refuses any message that names the corpus
+(checked via `ttg.privacy`, so the hook never spells it), reporting the resolved
+token *mode* — never the value — and distinguishing a violation from a check that
+could not run. Before shipping the eval binary, run the release gate
+`python3 -m ttg.cli scan-binary --path <noodl-eval>` (a byte scan; the eval
+binary once carried the name in embedded strings).

@@ -256,3 +256,16 @@ The V1 floor reference cells (acceptance fixture, native_floor ts40/py) are
 pasted from B5 §5 (within_32k ← L160/L162; whole_list ← L166/L168; Gold@32k is
 the coverage decoy). The re-cert floor replays them exact-to-4dp = floor HELD
 (explorer policy frozen; the rg fix only made failures loud).
+
+### Addendum — held-out corpus claim, 2026-09-07 (founder decision, Option 1)
+
+The single canonical claim about the held-out corpus lives in `BUNDLE.md`
+("Held-out corpus (canonical claim)"); this pre-registration references it rather
+than restating it, so the four copies cannot drift. The claim is literal absence
+— a mechanical "not named" property, never confidentiality and never
+non-derivability (the corpus is itself a private repo, so the derivability of its
+name grants nothing). Because the claim is that narrow, the T6 privacy scan, the
+commit-message hook, and the history-scan CLI (R18b) are its SOLE evidence, not a
+defence in depth — the narrow claim raises the load on those guards. The harness
+keeps its in-module name fragments and the explicit-mode resolver is unchanged
+(Option 1, final).

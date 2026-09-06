@@ -9,6 +9,20 @@ wire-priced, no LLM judge, no agent loop. Several contract rows exist for
 whole-agent benchmarks and are absent here **by construction**; each such row
 says so below, on the boundary that keeps the quantities honest.
 
+## Held-out corpus (canonical claim — the single source others reference)
+
+**The held-out corpus is not named in any public artifact.**
+
+That is the whole claim, and it is exactly this: a mechanical *not-named*
+property, never "confidential" and never "non-derivable". The held-out corpus is
+itself a private repository, so the derivability of its name grants nothing; the
+claim is literal absence and nothing more. Because the claim is that narrow, the
+guards that enforce it — the T6 privacy scan, the commit-message hook, and the
+history-scan CLI (R18b) — are its SOLE evidence, not a defence in depth; the
+narrow claim raises the load on those guards. Every other artifact
+(`PREREGISTRATION.md`, `README.md`, the page) references THIS sentence rather
+than restating it, so the copies cannot drift apart.
+
 | # | Row | Status | Where / why |
 |---|---|---|---|
 | 1 | **Manifest** | FILLED | `PIN.toml` — gold-derivation source commit (`0c061c57` / base `6d3ccaf0`, committed + pushed), gold digests, artifact digests; `acceptance/` pins the measured `main` SHA + binary digest; corpus repo lists in `corpora/`. Model/provider/agent fields are N/A by construction (no agent) |
