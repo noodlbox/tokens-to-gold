@@ -41,7 +41,7 @@ from ttg.acceptance import (
 )
 from ttg.pins import is_pending, load_pins
 from ttg.regression import DEFAULT_METRICS, compare_reports, render_table
-from ttg.report_io import load_report
+from ttg.report_io import load_report, result_rows, wire_curve
 from ttg.rollup import rollup
 
 PKG = Path(__file__).resolve().parent.parent
@@ -234,6 +234,8 @@ class CellScore:
     reach_at_80_within_32k: float
     ttg80_median_wire: int | None
     whole_list_internal: float
+    mean_run_wire: int
+    max_run_wire: int
 
 
 @dataclass(frozen=True)
@@ -254,11 +256,27 @@ def _gold_available(corpus: str, gold_dir: Path) -> bool:
     return (gold_dir / f"frozen_gold_{corpus}.json").is_file()
 
 
+def _run_wire_stats(report: Mapping[str, object], corpus: str) -> tuple[int, int]:
+    """(mean, max) delivered run wire per instance, over the FROZEN basis, from
+    each row's binding wire curve (`token_coverage[_wire].delivered_tokens`). The
+    adverse cost gauge — how much wire the arm burned, uncapped (B5 §5)."""
+    rows = {r.get("instance_id"): r for r in result_rows(report)}
+    delivered = [
+        int(dt)
+        for iid in load_frozen_gold(corpus)
+        if isinstance(dt := wire_curve(rows.get(iid, {})).get("delivered_tokens"), (int, float))
+    ]
+    if not delivered:
+        return (0, 0)
+    return (round(sum(delivered) / len(delivered)), max(delivered))
+
+
 def score_cell(report: Mapping[str, object], corpus: str, arm: str) -> CellScore:
     """Score one cell against its FROZEN gold. Recall metrics + N from
     `score_arm`; cost-to-coverage (median TtG@80) from the binding rollup."""
     metrics = score_arm(report, corpus)
     roll = rollup(report, frozen_instance_ids=list(load_frozen_gold(corpus)))
+    mean_run, max_run = _run_wire_stats(report, corpus)
     return CellScore(
         corpus=corpus,
         arm=arm,
@@ -271,6 +289,8 @@ def score_cell(report: Mapping[str, object], corpus: str, arm: str) -> CellScore
         reach_at_80_within_32k=metrics.reach_at_80_within_32k,
         ttg80_median_wire=roll.binding.median_ttg_at_coverage[80],
         whole_list_internal=metrics.whole_list_INTERNAL,
+        mean_run_wire=mean_run,
+        max_run_wire=max_run,
     )
 
 
@@ -570,6 +590,36 @@ def render_disclosures() -> str:
     )
 
 
+def render_run_wire_gauge(cells: Sequence[Cell]) -> str:
+    """Adverse cost gauge (ADDITIVE — not a coverage cell): mean / max delivered
+    RUN WIRE per instance, per arm per language, over the gold-bearing basis.
+    Uncapped, so for native_floor this is the full hunt (B5 §5, max ~1.72M on
+    ts40). Shares the report's provenance (one binary, frozen denominators)."""
+    out: list[str] = [
+        "## Run-wire cost gauge (mean / max delivered wire per instance)",
+        "",
+        "The wire each arm actually delivers per instance (`token_coverage` "
+        "delivered_tokens), over the gold-bearing basis — the adverse cost gauge, "
+        "additive to the coverage table above and under the same provenance. "
+        "Uncapped: for native_floor this is the whole hunt (B5 §5).",
+        "",
+    ]
+    for corpus, language in CORPUS_LANG.items():
+        out.append(f"### {language}  (corpus `{corpus}`)")
+        out.append("")
+        out.append("| Arm | mean run wire | max run wire |")
+        out.append("|---|---|---|")
+        for arm in ARMS:
+            cell = _cell_by(cells, corpus, arm)
+            if cell.score is None:
+                out.append(f"| {arm} | _PENDING ({cell.pending_reason})_ | |")
+                continue
+            s = cell.score
+            out.append(f"| {arm} | {s.mean_run_wire:,} wire | {s.max_run_wire:,} wire |")
+        out.append("")
+    return "\n".join(out)
+
+
 def build_report_doc(
     reports_dir: str | Path, gold_dir: str | Path | None = None
 ) -> str:
@@ -596,6 +646,7 @@ def build_report_doc(
         [
             header,
             render_language_table(cells, gold),
+            render_run_wire_gauge(cells),
             render_gold_distribution(gold),
             render_regression_witness(reports),
             render_lever_effect(reports),

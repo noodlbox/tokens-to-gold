@@ -89,6 +89,7 @@ class SyntheticRenderTest(unittest.TestCase):
                     "gold_symbols": list(symbols),
                     "retrieved_symbols": list(symbols),
                     "token_coverage_wire": {
+                        "delivered_tokens": 9000,
                         "by_budget": {"2000": 1.0, "8000": 1.0, "32000": 1.0},
                         "tokens_to_coverage": {"50": 500, "80": 800, "100": 1000},
                     },
@@ -116,6 +117,7 @@ class SyntheticRenderTest(unittest.TestCase):
                     "gold_symbol_ranges": ranges,
                     "retrieved_symbols": retrieved,
                     "token_coverage": {
+                        "delivered_tokens": 80000,
                         "by_budget": {"2000": 0.5, "8000": 1.0, "32000": 1.0},
                         "tokens_to_coverage": {"50": 500, "80": 800, "100": 1000},
                     },
@@ -183,6 +185,12 @@ class SyntheticRenderTest(unittest.TestCase):
         # and independent of which arm reports are staged.
         self.assertIn("Gold-symbol distribution (thin-keys caveat)", doc)
         self.assertIn("| TypeScript | `ts40` |", doc)
+
+        # The run-wire cost gauge renders (additive), values tracing to the rows'
+        # delivered_tokens: 9,000 (symbol arms) and 80,000 (the span floor).
+        self.assertIn("Run-wire cost gauge", doc)
+        self.assertIn("9,000 wire", doc)
+        self.assertIn("80,000 wire", doc)
 
 
 class ProvenanceGateTest(unittest.TestCase):
@@ -257,6 +265,8 @@ def _cellscore(n: int) -> CellScore:
         reach_at_80_within_32k=0.0,
         ttg80_median_wire=None,
         whole_list_internal=0.0,
+        mean_run_wire=0,
+        max_run_wire=0,
     )
 
 
