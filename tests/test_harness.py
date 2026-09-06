@@ -29,8 +29,8 @@ from ttg.gold_freezer import build_gold_map
 from ttg.matcher import match_gold, split_identity
 from ttg.report_io import ReportFormatError, gold_bearing_rows, load_report, loads_report, result_rows
 from ttg.acceptance import (
-    LOCKED_METRICS, NOISE_FLOOR_PP, REPLAY_TOL, check_report_file, load_fixture,
-    load_frozen_gold,
+    FIXTURE_PATH, LOCKED_METRICS, NOISE_FLOOR_PP, REPLAY_TOL, AcceptanceError,
+    _pinned_digest, check_report_file, load_fixture, load_frozen_gold,
 )
 from ttg.rollup import Basis, rollup
 from ttg.tier1 import CLAIM_FIELDS, compare_frozen_gold
@@ -573,6 +573,39 @@ class T9Acceptance(unittest.TestCase):
 
     def test_fixture_digest_is_pinned(self) -> None:
         self.assertIsNotNone(load_fixture().get("provenance"))
+
+    def test_absent_pin_raises_not_fail_open(self) -> None:
+        # FINDING B: an absent pin must THROW, never silently load unverified
+        # bytes. RED before the fix (`if pinned and got != pinned` skipped the
+        # check entirely for a missing pin and returned the fixture); GREEN after.
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = Path(tmp) / FIXTURE_PATH.name
+            fixture.write_text('{"provenance": {}}')
+            sums = Path(tmp) / "SHA256SUMS"
+            sums.write_text("deadbeef  some_other_file.json\n")  # fixture NOT pinned
+            with self.assertRaises(AcceptanceError):
+                load_fixture(fixture_path=fixture, sums_path=sums)
+
+    def test_present_pin_verifies_and_loads(self) -> None:
+        # Positive control: a correctly-pinned fixture loads through the seam.
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = Path(tmp) / FIXTURE_PATH.name
+            body = b'{"provenance": {"ok": true}}'
+            fixture.write_bytes(body)
+            sums = Path(tmp) / "SHA256SUMS"
+            sums.write_text(f"{hashlib.sha256(body).hexdigest()}  {fixture.name}\n")
+            self.assertIsNotNone(load_fixture(fixture, sums).get("provenance"))
+
+    def test_pinned_digest_helper_raises_on_absent(self) -> None:
+        # The predicate in isolation, from raw text: absent name RAISES, present
+        # name returns its digest.
+        with self.assertRaises(AcceptanceError):
+            _pinned_digest("abc123  other.json\n", FIXTURE_PATH.name)
+        self.assertEqual(_pinned_digest("abc123  wanted.json\n", "wanted.json"), "abc123")
 
     @unittest.skipUnless(_acceptance_available(), "acceptance reports not staged")
     def test_negative_control_wrong_arm_fixture_mismatches(self) -> None:

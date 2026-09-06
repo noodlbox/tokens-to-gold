@@ -83,15 +83,38 @@ class AcceptanceError(ValueError):
     """The fixture is missing, corrupt, or misused."""
 
 
-def load_fixture() -> Mapping[str, object]:
-    """Load the reference fixture, verifying its pinned digest."""
-    if not FIXTURE_PATH.exists():
-        raise AcceptanceError(f"acceptance fixture missing: {FIXTURE_PATH}")
-    raw = FIXTURE_PATH.read_bytes()
-    sums = (FIXTURE_PATH.parent / "SHA256SUMS").read_text().split()
-    pinned = dict(zip(sums[1::2], sums[0::2])).get(FIXTURE_PATH.name)
+def _pinned_digest(sums_text: str, name: str) -> str:
+    """The pinned sha256 for `name` from a SHA256SUMS body ('<digest>  <name>'
+    lines). An ABSENT pin RAISES.
+
+    This closes the B fail-open: `load_fixture` used `if pinned and got != pinned`,
+    so a fixture whose name was missing from SHA256SUMS skipped the digest check
+    ENTIRELY and returned unverified bytes. The fixture is the authoritative
+    record every replay lands on; an unpinned one is not trusted, it is refused."""
+    fields = sums_text.split()
+    pinned = dict(zip(fields[1::2], fields[0::2])).get(name)
+    if pinned is None:
+        raise AcceptanceError(
+            f"{name} has no pinned digest in SHA256SUMS; an unpinned fixture "
+            "cannot be trusted -- pin it deliberately"
+        )
+    return pinned
+
+
+def load_fixture(
+    fixture_path: Path = FIXTURE_PATH, sums_path: Path | None = None
+) -> Mapping[str, object]:
+    """Load the reference fixture, verifying its pinned digest. An absent pin is
+    a HARD error, never a skipped check (the B finding)."""
+    if not fixture_path.exists():
+        raise AcceptanceError(f"acceptance fixture missing: {fixture_path}")
+    sums_path = sums_path if sums_path is not None else fixture_path.parent / "SHA256SUMS"
+    if not sums_path.exists():
+        raise AcceptanceError(f"acceptance SHA256SUMS missing: {sums_path}")
+    raw = fixture_path.read_bytes()
+    pinned = _pinned_digest(sums_path.read_text(), fixture_path.name)
     got = hashlib.sha256(raw).hexdigest()
-    if pinned and got != pinned:
+    if got != pinned:
         raise AcceptanceError(
             f"acceptance fixture digest mismatch: {got} != {pinned}. The "
             "authoritative record changed; re-pin it deliberately"
