@@ -9,8 +9,8 @@ corpus: it MUST raise. A rust-ON binary vs the same corpus MUST pass.
 
 from __future__ import annotations
 
+import shutil
 import stat
-import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -149,7 +149,7 @@ class NativeFloorToolPreflightTest(unittest.TestCase):
         import os
         import stat
         stub_dir = Path(tempfile.mkdtemp())
-        self.addCleanup(lambda: subprocess.run(["rm", "-rf", str(stub_dir)]))
+        self.addCleanup(lambda: shutil.rmtree(stub_dir, ignore_errors=True))
         rg = stub_dir / "rg"
         rg.write_text("#!/usr/bin/env bash\nexit 0\n")
         rg.chmod(rg.stat().st_mode | stat.S_IXUSR)
