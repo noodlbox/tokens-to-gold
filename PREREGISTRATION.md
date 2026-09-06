@@ -211,3 +211,26 @@ for instability in the corpus.
   new-file-dominated (unlike go34's) — their reference patches modify existing
   files but touch no resolvable symbol definition. Reported alongside so the
   proxy limit's second shape is visible.
+
+
+### Addendum — ts40 analyzer improvement observed in re-derivation, 2026-09-06
+
+The run10b drift sidecar re-derived ts40 and found the 37 gold-bearing instances
+byte-identical to the frozen anchor (37/37, 0 drifted). It additionally derived
+gold for two instances that V1 recorded as **errored**, not zero-gold:
+`effect-sse-httpapi-streaming` and `query-persist-restored-query-state` (both
+tagged `errored` in `corpora/ts40.instances.tsv`; V1's basis is 37 of 38
+non-error rows). The August binary ERRORED on their derivation; the 2.3.18
+binary derives them. This is an **analyzer improvement**, not new gold against a
+zero-gold record.
+
+How it ships (ruling 2026-09-06):
+- (a) ts40's regression numbers stay on the **frozen N=37 anchor** (R2/U2,
+  unchanged) — the anchor is not re-frozen.
+- (b) the drift report and this addendum state the two as **"errored in V1,
+  derivable now"**, with their new gold sizes (from the run10b derived report at
+  retrieval).
+- (c) **No page note.** The page's scored N stays 37 and the exclusions line
+  stays as V1 wrote it; the improvement is a harness/README fact, not a headline.
+- (d) whether a FUTURE re-freeze at N=39 is warranted is a **separate ruling
+  after the arms**, not this run.
