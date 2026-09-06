@@ -55,6 +55,7 @@ from ttg.provision import (
     write_manifest,
 )
 from ttg.regression import DEFAULT_METRICS, compare_reports, render_table
+from ttg.report import build_report_doc
 from ttg.report_io import ReportFormatError, load_report
 from ttg.rollup import rollup
 
@@ -363,6 +364,15 @@ def cmd_regress(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_report(args: argparse.Namespace) -> int:
+    """Assemble the published 4-language re-cert report in the locked claims
+    language. Cells whose arm report is not yet staged render as PENDING, so the
+    same command produces the partial table now and the full table once the
+    second lease lands."""
+    print(build_report_doc(args.reports_dir, args.gold_dir))
+    return 0
+
+
 def cmd_provision(args: argparse.Namespace) -> int:
     """Provision a corpus's checkouts and emit the PUBLIC manifest (R-P4).
 
@@ -521,6 +531,19 @@ def main(argv: list[str] | None = None) -> int:
     p_drift.add_argument("--frozen", required=True)
     p_drift.add_argument("--rederived", required=True)
     p_drift.set_defaults(func=cmd_drift)
+
+    p_report = sub.add_parser(
+        "report",
+        help="assemble the 4-language re-cert report (locked language) from the "
+        "per-cell arm reports; PENDING cells render as such",
+    )
+    p_report.add_argument(
+        "--reports-dir", required=True, help="dir holding {arm}_{corpus}.json"
+    )
+    p_report.add_argument(
+        "--gold-dir", help="dir holding frozen_gold_{corpus}.json (default: gold/)"
+    )
+    p_report.set_defaults(func=cmd_report)
 
     args = parser.parse_args(argv)
     try:
