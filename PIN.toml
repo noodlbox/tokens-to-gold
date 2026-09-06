@@ -81,7 +81,7 @@ policy_identical_through = "nbx v2.1.0"
 # ---------------------------------------------------------------------------
 
 [recert]
-status = "PENDING-RUN"
+status = "measured"
 target_release = "v2.3.18"
 # The pre-registration witness: no derive/arm number predates this commit.
 preregistration_commit = "03356635876cc510cb48a7c3b94579f7dd445aec"
@@ -94,11 +94,14 @@ url = "https://install.noodlbox.io/releases/v2.3.18/macos-arm64/nbx.tar.gz"
 sha256 = "3c24c4124e173aa28229340b1293b4356de65310ad648743c146f136da4151bf"
 
 [recert.binary]
-# Filled by the lease run from provenance_header.txt. Until then these are
-# refused, not assumed.
+# Filled from the certified lease artifacts by READING them (A4 step 8), never
+# typed: build_commit + eval_features from each lease's provenance_header.txt,
+# sha256 from bin/noodl-eval.sha256 AND recomputed from the actual carried
+# binary — every source identical across both leases (cross-lease "one binary"
+# assertion). Verified 2026-09-07.
 eval_features = "rust-analysis"
-build_commit = "PENDING-RUN"
-sha256 = "PENDING-RUN"
+build_commit = "cece1486222fe100dce0d3ec34aba9b7899e484f"
+sha256 = "bf920e4a765b0fa5a403ee95ddfbb3d3a66449d07d2286da2bce878520e30783"
 
 [recert.corpora]
 # go34/rust43 join ts40/py_nosphinx at the re-cert. N and exclusions are the
