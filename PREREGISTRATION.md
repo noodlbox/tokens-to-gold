@@ -246,6 +246,18 @@ real wire values, never a measured zero, and it is the same R5 Explorer control
 as V1 (`B5_PAGE_SKELETON_2026-08-20.md` §5, L154; stamp L156, 2026-08-26 pinned
 official binary).
 
+Code basis (engine at `cece1486`): the floor and the treatment share the
+TOKENIZER **and** the PRICING WALK, so the comparison rests on ONE code path, not
+on two implementations agreeing. `TokenCosting` holds a single
+`Arc<TokenCounter>` (`crates/noodlbox-eval/src/context/evaluator.rs:127`),
+constructed once in production (`benchmark_runner.rs:759`; the other two
+constructions are `cfg(test)`) and injected at one point (`with_token_costing`,
+`:834-839`). `evaluate_explorer` (`:1820-1825`) prices each span as its own text
+through that same counter. BOTH arms run the SAME `priced_walk` — the packet path
+at `:715` (via `priced_curves`) and the span path at `:1825` — and the engine
+comment at `:1816` states why one walk: a second walk would leave an inter-arm
+divergence unfalsifiable from the report.
+
 reach@80 is reported as TWO qualified fields: `reach_at_80_whole_list` (the
 UNCAPPED whole-list reach — the Waterfill delivery cap is a curation lever, so
 this is the floor's unbounded hunt) and `reach_at_80_within_32k` (fraction with

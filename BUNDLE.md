@@ -56,7 +56,14 @@ benchmark never does, and quotes of it must not either:
 The native_floor comparator delivers SPANS (read content), so its wire price is
 its source-text token count under the same shared tokenizer as the wire path
 (wire ≡ read for spans; B5 §5 L154). It is genuinely wire-priced — coverage@budget
-and cost-to-coverage are real values, not n/a. reach@80 is two fields:
+and cost-to-coverage are real values, not n/a. The floor and the treatment share
+the tokenizer AND the pricing walk — ONE code path, not two implementations
+agreeing (engine at `cece1486`): one `Arc<TokenCounter>`
+(`crates/noodlbox-eval/src/context/evaluator.rs:127`), one production construction
+(`benchmark_runner.rs:759`), one injection (`with_token_costing:834-839`); both
+arms run the same `priced_walk` (packet `:715`, span `evaluate_explorer:1820-1825`
+/ `:1825`); the engine comment `:1816` says why one walk — a second would leave an
+inter-arm divergence unfalsifiable from the report. reach@80 is two fields:
 `reach_at_80_whole_list` (uncapped) and `reach_at_80_within_32k` (capped at 32k
 wire); head-only@k is omitted (span vs symbol head not comparable). The V1 floor
 reference (fixture native_floor ts40/py) is from B5 §5 and the re-cert replays it
