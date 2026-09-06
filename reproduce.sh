@@ -33,6 +33,21 @@
 # build), so picking the wrong one is an error, not a silent bad number.
 set -euo pipefail
 
+# `reproduce.sh verify [<dir>]` — the clone entry point: fetch the pinned release
+# attachments (the 12 certified arm reports + the V1 pair) and sha-verify each,
+# then run the ACCEPTANCE suite against them. A fresh clone has no certified
+# tree, so this FETCHES first and FAILS LOUD if the fetch or a checksum fails —
+# it never silently skips. (The unit suite `python3 -m unittest discover -s
+# tests` needs none of this and is green on a bare clone.)
+if [ "${1:-}" = "verify" ]; then
+  PKG="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; cd "$PKG"
+  out="${2:-$PKG/runs/fetched}"
+  echo "== reproduce.sh verify: fetch-artifacts -> acceptance suite =="
+  python3 -m ttg.cli fetch-artifacts --out "$out"
+  TTG_REPORTS_DIR="$out" python3 -m unittest discover -s acceptance -p 'test_*.py' -t "$PKG"
+  exit $?
+fi
+
 ARMS="default"; CORPORA="ts40,py_nosphinx"; BINARY=""; CORPUS_DIR=""
 STORE=""; OUTDIR="./out"; REDERIVE=0; SCORE_ONLY=0; REPORT_DIR=""
 ARM="shipped_treatment"

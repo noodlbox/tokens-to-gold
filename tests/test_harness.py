@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import unittest
 from pathlib import Path
 
@@ -24,167 +23,37 @@ from ttg.own_repo import (
     OWN_REPO_ARMS, OwnRepoError, build_instance, own_repo_flags,
 )
 from ttg.comparable_path import ComparablePath, PathComparison, compare_paths
-from ttg.curve_recompute import curve_parity_findings, recompute_wire_curve
+from ttg.curve_recompute import recompute_wire_curve
 from ttg.gold_freezer import build_gold_map
 from ttg.matcher import match_gold, split_identity
 from ttg.report_io import (
-    ReportFormatError, gold_bearing_rows, load_report, loads_report, result_rows,
-    wire_curve,
+    ReportFormatError, loads_report, result_rows,
 )
 from ttg.acceptance import (
-    FIXTURE_PATH, LOCKED_METRICS, NOISE_FLOOR_PP, REPLAY_TOL, AcceptanceError,
-    _pinned_digest, check_report_file, load_fixture, load_frozen_gold,
+    FIXTURE_PATH, NOISE_FLOOR_PP, REPLAY_TOL, AcceptanceError,
+    _pinned_digest, load_fixture, load_frozen_gold,
 )
 from ttg.pins import gold_pin_mismatches, load_pins
-from ttg.rollup import Basis, rollup
 from ttg.tier1 import CLAIM_FIELDS, compare_frozen_gold
 
 HERE = Path(__file__).resolve().parent
 PKG = HERE.parent
 
-# Reports are NOT in the repo — they are large derivation/arm artifacts that
-# live in object storage (see PIN.toml [artifacts]). Point the suite at a
-# local directory with TTG_REPORTS_DIR; the expected filenames are exactly
-# what `arms/run_matrix.sh` emits, so the harness's own output feeds its own
-# acceptance gate. Absent reports SKIP rather than fail, so a fresh clone is
-# green without them.
-REPORTS = Path(os.environ.get("TTG_REPORTS_DIR", PKG / "reports"))
-
-
-def _cell_report(arm: str, corpus: str) -> Path:
-    return REPORTS / f"{arm}_{corpus}.json"
-
-# Q3 RULING: rel2-measurer owns these. The harness REPRODUCES them; it does
-# not self-certify and must not independently re-derive them.
-# ONE AUTHORITY: expectations come from the measurer fixture, never a second
-# hand-copied table (a copy is a duality waiting to drift).
-_FIXTURE = load_fixture()
-MEASURER = {
-    corpus: {
-        "gold_at_8k": arms["shipped_treatment"]["gold_at_8k_wire"],
-        "reach_at_80_whole_list": arms["shipped_treatment"]["reach_at_80_whole_list"],
-        "n": arms["shipped_treatment"]["n"],
-    }
-    for corpus, arms in _FIXTURE["arms"].items()
-}
-ACCEPTANCE_CELLS = tuple(
-    (corpus, _cell_report(arm, corpus), arm)
-    for arm in ("shipped_treatment", "levers_off_ablation")
-    for corpus in ("ts40", "py_nosphinx")
-)
-
-
-def _acceptance_available() -> bool:
-    return all(path.exists() for _, path, _ in ACCEPTANCE_CELLS)
-CORPUS_REPORT = {c: f"shipped_treatment_{c}.json" for c in ("ts40", "py_nosphinx")}
+# The report-dependent tests (T1 basis, the curve-parity + real-capture +
+# acceptance-cell checks, and the full certified-surface privacy scan) live in
+# the ACCEPTANCE suite (`acceptance/test_certified.py`, run by `reproduce.sh
+# verify`). This file is the clone-green UNIT suite: nothing here needs the
+# certified reports.
 
 # The private corpus name, as data — so the scan below can forbid it without
 # every other module having to spell it.
 PRIVATE_CORPUS = _privacy.PRIVATE_CORPUS
 
 
-# The KNOWN, DISCLOSED engine-vs-frozen drift: instances the 2.3.18 engine
-# derives gold for that the frozen V1 basis lacks. Binding stays on the frozen-37
-# anchor (scoring against re-derived gold is the own-gold inflation the protocol
-# forbids); these are excluded from the published basis until the next re-freeze.
-# Source: harness commit 47d29d7 (ts40 addendum — 2 V1-errored instances now
-# derive) + the drift sidecar (37/37, exactly two only-in-re-derived).
-KNOWN_DRIFT: dict[str, set[str]] = {
-    "ts40": {"effect-sse-httpapi-streaming", "query-persist-restored-query-state"},
-    "py_nosphinx": set(),
-}
-
-
 def _naive_normalize(key: str) -> str:
     """NEGATIVE CONTROL: the light normalize B3 replaced (strip + leading ./)."""
     s = key.strip()
     return s[2:] if s.startswith("./") else s
-
-
-def _reports_available() -> bool:
-    return all((REPORTS / n).exists() for n in CORPUS_REPORT.values())
-
-
-class T1InstanceBasis(unittest.TestCase):
-    """The gold-bearing basis is BINDING; the engine's all-rows basis is not."""
-
-    @unittest.skipUnless(_reports_available(), "official reports not staged")
-    def test_binding_basis_reproduces_measurer(self) -> None:
-        for corpus, want in MEASURER.items():
-            with self.subTest(corpus=corpus):
-                gold = load_frozen_gold(corpus)
-                roll = rollup(
-                    load_report(REPORTS / CORPUS_REPORT[corpus]),
-                    frozen_instance_ids=list(gold),
-                )
-                self.assertIs(roll.binding.basis, Basis.FROZEN_GOLD)
-                self.assertTrue(roll.binding.basis.is_binding)
-                self.assertEqual(roll.binding.n, want["n"])
-                self.assertAlmostEqual(roll.binding.gold_at_budget[8000], want["gold_at_8k"], places=4)
-                self.assertAlmostEqual(roll.binding.reach_at_coverage[80], want["reach_at_80_whole_list"], places=4)
-
-    @unittest.skipUnless(_reports_available(), "official reports not staged")
-    def test_negative_control_all_rows_basis_misses_measurer(self) -> None:
-        """NEGATIVE CONTROL: the engine's own rollup basis lands on the WRONG
-        number. This is the failure a green-looking harness would ship."""
-        for corpus, want in MEASURER.items():
-            with self.subTest(corpus=corpus):
-                roll = rollup(
-                    load_report(REPORTS / CORPUS_REPORT[corpus]),
-                    frozen_instance_ids=list(load_frozen_gold(corpus)),
-                )
-                self.assertGreater(roll.engine_basis.n, roll.binding.n)
-                self.assertNotAlmostEqual(
-                    roll.engine_basis.gold_at_budget[8000], want["gold_at_8k"], places=4
-                )
-                self.assertNotAlmostEqual(
-                    roll.engine_basis.reach_at_coverage[80], want["reach_at_80_whole_list"], places=4
-                )
-
-    @unittest.skipUnless(_reports_available(), "official reports not staged")
-    def test_difference_is_exactly_the_known_addendum_drift(self) -> None:
-        """The engine basis exceeds the frozen basis by EXACTLY the pre-registered
-        addendum drift — not merely 'engine >= binding'. Both directions bite: a
-        THIRD only-in-engine gold instance, or EITHER of the two missing, is a
-        STOP. The Gold@8k numerator delta must equal exactly those instances'
-        wire contribution."""
-        for corpus in MEASURER:
-            with self.subTest(corpus=corpus):
-                report = load_report(REPORTS / CORPUS_REPORT[corpus])
-                frozen = load_frozen_gold(corpus)
-                roll = rollup(report, frozen_instance_ids=list(frozen))
-                # The drift set: gold-bearing engine rows absent from the frozen
-                # basis. Must be EXACTLY the pre-registered addendum ids.
-                drift = {r.get("instance_id") for r in gold_bearing_rows(report)} - set(frozen)
-                self.assertEqual(
-                    drift, KNOWN_DRIFT[corpus],
-                    f"{corpus}: engine-vs-frozen drift != the pre-registered addendum",
-                )
-                # The Gold@8k numerator delta must equal EXACTLY the drift rows'
-                # wire contribution (zero when the drift set is empty).
-                rows = {r.get("instance_id"): r for r in result_rows(report)}
-                drift_contrib = sum(
-                    float((wire_curve(rows[iid]).get("by_budget") or {}).get("8000", 0.0) or 0.0)
-                    for iid in drift
-                )
-                delta = (
-                    roll.engine_basis.gold_at_budget[8000] * roll.engine_basis.n
-                    - roll.binding.gold_at_budget[8000] * roll.binding.n
-                )
-                self.assertAlmostEqual(
-                    delta, drift_contrib, places=6,
-                    msg=f"{corpus}: numerator delta != the drift rows' contribution",
-                )
-
-    @unittest.skipUnless(_reports_available(), "official reports not staged")
-    def test_render_labels_both_bases(self) -> None:
-        text = rollup(
-            load_report(REPORTS / CORPUS_REPORT["ts40"]),
-            frozen_instance_ids=list(load_frozen_gold("ts40")),
-        ).render("ts40")
-        self.assertIn("BINDING", text)
-        self.assertIn("NOT binding", text)
-        self.assertIn("EXPECTED, not a discrepancy", text)
 
 
 class T2ComparablePath(unittest.TestCase):
@@ -406,13 +275,6 @@ class T5CurveRecompute(unittest.TestCase):
         self.assertEqual(naive.tokens_to_coverage[50], 300)
         self.assertNotEqual(faithful.by_budget[200], naive.by_budget[200])
 
-    @unittest.skipUnless(_reports_available(), "official reports not staged")
-    def test_g2_parity_on_both_public_corpora(self) -> None:
-        for corpus, name in CORPUS_REPORT.items():
-            with self.subTest(corpus=corpus):
-                self.assertEqual(curve_parity_findings(load_report(REPORTS / name)), [])
-
-
 class T8PinConsistency(unittest.TestCase):
     """Every digest in PIN.toml must equal the real file. Hand-typed digests
     are exactly the error class this gate exists to make unshippable."""
@@ -492,45 +354,36 @@ class T8PinConsistency(unittest.TestCase):
 
 
 class T6Privacy(unittest.TestCase):
-    """The held-out corpus appears nowhere on the PUBLISHED surface.
+    """The held-out corpus appears nowhere the clone can see: the TRACKED files
+    and the GIT HISTORY (commit messages ride in every clone). The FULL surface
+    scan (tracked + the certified artifact tree, which REQUIRES the certified
+    tree) is the acceptance suite's T6CertifiedSurfaceScan.
 
-    The surface is three things and all three ship: the TRACKED files (what a
-    clone gets), the CERTIFIED artifact tree (published as release attachments,
-    per PIN.toml), and the GIT HISTORY (commit messages ride in every clone).
-    Every file is scanned as TEXT -- .json INCLUDED, because the gold payloads,
-    the acceptance fixture, and the certified reports are all JSON and the
-    earlier scan skipped every .json, leaving the hole exactly where the gold
-    lives (measured: 3 tracked .json existed, 0 were scanned). The check is the
-    contiguous-token detector `ttg.privacy.contains_private`, so a fragment-
-    built holder (`ttg.privacy` itself) is safe by construction and needs no
-    self-exclusion. Scope is the published surface, NOT `rglob('*')`: untracked
-    scratch and non-certified run intermediates never ship, so scanning them
-    would raise false leaks while missing the history that does ship."""
+    Every file is scanned as TEXT -- .json INCLUDED, because the gold payloads
+    and the acceptance fixture are JSON and the earlier scan skipped every .json,
+    leaving the hole exactly where the gold lives. The check is the contiguous-
+    token detector `ttg.privacy.contains_private`, so a fragment-built holder
+    (`ttg.privacy` itself) is safe by construction. Scope is `git ls-files`, NOT
+    `rglob('*')`: untracked scratch never ships, so scanning it would raise false
+    leaks."""
 
-    CERTIFIED = PKG / "runs" / "recert-2026-09" / "certified"
-
-    @classmethod
-    def _published_files(cls) -> tuple[list[Path], bool]:
-        """The published surface AND whether the certified tree was present.
-
-        Returns the flag so the caller can REPORT it (fold F): the earlier
-        `if certified.is_dir()` silently shrank the surface (73/17 -> 55/3) when
-        the certified tree was absent, passing a smaller scan as if complete."""
+    @staticmethod
+    def _tracked_files() -> list[Path]:
+        """The TRACKED surface -- what a clone gets (git ls-files), clone-safe by
+        construction. The FULL surface scan (tracked + the certified tree, which
+        REQUIRES the certified tree) is the acceptance suite's
+        T6CertifiedSurfaceScan."""
         import subprocess
 
         tracked = subprocess.run(
             ["git", "ls-files", "-z"],
             cwd=PKG, capture_output=True, text=True, check=True,
         ).stdout.split("\0")
-        files = {PKG / p for p in tracked if p}
-        cert_present = cls.CERTIFIED.is_dir()
-        if cert_present:
-            # The certified tree ships as release attachments (PIN.toml).
-            files.update(cls.CERTIFIED.rglob("*"))
-        surface = sorted(
-            f for f in files if f.is_file() and "__pycache__" not in f.parts
+        return sorted(
+            PKG / p
+            for p in tracked
+            if p and (PKG / p).is_file() and "__pycache__" not in (PKG / p).parts
         )
-        return surface, cert_present
 
     @staticmethod
     def _scan(files: list[Path]) -> list[str]:
@@ -542,42 +395,21 @@ class T6Privacy(unittest.TestCase):
             if _privacy.contains_private(p.read_text(errors="ignore"))
         ]
 
-    def test_no_private_corpus_on_published_surface(self) -> None:
-        surface, cert_present = self._published_files()
-        json_count = sum(1 for f in surface if f.suffix.lower() == ".json")
-        # REPORT the scope with the environment (fold F) — never a silent scan.
-        print(
-            f"\nT6 surface: {len(surface)} files, {json_count} .json, "
-            f"certified_tree_present={cert_present}"
-        )
-        # NEVER no-op on a missing certified dir: the certified artifacts are part
-        # of the published surface, so their absence FAILS LOUD rather than
-        # shrinking the scan silently. (A5 moves this scan to the fetch-first
-        # acceptance suite so a clone fetches, then scans, rather than skipping.)
-        self.assertTrue(
-            cert_present,
-            "certified tree absent — the published surface would silently shrink "
-            "(73/17 -> 55/3); run reproduce.sh verify (fetch-artifacts). This "
-            "scan does not no-op.",
-        )
-        offenders = self._scan(surface)
+    def test_no_private_corpus_on_tracked_surface(self) -> None:
+        tracked = self._tracked_files()
+        json_count = sum(1 for f in tracked if f.suffix.lower() == ".json")
+        print(f"\nT6 tracked surface: {len(tracked)} files, {json_count} .json")
+        offenders = self._scan(tracked)
         self.assertEqual(offenders, [], f"private corpus leaked into: {offenders}")
 
-    def test_surface_includes_json_and_certified_when_present(self) -> None:
-        # Fold H: a surface-side invariant, so a bug in _published_files (which
-        # Finding C was) cannot leave the .json/certified plant test green while
-        # the real scan misses those files.
-        surface, cert_present = self._published_files()
+    def test_tracked_surface_includes_json(self) -> None:
+        # A bug in _tracked_files that dropped .json (Finding C's class) would
+        # leave the direct _scan([leak]) plant green; assert the surface has .json.
         self.assertGreaterEqual(
-            sum(1 for f in surface if f.suffix.lower() == ".json"),
+            sum(1 for f in self._tracked_files() if f.suffix.lower() == ".json"),
             1,
-            "published surface has no .json — the scan would miss gold/fixture JSON",
+            "tracked surface has no .json — the scan would miss gold/fixture JSON",
         )
-        if cert_present:
-            self.assertTrue(
-                any(self.CERTIFIED in f.parents for f in surface),
-                "certified tree present but absent from the scanned surface",
-            )
 
     def test_git_history_carries_no_private_corpus(self) -> None:
         import subprocess
@@ -642,30 +474,8 @@ class T7ReportIO(unittest.TestCase):
         with self.assertRaises(ReportFormatError):
             loads_report("just log output\nno document here\n")
 
-    @unittest.skipUnless(_reports_available(), "official reports not staged")
-    def test_real_captures_load(self) -> None:
-        for corpus, name in CORPUS_REPORT.items():
-            with self.subTest(corpus=corpus):
-                report = load_report(REPORTS / name)
-                self.assertGreater(len(result_rows(report)), 0)
-                self.assertGreater(len(list(gold_bearing_rows(report))), 0)
-
-
 class T9Acceptance(unittest.TestCase):
     """B3 ACCEPTANCE: land EXACTLY on the measurer V1 reference numbers."""
-
-    @unittest.skipUnless(_acceptance_available(), "acceptance reports not staged")
-    def test_all_cells_exact_on_replay(self) -> None:
-        for corpus, path, arm in ACCEPTANCE_CELLS:
-            with self.subTest(arm=arm, corpus=corpus):
-                checks = check_report_file(path, corpus, arm)
-                self.assertEqual(len(checks), len(LOCKED_METRICS) + 1)
-                for check in checks:
-                    self.assertTrue(
-                        check.ok,
-                        f"{arm}/{corpus}/{check.metric}: harness={check.got:.6f} "
-                        f"reference={check.expected:.6f} ({check.delta_pp:+.3f}pp)",
-                    )
 
     def test_replay_tolerance_is_four_decimals(self) -> None:
         self.assertAlmostEqual(REPLAY_TOL, 0.00005, places=9)
@@ -715,17 +525,6 @@ class T9Acceptance(unittest.TestCase):
         with self.assertRaises(AcceptanceError):
             _pinned_digest("abc123  other.json\n", FIXTURE_PATH.name)
         self.assertEqual(_pinned_digest("abc123  wanted.json\n", "wanted.json"), "abc123")
-
-    @unittest.skipUnless(_acceptance_available(), "acceptance reports not staged")
-    def test_negative_control_wrong_arm_fixture_mismatches(self) -> None:
-        """NEGATIVE CONTROL: scoring the ablation report against the shipped
-        arm's reference numbers must FAIL — otherwise the gate is not reading
-        the arm at all."""
-        checks = check_report_file(
-            _cell_report("levers_off_ablation", "ts40"), "ts40", "shipped_treatment"
-        )
-        self.assertTrue(any(not c.ok for c in checks))
-
 
 class T10MustNot(unittest.TestCase):
     """The five measurer MUST-NOTs, each made structurally unrepresentable."""
@@ -778,16 +577,6 @@ class T10MustNot(unittest.TestCase):
         from ttg.acceptance import SUPERIORITY_CLAIMABLE
         self.assertIs(SUPERIORITY_CLAIMABLE[("py_nosphinx", "head_only_at_10")], False)
         self.assertIs(SUPERIORITY_CLAIMABLE[("py_nosphinx", "head_only_at_25")], True)
-
-    @unittest.skipUnless(_acceptance_available(), "acceptance reports not staged")
-    def test_5b_reporter_annotates_the_unclaimable_metric(self) -> None:
-        checks = check_report_file(
-            _cell_report("shipped_treatment", "py_nosphinx"),
-            "py_nosphinx", "shipped_treatment",
-        )
-        at10 = next(c for c in checks if c.metric == "head_only_at_10")
-        self.assertIn("NOT superiority-claimable", at10.note)
-
 
 class T0Identity(unittest.TestCase):
     """Identity splitting: names may contain `::`, paths may not contain `:`."""
