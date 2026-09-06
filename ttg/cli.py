@@ -332,6 +332,45 @@ def cmd_fetch_artifacts(args: argparse.Namespace) -> int:
     return 0
 
 
+def _history_offenders(log_text: str) -> list[str]:
+    """The abbreviated shas of commits whose message names the held-out corpus.
+    `log_text` is `git log --format=%H\\x1f%B\\x1e` — sha, unit-sep, body,
+    record-sep — so a multi-line body is one record and a body containing the
+    field/record separators (control chars, never in a message) cannot split."""
+    offenders: list[str] = []
+    for record in log_text.split("\x1e"):
+        record = record.lstrip("\n")
+        if not record:
+            continue
+        sha, _, body = record.partition("\x1f")
+        if contains_private(body):
+            offenders.append(sha.strip()[:12])
+    return offenders
+
+
+def cmd_scan_history(args: argparse.Namespace) -> int:
+    """R18b: scan EVERY commit message in history for the held-out corpus name —
+    the mechanical enforcement of the "not named in any public artifact" claim
+    ACROSS history, beyond the commit-msg hook (which only guards new commits).
+    Reports the resolved MODE; REFUSES (exit 1) on any hit, naming the commits."""
+    log = subprocess.run(
+        ["git", "log", "--format=%H%x1f%B%x1e"],
+        cwd=PKG, capture_output=True, text=True, check=True,
+    ).stdout
+    print(f"scan-history: token resolved via {mode()} mode")
+    offenders = _history_offenders(log)
+    total = sum(1 for record in log.split("\x1e") if record.strip())
+    if offenders:
+        print(
+            f"REFUSED: {len(offenders)} commit(s) name the held-out corpus: "
+            f"{', '.join(offenders)}",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"scan-history: {total} commit(s) clean")
+    return 0
+
+
 def cmd_scan_binary(args: argparse.Namespace) -> int:
     """Release gate (R15/R17): scan a compiled artifact (the eval binary) for the
     held-out corpus name and REFUSE to ship it on a hit. The eval binary once
@@ -610,6 +649,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_sb.add_argument("--path", required=True, help="binary/artifact to scan")
     p_sb.set_defaults(func=cmd_scan_binary)
+
+    p_sh = sub.add_parser(
+        "scan-history",
+        help="refuse if any commit message in history names the held-out corpus "
+        "(R18b; the history-wide enforcement of the not-named claim)",
+    )
+    p_sh.set_defaults(func=cmd_scan_history)
 
     p_zg = sub.add_parser(
         "zero-gold", help="R-P5 zero-gold NO-GO alarm for a derived tier"

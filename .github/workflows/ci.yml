@@ -28,6 +28,8 @@ jobs:
         run: ruff check ttg/ tests/ acceptance/ arms/
       - name: unit suite
         run: python3 -m unittest discover -s tests
+      - name: privacy history scan (R18b)
+        run: python3 -m ttg.cli scan-history
 
   acceptance:
     # The acceptance suite: fetch the pinned release attachments (the 12
