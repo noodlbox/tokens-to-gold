@@ -22,6 +22,7 @@ from pathlib import Path
 
 from arms.arm_matrix import CORPORA, DEFAULT_ARMS, SWEEP_ARMS, ArmError, flags_for
 from ttg.acceptance import (
+    check_against_baseline,
     check_report_file,
     load_fixture,
     load_frozen_gold,
@@ -320,6 +321,21 @@ def cmd_drift(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_accept_vs(args: argparse.Namespace) -> int:
+    """Witness a re-run reproduces a certified BASELINE report to 4dp, using the
+    SAME predicate and renderer as `accept` (DO reversal 2026-09-06).
+
+    The re-cert re-runs the four certified ts40/py treatment cells on the new
+    binary to prove the explorer refactor did not move them. A metric that
+    differs beyond REPLAY_TOL is a real change -> non-zero exit
+    (STOP-ON-SURPRISE), never a silent re-certification."""
+    checks = check_against_baseline(
+        load_report(args.report), load_report(args.baseline), args.corpus
+    )
+    print(render_checks(args.corpus, args.arm, checks))
+    return 0 if all(check.ok for check in checks) else 1
+
+
 def cmd_validate_pins(args: argparse.Namespace) -> int:
     """A4 gate: refuse a half-filled re-cert PIN before any number is trusted.
 
@@ -450,6 +466,15 @@ def main(argv: list[str] | None = None) -> int:
     p_reg.add_argument("--corpus", choices=sorted(CORPORA),
                        help="restrict pairing to this corpus's frozen-gold basis")
     p_reg.set_defaults(func=cmd_regress)
+
+    p_av = sub.add_parser(
+        "accept-vs", help="witness a re-run report reproduces a baseline to 4dp"
+    )
+    p_av.add_argument("--report", required=True, help="freshly re-run report")
+    p_av.add_argument("--baseline", required=True, help="the certified baseline")
+    p_av.add_argument("--corpus", required=True, choices=sorted(CORPORA))
+    p_av.add_argument("--arm", required=True)
+    p_av.set_defaults(func=cmd_accept_vs)
 
     p_vp = sub.add_parser(
         "validate-pins", help="A4: refuse a half-filled re-cert PIN (PENDING-RUN)"

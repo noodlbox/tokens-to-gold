@@ -184,7 +184,26 @@ def check_arm(
             f"{', '.join(sorted(k for k in corpus_arms))}"
         )
 
-    got = score_arm(report, corpus)
+    return compare_metrics(
+        score_arm(report, corpus), expected, corpus=corpus, replay=replay
+    )
+
+
+def compare_metrics(
+    got: ArmMetrics,
+    expected: Mapping[str, object],
+    *,
+    corpus: str,
+    replay: bool = True,
+) -> list[MetricCheck]:
+    """The ONE comparison predicate + renderer input for a cell's metrics.
+
+    `replay=True` demands EXACT-to-4dp via `abs(mine - want) < REPLAY_TOL` (the
+    same tolerance `accept` uses -- never a second round()-equality that could
+    disagree at a rounding boundary). `replay=False` is the fresh-rederive path
+    (movement within NOISE_FLOOR_PP). `expected` is a metric->value mapping,
+    from the pinned fixture (check_arm) or a baseline report's own ArmMetrics
+    (check_against_baseline)."""
     checks: list[MetricCheck] = []
     expected_n = expected.get("n")
     if isinstance(expected_n, int):
@@ -206,6 +225,19 @@ def check_arm(
             note = (note + "; " if note else "") + "NOT superiority-claimable (p=0.125)"
         checks.append(MetricCheck(metric, mine, float(want), ok, note))
     return checks
+
+
+def check_against_baseline(
+    report: Mapping[str, object],
+    baseline: Mapping[str, object],
+    corpus: str,
+) -> list[MetricCheck]:
+    """Witness a re-run `report` reproduces a certified `baseline` report's
+    metrics EXACTLY to 4dp, using the same predicate/renderer as `accept`. The
+    baseline's own scored ArmMetrics (plus its n) is the expected set."""
+    base = score_arm(baseline, corpus)
+    expected = {**base.as_dict(), "n": base.n}
+    return compare_metrics(score_arm(report, corpus), expected, corpus=corpus, replay=True)
 
 
 def render_checks(corpus: str, arm: str, checks: Sequence[MetricCheck]) -> str:
