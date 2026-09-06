@@ -55,6 +55,29 @@ def _gold_present(corpus: str) -> bool:
     return (PKG / "gold" / f"frozen_gold_{corpus}.json").is_file()
 
 
+# Parity checks are counted BY REPORT ROW (rows-with-gold x 2 k), NOT by the
+# gold-bearing reach basis. On ts40 the two differ: 39 report-gold rows (78
+# checks) vs n=37 reach instances — the 2 extra are the 47d29d7 addendum rows
+# (V1-errored instances that now derive), report rows but not reach instances.
+EXPECTED_PARITY = {"ts40": 78, "py_nosphinx": 78, "go34": 60, "rust43": 80}
+GOLD_BEARING_N = {"ts40": 37, "py_nosphinx": 39, "go34": 30, "rust43": 40}
+
+
+def _require(test: unittest.TestCase, corpus: str) -> Path:
+    """The certified native_floor report path, or a LOUD failure naming the
+    fetch. Fold F: no skip-if-absent — a green run is never a silently-empty
+    one; an absent artifact fails, it does not vanish."""
+    path = FLOOR_REPORTS[corpus]
+    if not path.is_file():
+        test.fail(
+            f"required certified native_floor report absent: "
+            f"{path.relative_to(PKG)} — run reproduce.sh verify (fetch-artifacts)"
+        )
+    if not _gold_present(corpus):
+        test.fail(f"required frozen gold absent: gold/frozen_gold_{corpus}.json")
+    return path
+
+
 class SpanMatcherUnitTest(unittest.TestCase):
     """Must-red (a): the matcher, from RAW strings, with permanent controls."""
 
@@ -120,13 +143,10 @@ class SpanMatcherUnitTest(unittest.TestCase):
 class SpanParityTest(unittest.TestCase):
     """Must-red (b): PER-ROW, PER-K parity of the production span matcher against
     the engine's own `symbol_recall_by_k`, recomputed independently from the row
-    primitives. Skips only when the certified report is not staged."""
+    primitives. A missing certified report FAILS LOUD (fold F), never skips."""
 
     def _assert_parity(self, corpus: str) -> None:
-        path = FLOOR_REPORTS[corpus]
-        if not path.is_file():
-            self.skipTest(f"certified native_floor report not staged: {path}")
-        rows = result_rows(load_report(path))
+        rows = result_rows(load_report(_require(self, corpus)))
         checked = 0
         for row in rows:
             gold_keys = [str(s) for s in (row.get("gold_symbols") or [])]
@@ -151,8 +171,17 @@ class SpanParityTest(unittest.TestCase):
                     f"harness {mine:.6f} != engine {eng}",
                 )
                 checked += 1
-        # NON-VACUITY (trap 3): the loop actually made checks.
+        # NON-VACUITY (trap 3) + G: the count is BY REPORT ROW, stated exactly,
+        # with the gold-bearing reach n named beside it so the two are never
+        # conflated.
         self.assertGreater(checked, 0, f"{corpus}: no (row, k) parity checks ran")
+        self.assertEqual(
+            checked,
+            EXPECTED_PARITY[corpus],
+            f"{corpus}: parity checks by report row = {checked}, expected "
+            f"{EXPECTED_PARITY[corpus]} (reach n = {GOLD_BEARING_N[corpus]}, "
+            "gold-bearing basis)",
+        )
 
     def test_parity_go34(self) -> None:
         self._assert_parity("go34")
@@ -173,24 +202,19 @@ class FloorCellNonZeroTest(unittest.TestCase):
     back to `match_gold` and the whole floor cell collapses to 0.0)."""
 
     def test_go34_native_floor_cell_is_non_zero(self) -> None:
-        path = FLOOR_REPORTS["go34"]
-        if not (path.is_file() and _gold_present("go34")):
-            self.skipTest("go34 native_floor report or frozen gold not staged")
-        metrics = score_arm(load_report(path), "go34")
+        metrics = score_arm(load_report(_require(self, "go34")), "go34")
         self.assertGreater(metrics.reach_at_80_whole_list, 0.0)
         self.assertGreater(metrics.whole_list_INTERNAL, 0.0)
 
-    def test_all_staged_floor_cells_are_non_zero(self) -> None:
-        checked = 0
-        for corpus, path in FLOOR_REPORTS.items():
-            if not (path.is_file() and _gold_present(corpus)):
-                continue
-            metrics = score_arm(load_report(path), corpus)
-            self.assertGreater(
-                metrics.whole_list_INTERNAL, 0.0, f"{corpus} floor collapsed to 0"
-            )
-            checked += 1
-        self.assertGreater(checked, 0, "no floor cells staged to check")
+    def test_all_floor_cells_are_non_zero(self) -> None:
+        # Fold F: require ALL FOUR cells (no silent per-cell scope reduction) —
+        # each absent one fails loud via _require.
+        for corpus in FLOOR_REPORTS:
+            with self.subTest(corpus=corpus):
+                metrics = score_arm(load_report(_require(self, corpus)), corpus)
+                self.assertGreater(
+                    metrics.whole_list_INTERNAL, 0.0, f"{corpus} floor collapsed to 0"
+                )
 
 
 if __name__ == "__main__":

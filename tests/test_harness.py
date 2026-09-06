@@ -477,8 +477,15 @@ class T6Privacy(unittest.TestCase):
     scratch and non-certified run intermediates never ship, so scanning them
     would raise false leaks while missing the history that does ship."""
 
-    @staticmethod
-    def _published_files() -> list[Path]:
+    CERTIFIED = PKG / "runs" / "recert-2026-09" / "certified"
+
+    @classmethod
+    def _published_files(cls) -> tuple[list[Path], bool]:
+        """The published surface AND whether the certified tree was present.
+
+        Returns the flag so the caller can REPORT it (fold F): the earlier
+        `if certified.is_dir()` silently shrank the surface (73/17 -> 55/3) when
+        the certified tree was absent, passing a smaller scan as if complete."""
         import subprocess
 
         tracked = subprocess.run(
@@ -486,13 +493,14 @@ class T6Privacy(unittest.TestCase):
             cwd=PKG, capture_output=True, text=True, check=True,
         ).stdout.split("\0")
         files = {PKG / p for p in tracked if p}
-        # The certified tree ships as release attachments (PIN.toml [artifacts]).
-        certified = PKG / "runs" / "recert-2026-09" / "certified"
-        if certified.is_dir():
-            files.update(certified.rglob("*"))
-        return sorted(
+        cert_present = cls.CERTIFIED.is_dir()
+        if cert_present:
+            # The certified tree ships as release attachments (PIN.toml).
+            files.update(cls.CERTIFIED.rglob("*"))
+        surface = sorted(
             f for f in files if f.is_file() and "__pycache__" not in f.parts
         )
+        return surface, cert_present
 
     @staticmethod
     def _scan(files: list[Path]) -> list[str]:
@@ -505,8 +513,41 @@ class T6Privacy(unittest.TestCase):
         ]
 
     def test_no_private_corpus_on_published_surface(self) -> None:
-        offenders = self._scan(self._published_files())
+        surface, cert_present = self._published_files()
+        json_count = sum(1 for f in surface if f.suffix.lower() == ".json")
+        # REPORT the scope with the environment (fold F) — never a silent scan.
+        print(
+            f"\nT6 surface: {len(surface)} files, {json_count} .json, "
+            f"certified_tree_present={cert_present}"
+        )
+        # NEVER no-op on a missing certified dir: the certified artifacts are part
+        # of the published surface, so their absence FAILS LOUD rather than
+        # shrinking the scan silently. (A5 moves this scan to the fetch-first
+        # acceptance suite so a clone fetches, then scans, rather than skipping.)
+        self.assertTrue(
+            cert_present,
+            "certified tree absent — the published surface would silently shrink "
+            "(73/17 -> 55/3); run reproduce.sh verify (fetch-artifacts). This "
+            "scan does not no-op.",
+        )
+        offenders = self._scan(surface)
         self.assertEqual(offenders, [], f"private corpus leaked into: {offenders}")
+
+    def test_surface_includes_json_and_certified_when_present(self) -> None:
+        # Fold H: a surface-side invariant, so a bug in _published_files (which
+        # Finding C was) cannot leave the .json/certified plant test green while
+        # the real scan misses those files.
+        surface, cert_present = self._published_files()
+        self.assertGreaterEqual(
+            sum(1 for f in surface if f.suffix.lower() == ".json"),
+            1,
+            "published surface has no .json — the scan would miss gold/fixture JSON",
+        )
+        if cert_present:
+            self.assertTrue(
+                any(self.CERTIFIED in f.parents for f in surface),
+                "certified tree present but absent from the scanned surface",
+            )
 
     def test_git_history_carries_no_private_corpus(self) -> None:
         import subprocess
