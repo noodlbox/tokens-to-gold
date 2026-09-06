@@ -16,6 +16,7 @@ import io
 import itertools
 import hashlib
 import json
+import subprocess
 import sys
 from collections.abc import Mapping
 from pathlib import Path
@@ -37,7 +38,7 @@ from ttg.derive_checks import (
     zero_gold_check,
 )
 from ttg.own_repo import OWN_REPO_ARMS, OwnRepoError, fetch_pr, own_repo_flags
-from ttg.pins import PinError, load_pins, validate_recert
+from ttg.pins import PinError, artifact_targets, load_pins, validate_recert
 from ttg.preflight import (
     MissingToolError,
     PreU1BinaryError,
@@ -273,6 +274,61 @@ def cmd_scrub_artifacts(args: argparse.Namespace) -> int:
         print(f"  scrubbed: {path}")
         changed += 1
     print(f"scrub-artifacts: {changed} file(s) redacted under {args.dir}")
+    return 0
+
+
+def _verify_artifact(dest: Path, want_sha: str) -> str | None:
+    """None if the downloaded file matches its pin; else a mismatch description."""
+    if not dest.is_file():
+        return f"{dest.name}: not present after download"
+    got = hashlib.sha256(dest.read_bytes()).hexdigest()
+    if got != want_sha:
+        return f"{dest.name}: sha {got[:12]} != pin {want_sha[:12]}"
+    return None
+
+
+def cmd_fetch_artifacts(args: argparse.Namespace) -> int:
+    """Download the pinned release attachments named in PIN.toml and sha-verify
+    each against its pin; REFUSE on any mismatch. This is what makes a fresh
+    clone runnable (`reproduce.sh verify`) before the acceptance suite; a fresh
+    clone has no certified tree, so the reports + the V1 derivation pair are
+    fetched from the release. `--verify-only` re-checks already-present files
+    without the network (the offline test path)."""
+    doc = load_pins()
+    repo = doc.get("repo", {})
+    repo_name = repo.get("name") if isinstance(repo, Mapping) else None
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    targets = artifact_targets(doc)
+    if not targets:
+        print("fetch-artifacts: no pinned attachments in PIN.toml", file=sys.stderr)
+        return 2
+    problems: list[str] = []
+    for target in targets:
+        dest = out / target.name
+        if not args.verify_only:
+            result = subprocess.run(
+                ["gh", "release", "download", target.release_tag, "--repo",
+                 str(repo_name), "--pattern", target.name, "--dir", str(out),
+                 "--clobber"],
+                capture_output=True, text=True,
+            )
+            if result.returncode != 0:
+                problems.append(f"{target.name}: gh download failed: {result.stderr.strip()}")
+                continue
+        problem = _verify_artifact(dest, target.sha256)
+        if problem is not None:
+            problems.append(problem)
+    if problems:
+        for problem in problems:
+            print(f"REFUSED: {problem}", file=sys.stderr)
+        print(
+            f"fetch-artifacts: {len(problems)}/{len(targets)} attachment(s) failed "
+            "— refusing (run `reproduce.sh verify` to fetch + check).",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"fetch-artifacts: {len(targets)} attachment(s) verified into {out}")
     return 0
 
 
@@ -534,6 +590,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_scrub.add_argument("--dir", required=True)
     p_scrub.set_defaults(func=cmd_scrub_artifacts)
+
+    p_fa = sub.add_parser(
+        "fetch-artifacts",
+        help="download + sha-verify the pinned release attachments (the acceptance "
+        "suite's inputs); REFUSE on mismatch",
+    )
+    p_fa.add_argument("--out", required=True, help="directory to download into")
+    p_fa.add_argument(
+        "--verify-only", action="store_true",
+        help="re-verify already-present files without downloading (offline)",
+    )
+    p_fa.set_defaults(func=cmd_fetch_artifacts)
 
     p_sb = sub.add_parser(
         "scan-binary",

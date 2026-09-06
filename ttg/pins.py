@@ -13,6 +13,7 @@ from __future__ import annotations
 import re
 import tomllib
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 
 PKG = Path(__file__).resolve().parent.parent
@@ -66,6 +67,41 @@ def gold_pin_mismatches(
                 f"[gold].{key}: pin {str(pinned)[:12]} != file {actual[:12]}"
             )
     return problems
+
+
+@dataclass(frozen=True)
+class ArtifactTarget:
+    """One pinned release attachment: filename, expected sha256, release tag."""
+
+    name: str
+    sha256: str
+    release_tag: str
+
+
+def artifact_targets(doc: Mapping[str, object]) -> list[ArtifactTarget]:
+    """The pinned release attachments named in PIN.toml that `fetch-artifacts`
+    downloads and sha-verifies: every `[[artifacts.files]]` entry (its own
+    `release_tag` overriding the `[artifacts].release_tag` default) plus the
+    `[binary]` asset. The frozen gold is committed in-repo, so it is not
+    fetched."""
+    targets: list[ArtifactTarget] = []
+    artifacts = doc.get("artifacts")
+    if isinstance(artifacts, Mapping):
+        default_tag = artifacts.get("release_tag")
+        files = artifacts.get("files")
+        if isinstance(files, list):
+            for entry in files:
+                if not (isinstance(entry, Mapping) and "name" in entry and "sha256" in entry):
+                    continue
+                tag = entry.get("release_tag", default_tag)
+                if isinstance(tag, str):
+                    targets.append(ArtifactTarget(str(entry["name"]), str(entry["sha256"]), tag))
+    binary = doc.get("binary")
+    if isinstance(binary, Mapping):
+        name, sha, tag = binary.get("asset_name"), binary.get("sha256"), binary.get("release_tag")
+        if isinstance(name, str) and isinstance(sha, str) and isinstance(tag, str):
+            targets.append(ArtifactTarget(name, sha, tag))
+    return targets
 
 
 def is_pending(doc: Mapping[str, object]) -> bool:

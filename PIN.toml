@@ -52,6 +52,103 @@ name = "deepswe_frozen_py_nosphinx.json"
 sha256 = "1874fb4e7bb44b349923ddf73f29622227a02b4318660c7cd1f87b5f91932af5"
 url = "https://github.com/noodlbox/tokens-to-gold/releases/download/v1.0.0-rc1/deepswe_frozen_py_nosphinx.json"
 
+# --- 2026-09 re-certification arm reports (A5 / R16) ---
+# The 12 per-cell arm reports (3 arms x 4 corpora), pinned as release
+# attachments so a third party can `reproduce.sh verify` (fetch-artifacts) a
+# clone and recompute the TtG curves offline (V1 scope enrichment #5). shas
+# read PROGRAMMATICALLY from the certified trees at pin time (never typed);
+# each PASSED the published-surface privacy scan before pinning. They hang off
+# the re-cert tag, not v1.0.0-rc1 (per-entry release_tag overrides the section).
+
+[[artifacts.files]]
+name = "levers_off_ablation_go34.json"
+sha256 = "a3ee685a6dd790168949d8edd99f55b1ca082d406107a18146d0ffb650cea0d1"
+release_tag = "v2.0.0"
+url = "https://github.com/noodlbox/tokens-to-gold/releases/download/v2.0.0/levers_off_ablation_go34.json"
+
+[[artifacts.files]]
+name = "levers_off_ablation_py_nosphinx.json"
+sha256 = "54749e90596e6bd1f26929f5b787af673320d7642d68ea1347122f0a1910c1a0"
+release_tag = "v2.0.0"
+url = "https://github.com/noodlbox/tokens-to-gold/releases/download/v2.0.0/levers_off_ablation_py_nosphinx.json"
+
+[[artifacts.files]]
+name = "levers_off_ablation_rust43.json"
+sha256 = "2b149963de3be28d4bff994988f8f29c3cbef9e5e0dbb0e2642e1e4cfa4525c2"
+release_tag = "v2.0.0"
+url = "https://github.com/noodlbox/tokens-to-gold/releases/download/v2.0.0/levers_off_ablation_rust43.json"
+
+[[artifacts.files]]
+name = "levers_off_ablation_ts40.json"
+sha256 = "c4bea2d2f44aa96be5b07768a7d319a590bac486a15aa18683a3a707f6abc71b"
+release_tag = "v2.0.0"
+url = "https://github.com/noodlbox/tokens-to-gold/releases/download/v2.0.0/levers_off_ablation_ts40.json"
+
+[[artifacts.files]]
+name = "native_floor_go34.json"
+sha256 = "1db4cb5470ca2f9239b006810b8389cd9ea356a79f86fcd24bd0e58b3d70b7aa"
+release_tag = "v2.0.0"
+url = "https://github.com/noodlbox/tokens-to-gold/releases/download/v2.0.0/native_floor_go34.json"
+
+[[artifacts.files]]
+name = "native_floor_py_nosphinx.json"
+sha256 = "a2a49d4c9b22c9451ba64a88253ab6cbbe3a214f50abd93f2f8453ceec8be556"
+release_tag = "v2.0.0"
+url = "https://github.com/noodlbox/tokens-to-gold/releases/download/v2.0.0/native_floor_py_nosphinx.json"
+
+[[artifacts.files]]
+name = "native_floor_rust43.json"
+sha256 = "66b6932594f79c09e459ee61086cc5dcc81b9bbe2f241b0ed9073ce6c5ae9d2d"
+release_tag = "v2.0.0"
+url = "https://github.com/noodlbox/tokens-to-gold/releases/download/v2.0.0/native_floor_rust43.json"
+
+[[artifacts.files]]
+name = "native_floor_ts40.json"
+sha256 = "2f44203c56cf2909b78274eaa332276a30abd540f5d443b08ab3726be3e0ee11"
+release_tag = "v2.0.0"
+url = "https://github.com/noodlbox/tokens-to-gold/releases/download/v2.0.0/native_floor_ts40.json"
+
+[[artifacts.files]]
+name = "shipped_treatment_go34.json"
+sha256 = "770f547e5567628136f9b969cdf4c41dfcd738a310c585de3fcbccb93b485bce"
+release_tag = "v2.0.0"
+url = "https://github.com/noodlbox/tokens-to-gold/releases/download/v2.0.0/shipped_treatment_go34.json"
+
+[[artifacts.files]]
+name = "shipped_treatment_py_nosphinx.json"
+sha256 = "fb7c719fa7096e23a93a92ad0b7503cc887f0daaa1341e0ad6ffe1596f13f743"
+release_tag = "v2.0.0"
+url = "https://github.com/noodlbox/tokens-to-gold/releases/download/v2.0.0/shipped_treatment_py_nosphinx.json"
+
+[[artifacts.files]]
+name = "shipped_treatment_rust43.json"
+sha256 = "4af9c72777a2c276335340af12d8e4f51abb8f734f794d08d7c17fd65b4ff568"
+release_tag = "v2.0.0"
+url = "https://github.com/noodlbox/tokens-to-gold/releases/download/v2.0.0/shipped_treatment_rust43.json"
+
+[[artifacts.files]]
+name = "shipped_treatment_ts40.json"
+sha256 = "e803d2291e3058a70cac9f941e6252924736edc0acae60e31a4e05a6d9a25766"
+release_tag = "v2.0.0"
+url = "https://github.com/noodlbox/tokens-to-gold/releases/download/v2.0.0/shipped_treatment_ts40.json"
+
+[recert.release]
+# PROPOSED re-cert release (R16). Owner: the DO cuts it on the FINAL harness
+# sha after push, so the tag pins the exact harness commit the attachments
+# belong to. The fork stages + pins; it does NOT upload.
+# Proposed harness version bump: v2.0.0 (MAJOR) — the re-cert is a breaking
+# methodology change vs v1.0.0-rc1: LOCKED_METRICS changed (reach_at_80 split
+# into whole_list + within_32k), ArmMetrics reshaped, the 4-language arm table
+# + native_floor span scorer + derived-provenance gate + explicit-mode privacy
+# resolver are all new; the report/metric surface is not V1-compatible.
+proposed_tag = "v2.0.0"
+staged_dir = "runs/recert-2026-09/R16-staging"
+# Carries: the 12 arm reports + the 4 frozen-gold files + noodl-eval +
+# SHA256SUMS + MANIFEST.json (each file, its sha, its certified source path).
+# The certified tree carries only the 65-byte noodl-eval.sha256, not the
+# binary; a third party repeats the byte-check via the R16 noodl-eval
+# attachment (recompute sha256 == the pinned bf920e4a).
+
 [gold]
 # Small enough to ship in the repo; digests also in gold/SHA256SUMS.
 # go34/rust43 join at the 2026-09 re-cert (A4): go34 from run8 (adjudicated),
