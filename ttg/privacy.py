@@ -73,11 +73,22 @@ def resolve() -> tuple[str, str]:
 
 
 def _matcher(token: str) -> re.Pattern[str]:
-    """One case-insensitive matcher for a token -- the shared unit both `scrub`
-    and `contains_private` are built on, so their casing can never disagree."""
+    """One case-insensitive, alphanumeric-bounded matcher for a token -- the
+    shared unit both `scrub` and `contains_private` are built on, so their casing
+    can never disagree.
+
+    The boundary is ALPHANUMERIC (letters+digits), NOT `\\b`. `\\b` treats `_` as
+    a word character, so a `\\b`-anchored pattern would MISS the token inside an
+    underscore-joined identifier (`test_<token>_case` in a witness log) -- the
+    scrubber's primary target, and under-redaction is the one direction a privacy
+    guard must never fail. Alphanumeric lookarounds reject the token embedded in a
+    larger WORD (a letter on either side) -- Finding I's intent -- while still
+    catching an underscore-separated component and a space/slash-delimited
+    occurrence. (This module spells the token only in fragments; the examples
+    here use `<token>` so the file is not itself a leak.)"""
     if not token:
         raise PrivacyError("refusing to build a privacy matcher for an empty token")
-    return re.compile(re.escape(token), re.IGNORECASE)
+    return re.compile(rf"(?<![a-z0-9]){re.escape(token)}(?![a-z0-9])", re.IGNORECASE)
 
 
 MODE, PRIVATE_CORPUS = resolve()

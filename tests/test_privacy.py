@@ -88,6 +88,31 @@ class ScrubTest(unittest.TestCase):
         self.assertEqual(scrubbed.count(privacy.REDACTION), 3)
 
 
+class BoundaryTest(unittest.TestCase):
+    """Fold I: the token embedded in a larger WORD does not match; a whole word
+    and an underscore-separated identifier component DO. (Underscore is a
+    separator here, not a word char — so the scrubber still catches the token in
+    witness-log test identifiers, which `\\b` would miss.)"""
+
+    def test_substring_of_larger_word_does_not_match(self) -> None:
+        # A longer WORD that merely CONTAINS the token as a substring — a letter
+        # glued on before, after, or both — must NOT match. Every example is
+        # ASSEMBLED at runtime from the resolved token, so this file never spells
+        # the contiguous token (a literal would be a leak the boundary matcher
+        # passes but a raw content grep counts).
+        t = privacy.PRIVATE_CORPUS
+        self.assertFalse(privacy.contains_private("tor" + t))  # letter before
+        self.assertFalse(privacy.contains_private(t + "ge"))  # letter after
+        self.assertFalse(privacy.contains_private("x" + t + "9"))  # alnum both sides
+
+    def test_whole_word_and_identifier_component_match(self) -> None:
+        t = privacy.PRIVATE_CORPUS
+        self.assertTrue(privacy.contains_private(t))  # standalone
+        self.assertTrue(privacy.contains_private(f"the {t} corpus"))  # spaced
+        self.assertTrue(privacy.contains_private(f"test_{t}_case"))  # underscore comp
+        self.assertTrue(privacy.contains_private(f"corpora/{t}/x"))  # slash-delimited
+
+
 class PlantCycleBothModesTest(unittest.TestCase):
     """Obtain the plant token THROUGH the resolver, then run the plant/scrub/
     detect cycle in BOTH modes."""
