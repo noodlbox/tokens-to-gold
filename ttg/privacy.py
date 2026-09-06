@@ -118,6 +118,21 @@ def contains_private(text: str) -> bool:
     return _TOKEN.search(text) is not None
 
 
+def scan_bytes(data: bytes) -> list[tuple[int, str]]:
+    """Every private-token hit in a byte blob (a compiled binary, any file), as
+    `(offset, redacted_context)`. Decoded latin-1 (byte-preserving) so the same
+    boundary matcher applies to a binary's embedded strings. R17: the eval binary
+    once carried the token in SQL-comment strings — this is the release-gate scan
+    that refuses to ship it. The context is SCRUBBED, so a hit can be reported
+    without the report itself becoming a leak."""
+    text = data.decode("latin-1")
+    hits: list[tuple[int, str]] = []
+    for m in _TOKEN.finditer(text):
+        ctx = text[max(0, m.start() - 24) : m.end() + 24]
+        hits.append((m.start(), scrub(ctx).replace("\n", " ").replace("\r", " ")))
+    return hits
+
+
 def _self_canary(token: str, detector: Callable[[str], bool]) -> None:
     """Abort unless `detector` sees `token` inside a synthetic string. Guards the
     invariant that the resolved token and the live matcher agree -- a privacy

@@ -46,7 +46,7 @@ from ttg.preflight import (
     require_corpus_support,
     require_native_floor_tools,
 )
-from ttg.privacy import contains_private, scrub
+from ttg.privacy import contains_private, mode, scan_bytes, scrub
 from ttg.provision import (
     UnsafeCorpusInputError,
     build_manifest,
@@ -97,8 +97,8 @@ def cmd_accept(args: argparse.Namespace) -> int:
     checks = check_report_file(args.report, args.corpus, args.arm, replay=not args.fresh)
     print(render_checks(args.corpus, args.arm, checks))
     ok = all(check.ok for check in checks)
-    mode = "fresh (noise floor)" if args.fresh else "replay (EXACT to 4dp)"
-    print(f"    -> {'ACCEPTED' if ok else 'REJECTED'}  [{mode}]")
+    mode_label = "fresh (noise floor)" if args.fresh else "replay (EXACT to 4dp)"
+    print(f"    -> {'ACCEPTED' if ok else 'REJECTED'}  [{mode_label}]")
     return 0 if ok else 1
 
 
@@ -140,10 +140,10 @@ def cmd_from_pr(args: argparse.Namespace) -> int:
         print(f"  DISCLOSURE: {note}")
     print()
     print("Next (the freezer path — gold always comes from the versioned pipeline):")
-    print(f"  1) derive + freeze YOUR gold (full index of the pre-change checkout):")
-    print(f"     ttg/derive_gold.sh --corpus own_repo --binary <noodl-eval> \\")
+    print("  1) derive + freeze YOUR gold (full index of the pre-change checkout):")
+    print("     ttg/derive_gold.sh --corpus own_repo --binary <noodl-eval> \\")
     print(f"        --corpus-jsonl {jsonl} --store {out}/store --outdir {out}/gold")
-    print(f"  2) run the shipped treatment (and optionally the other section-5 arms):")
+    print("  2) run the shipped treatment (and optionally the other section-5 arms):")
     for arm in OWN_REPO_ARMS:
         print(f"     # {arm}:")
         print(
@@ -151,7 +151,7 @@ def cmd_from_pr(args: argparse.Namespace) -> int:
             + " ".join(own_repo_flags(arm))
             + f" --timeout 900 -f json > {out}/{arm}.json"
         )
-    print(f"  3) score against YOUR frozen gold:")
+    print("  3) score against YOUR frozen gold:")
     print(f"     python3 -m ttg.cli score-own --report {out}/shipped_treatment.json \\")
     print(f"        --gold {out}/gold/frozen_gold_own_repo.json")
     return 0
@@ -273,6 +273,27 @@ def cmd_scrub_artifacts(args: argparse.Namespace) -> int:
         print(f"  scrubbed: {path}")
         changed += 1
     print(f"scrub-artifacts: {changed} file(s) redacted under {args.dir}")
+    return 0
+
+
+def cmd_scan_binary(args: argparse.Namespace) -> int:
+    """Release gate (R15/R17): scan a compiled artifact (the eval binary) for the
+    held-out corpus name and REFUSE to ship it on a hit. The eval binary once
+    carried the token in SQL-comment strings; a byte scan catches an embedded
+    string a source scan would miss. Reports the resolved MODE, never the value;
+    hit contexts are redacted so the gate output is not itself a leak."""
+    data = Path(args.path).read_bytes()
+    hits = scan_bytes(data)
+    print(
+        f"privacy-scan-binary: {args.path} ({len(data)} bytes); token resolved "
+        f"via {mode()} mode"
+    )
+    if hits:
+        print(f"REFUSED: {len(hits)} held-out-corpus hit(s) — do not ship:")
+        for offset, ctx in hits[:20]:
+            print(f"  offset {offset}: …{ctx}…")
+        return 1
+    print("OK: no held-out-corpus hit")
     return 0
 
 
@@ -513,6 +534,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_scrub.add_argument("--dir", required=True)
     p_scrub.set_defaults(func=cmd_scrub_artifacts)
+
+    p_sb = sub.add_parser(
+        "scan-binary",
+        help="release gate: refuse a compiled artifact that embeds the held-out "
+        "corpus name (byte scan; R15/R17)",
+    )
+    p_sb.add_argument("--path", required=True, help="binary/artifact to scan")
+    p_sb.set_defaults(func=cmd_scan_binary)
 
     p_zg = sub.add_parser(
         "zero-gold", help="R-P5 zero-gold NO-GO alarm for a derived tier"
