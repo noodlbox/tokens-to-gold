@@ -44,6 +44,13 @@
         "reach_at_80_whole_list": 0.216216,
         "reach_at_80_within_32k": 0.216216,
         "whole_list_INTERNAL": 0.451321
+      },
+      "native_floor": {
+        "n": 37,
+        "gold_at_8k_wire": 0.1861,
+        "gold_at_32k_wire": 0.3160,
+        "reach_at_80_whole_list": 0.6486,
+        "reach_at_80_within_32k": 0.2162
       }
     },
     "py_nosphinx": {
@@ -66,6 +73,13 @@
         "reach_at_80_whole_list": 0.358974,
         "reach_at_80_within_32k": 0.333333,
         "whole_list_INTERNAL": 0.401709
+      },
+      "native_floor": {
+        "n": 39,
+        "gold_at_8k_wire": 0.1410,
+        "gold_at_32k_wire": 0.5043,
+        "reach_at_80_whole_list": 0.8718,
+        "reach_at_80_within_32k": 0.4872
       }
     }
   },
@@ -82,5 +96,13 @@
     "whole-file cmp a frozen gold (the header stamps the producing binary \u2014 compare payload + the 5 claim-bearing header fields)",
     "credit a gold more than once (first-occurrence-per-gold-identity; ranked lists legitimately repeat identities)",
     "claim superiority at py @10 (p=0.125, CI spans 0); @25 only (p=0.0078)"
-  ]
+  ],
+  "native_floor_reference": {
+    "source": "noodlbox-wiki/strategy/projects/tokens-to-gold-benchmark/artifacts/B5_PAGE_SKELETON_2026-08-20.md",
+    "section": "§5 The arms (comparator honesty) (L132)",
+    "pricing_basis": "L154: floor spans are read content; wire ≡ read; same tokenizer; the R5 Explorer arm",
+    "measurement_stamp": "L156: measured 2026-08-26 with the pinned official binary (c5dbaf91)",
+    "cells": "within_32k <- L160 (TS) / L162 (PY); whole_list (unbounded gauge) <- L166 (TS) / L168 (PY); Gold@32k is the coverage@32k column, a reach decoy",
+    "regression": "the re-cert native_floor ts40/py cells replay these exact-to-4dp = floor HELD (explorer policy frozen; the rg fix only made failures loud)"
+  }
 }

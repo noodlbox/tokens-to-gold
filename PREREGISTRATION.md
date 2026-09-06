@@ -234,3 +234,25 @@ How it ships (ruling 2026-09-06):
   stays as V1 wrote it; the improvement is a harness/README fact, not a headline.
 - (d) whether a FUTURE re-freeze at N=39 is warranted is a **separate ruling
   after the arms**, not this run.
+
+### Addendum — native_floor pricing basis, 2026-09-07 (before any floor number is pinned)
+
+The native_floor (rg + targeted reads) comparator delivers SPANS, not symbols. A
+span is read content, so its wire price IS its source-text token count under the
+SAME shared tokenizer as the curated wire path (`TokenCosting.counter`, one
+`Arc<TokenCounter>`, evaluator.rs:127) — wire ≡ read for spans. The floor is
+therefore genuinely wire-priced: its coverage@budget and cost-to-coverage are
+real wire values, never a measured zero, and it is the same R5 Explorer control
+as V1 (`B5_PAGE_SKELETON_2026-08-20.md` §5, L154; stamp L156, 2026-08-26 pinned
+official binary).
+
+reach@80 is reported as TWO qualified fields: `reach_at_80_whole_list` (the
+UNCAPPED whole-list reach — the Waterfill delivery cap is a curation lever, so
+this is the floor's unbounded hunt) and `reach_at_80_within_32k` (fraction with
+≥ 0.8 gold covered within the 32k wire budget). head-only@k is omitted for the
+floor (a span head and a symbol head are not comparable in one row).
+
+The V1 floor reference cells (acceptance fixture, native_floor ts40/py) are
+pasted from B5 §5 (within_32k ← L160/L162; whole_list ← L166/L168; Gold@32k is
+the coverage decoy). The re-cert floor replays them exact-to-4dp = floor HELD
+(explorer policy frozen; the rg fix only made failures loud).

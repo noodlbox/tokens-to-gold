@@ -17,6 +17,7 @@ from pathlib import Path
 
 from ttg.acceptance import (
     REPLAY_TOL,
+    check_report_file,
     load_fixture,
     load_frozen_gold,
     score_arm,
@@ -38,6 +39,7 @@ CERT = {
     ("shipped_treatment", "go34"): _QS / "shipped_treatment_go34.json",
     ("shipped_treatment", "rust43"): _QS / "shipped_treatment_rust43.json",
     ("native_floor", "ts40"): _HH / "native_floor_ts40.json",
+    ("native_floor", "py_nosphinx"): _HH / "native_floor_py_nosphinx.json",
 }
 
 # The pre-migration reach_at_80 values — the value-preserving rename target.
@@ -170,6 +172,27 @@ class WireCurvePathGuard(unittest.TestCase):
         # The ablation is where within_32k (wire-curve) diverges from whole_list;
         # a non-trivial value here proves the wire_curve path actually ran.
         self.assertLess(m.reach_at_80_within_32k, m.reach_at_80_whole_list)
+
+
+class FloorRegressionWitness(unittest.TestCase):
+    """The V1 floor reference (fixture native_floor ts40/py, pasted from B5 §5)
+    is reproduced by the re-cert floor EXACT-to-4dp = floor HELD. Any drift is a
+    STOP-ON-SURPRISE (the explorer policy is frozen; the rg fix only made
+    failures loud)."""
+
+    def test_floor_held_ts40_and_py(self) -> None:
+        for corpus in ("ts40", "py_nosphinx"):
+            with self.subTest(corpus=corpus):
+                checks = check_report_file(
+                    _require(self, ("native_floor", corpus)), corpus, "native_floor"
+                )
+                self.assertTrue(checks)
+                for c in checks:
+                    self.assertTrue(
+                        c.ok,
+                        f"floor DRIFT {corpus}/{c.metric}: got {c.got:.6f} != "
+                        f"ref {c.expected:.6f} ({c.delta_pp:+.3f}pp)",
+                    )
 
 
 if __name__ == "__main__":

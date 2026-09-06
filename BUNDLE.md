@@ -36,3 +36,14 @@ benchmark never does, and quotes of it must not either:
 - **one query ≠ a task or session**
 - **payload reduction ≠ cost reduction**
 - **retrieval coverage ≠ task success** — no solve-rate claim exists here
+
+## native_floor pricing basis (2026-09-07)
+
+The native_floor comparator delivers SPANS (read content), so its wire price is
+its source-text token count under the same shared tokenizer as the wire path
+(wire ≡ read for spans; B5 §5 L154). It is genuinely wire-priced — coverage@budget
+and cost-to-coverage are real values, not n/a. reach@80 is two fields:
+`reach_at_80_whole_list` (uncapped) and `reach_at_80_within_32k` (capped at 32k
+wire); head-only@k is omitted (span vs symbol head not comparable). The V1 floor
+reference (fixture native_floor ts40/py) is from B5 §5 and the re-cert replays it
+exact-to-4dp = floor HELD.
