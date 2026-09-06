@@ -43,6 +43,31 @@ def _section(doc: Mapping[str, object], *names: str) -> Mapping[str, object]:
     return node
 
 
+def gold_pin_mismatches(
+    gold_pins: Mapping[str, object], file_digests: Mapping[str, str]
+) -> list[str]:
+    """Per-KEY comparison of PIN.toml [gold] against the real gold-file digests.
+
+    `gold_pins` is the [gold] table ({frozen_gold_<corpus>: sha256}); each value
+    must equal the sha256 of `gold/<key>.json`, keyed BY NAME. This is
+    transposition-proof: a digest pinned under the WRONG key is a mismatch even
+    though its value appears somewhere in the file — the failure a substring-
+    anywhere check (`digest in pin_text`) cannot see, because it only asks
+    whether the value exists, never whether it is under the right key. Returns
+    one description per offending key (empty == every pin matches its named
+    file)."""
+    problems: list[str] = []
+    for key, pinned in gold_pins.items():
+        actual = file_digests.get(key)
+        if actual is None:
+            problems.append(f"[gold].{key} is pinned but gold/{key}.json is absent")
+        elif str(pinned) != actual:
+            problems.append(
+                f"[gold].{key}: pin {str(pinned)[:12]} != file {actual[:12]}"
+            )
+    return problems
+
+
 def is_pending(doc: Mapping[str, object]) -> bool:
     """True while the re-cert pins still await the lease run."""
     recert = _section(doc, "recert")

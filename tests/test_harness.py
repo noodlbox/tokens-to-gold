@@ -32,6 +32,7 @@ from ttg.acceptance import (
     FIXTURE_PATH, LOCKED_METRICS, NOISE_FLOOR_PP, REPLAY_TOL, AcceptanceError,
     _pinned_digest, check_report_file, load_fixture, load_frozen_gold,
 )
+from ttg.pins import gold_pin_mismatches, load_pins
 from ttg.rollup import Basis, rollup
 from ttg.tier1 import CLAIM_FIELDS, compare_frozen_gold
 
@@ -387,16 +388,53 @@ class T8PinConsistency(unittest.TestCase):
     are exactly the error class this gate exists to make unshippable."""
 
     def test_pin_gold_digests_match_files(self) -> None:
-        pin = (PKG / "PIN.toml").read_text()
+        # FINDING A: per-KEY, not substring-anywhere. Each [gold] pin must equal
+        # the digest of the file it NAMES, so a digest pinned under the wrong key
+        # (a transposition) is caught — the earlier `assertIn(digest, pin_text)`
+        # only asked whether the value existed somewhere, blind to which key.
+        gold_pins = load_pins().get("gold", {})
+        file_digests = {
+            p.stem: hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in (PKG / "gold").glob("*.json")
+        }
+        problems = gold_pin_mismatches(gold_pins, file_digests)
+        self.assertEqual(problems, [], problems)
+        self.assertGreater(len(gold_pins), 0, "no gold pins in PIN.toml [gold]")
+
+    def test_tracked_gold_files_are_pinned(self) -> None:
+        # Completeness, scoped to TRACKED gold: a committed gold file must have a
+        # [gold] pin. Untracked tiers (go34/rust43 before the A4 gold commit) are
+        # out of scope here — they join when they are committed and pinned.
+        import subprocess
+
+        gold_pins = load_pins().get("gold", {})
+        tracked = subprocess.run(
+            ["git", "ls-files", "-z", "gold"],
+            cwd=PKG, capture_output=True, text=True, check=True,
+        ).stdout.split("\0")
         checked = 0
-        for path in sorted((PKG / "gold").glob("*.json")):
-            want = hashlib.sha256(path.read_bytes()).hexdigest()
-            with self.subTest(gold=path.name):
+        for rel in tracked:
+            if not (rel.startswith("gold/frozen_gold_") and rel.endswith(".json")):
+                continue
+            with self.subTest(gold=rel):
                 self.assertIn(
-                    want, pin, f"{path.name}: digest in PIN.toml does not match the file"
+                    Path(rel).stem, gold_pins, f"tracked {rel} not pinned in [gold]"
                 )
-                checked += 1
-        self.assertGreater(checked, 0)
+            checked += 1
+        self.assertGreater(checked, 0, "no tracked gold files")
+
+    def test_transposed_gold_pin_is_caught(self) -> None:
+        # MUST-RED / permanent negative control (Finding A), from raw strings: a
+        # transposition — each real digest pinned under the OTHER key.
+        a, b = "a" * 64, "b" * 64
+        pins = {"frozen_gold_ts40": b, "frozen_gold_py_nosphinx": a}  # swapped
+        files = {"frozen_gold_ts40": a, "frozen_gold_py_nosphinx": b}  # real
+        self.assertEqual(len(gold_pin_mismatches(pins, files)), 2)
+        # NEGATIVE CONTROL: the earlier substring-anywhere check MISSES it — both
+        # digests are present in the serialized pin text, just under wrong keys.
+        pin_text = f'frozen_gold_ts40 = "{b}"\nfrozen_gold_py_nosphinx = "{a}"\n'
+        self.assertIn(a, pin_text)
+        self.assertIn(b, pin_text)
 
     def test_pending_pins_are_explicitly_marked(self) -> None:
         """An unwired pin must READ as unwired, never as a plausible value.
