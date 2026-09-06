@@ -115,8 +115,11 @@ class Corpus:
     """One PUBLIC corpus. Private corpora are absent by construction."""
 
     name: str
-    char_budget_20k: int
-    """Per-corpus 20k-equivalent char budget; the grid is 2-D (arm x corpus)."""
+    char_budget_20k: int | None
+    """Per-corpus 20k-equivalent char budget for waterfill/per-file-caps arms;
+    the grid is 2-D (arm x corpus). None for a tier with no MEASURED budget: such
+    a tier can run the budget-independent arms (shipped/levers-off/native-floor)
+    but a budgeted arm refuses it rather than invent a number."""
     scored_instances: int = 0
     """The frozen gold-bearing count -- the BINDING scoring denominator."""
     corpus_instances: int = 0
@@ -204,6 +207,13 @@ SECTION5_ARMS: Final[tuple[str, ...]] = (
 CORPORA: Final[dict[str, Corpus]] = {
     "ts40": Corpus("ts40", 90_320, scored_instances=37, corpus_instances=40),
     "py_nosphinx": Corpus("py_nosphinx", 93_000, scored_instances=39, corpus_instances=40),
+    # The 2026-09 re-cert tiers. char_budget_20k is None: no waterfill/
+    # per-file-caps arm is pre-registered for them (only shipped_treatment /
+    # levers_off_ablation / native_floor, none of which reads a budget), so a
+    # budgeted arm REFUSES them rather than run on an invented budget, while the
+    # `flags` parser still accepts them as valid corpora.
+    "go34": Corpus("go34", None, scored_instances=30, corpus_instances=34),
+    "rust43": Corpus("rust43", None, scored_instances=40, corpus_instances=43),
 }
 
 ACCEPTANCE_ARMS: Final[tuple[str, ...]] = ("shipped_treatment", "levers_off_ablation")
@@ -214,11 +224,22 @@ class ArmError(ValueError):
 
 
 def char_budget(arm_name: str, corpus_name: str) -> int | None:
-    """`char_budget(arm, corpus) = COR_CB20K[corpus] * ARM_FACTOR[arm]`."""
+    """`char_budget(arm, corpus) = COR_CB20K[corpus] * ARM_FACTOR[arm]`.
+
+    A budgeted arm on a corpus with no measured budget REFUSES rather than
+    invents one -- the guard that keeps a waterfill/per-file-caps arm off the
+    re-cert tiers (go34/rust43), which carry no base_20k."""
     arm = _arm(arm_name)
     if arm.factor is None:
         return None
-    return int(_corpus(corpus_name).char_budget_20k * arm.factor)
+    budget = _corpus(corpus_name).char_budget_20k
+    if budget is None:
+        raise ArmError(
+            f"arm {arm_name!r} needs a per-corpus char budget, but {corpus_name!r} "
+            "has none (no measured base_20k). Only the budget-independent arms "
+            "(shipped_treatment, levers_off_ablation, native_floor) run on it"
+        )
+    return int(budget * arm.factor)
 
 
 def _arm(name: str) -> Arm:

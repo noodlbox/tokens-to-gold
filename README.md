@@ -201,3 +201,15 @@ lets you recompute it.
 ## Changelog
 
 - **2026-09 re-certification.** Added `ttg/paired_stats.py` (paired bootstrap CI + exact sign test), homed byte-identical from the m23gate harness (sha `4d359404…`). V1 documented this tool as shipped; it was not — the regression report now carries per-metric paired 95% CI + sign test alongside the ±2.75pp floor.
+
+## Commit-message privacy guard
+
+The held-out corpus name must never enter git history (commit messages ship with
+a public clone). Install the guard once:
+
+```sh
+git config core.hooksPath scripts/git-hooks
+```
+
+`scripts/git-hooks/commit-msg` refuses any message containing the token (checked
+via `ttg.privacy`, so the hook itself never spells it).

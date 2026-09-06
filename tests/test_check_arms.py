@@ -52,5 +52,28 @@ class CheckArmsTest(unittest.TestCase):
             flags_for("pfc_b1", "rust43")
 
 
+    def test_gate_catches_a_corpus_missing_from_the_argparse_choices(self) -> None:
+        # The run10b failure: run_arm.sh resolves each cell via `ttg.cli flags`,
+        # whose --corpus argparse choices come from CORPORA. A corpus that
+        # flags_for() would resolve but that is ABSENT from CORPORA is rejected
+        # at run time yet was invisible to a gate that called flags_for()
+        # directly. The gate must route through the CLI so it sees the same
+        # rejection. An unknown corpus must be refused.
+        self.assertEqual(
+            main(["check-arms", "--arms", RECERT_ARMS, "--corpora", "not_a_corpus"]),
+            2,
+        )
+
+    def test_gate_matches_the_flags_subcommand_choices(self) -> None:
+        # Every corpus the gate accepts for the recert arms must also be a valid
+        # --corpus choice of the flags subcommand (the run path). If CORPORA and
+        # the gate ever diverge, this catches it.
+        from arms.arm_matrix import CORPORA
+        for corpus in ALL_TIERS.split(","):
+            self.assertIn(corpus, CORPORA, f"{corpus} must be in CORPORA")
+            self.assertEqual(
+                main(["check-arms", "--arms", RECERT_ARMS, "--corpora", corpus]), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

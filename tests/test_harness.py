@@ -203,9 +203,14 @@ class T3ArmFlags(unittest.TestCase):
         for name, arm in ARMS.items():
             if not arm.available or arm.curation is Curation.SHIPPED_DEFAULT:
                 continue  # SHIPPED_DEFAULT omits deliberately; covered separately
-            for corpus in CORPORA:
-                with self.subTest(arm=name, corpus=corpus):
-                    self.assertIn("--curation", flags_for(name, corpus))
+            for corpus_name, corpus in CORPORA.items():
+                # A budgeted arm (factor set) refuses a corpus with no measured
+                # base_20k (the re-cert tiers) -- skip those cells; they are
+                # guarded by test_a_budgeted_arm_on_a_new_tier_raises_armerror.
+                if arm.factor is not None and corpus.char_budget_20k is None:
+                    continue
+                with self.subTest(arm=name, corpus=corpus_name):
+                    self.assertIn("--curation", flags_for(name, corpus_name))
 
     def test_shipped_default_omission_is_declared_not_accidental(self) -> None:
         """The shipped-treatment arm measures the shipped default (Waterfill
@@ -245,8 +250,12 @@ class T3ArmFlags(unittest.TestCase):
         self.assertIsNone(char_budget("a0_off", "ts40"))
 
     def test_matrix_shape(self) -> None:
-        self.assertEqual(len(cells(SWEEP_ARMS, list(CORPORA))), 14)
-        self.assertEqual(len(cells(DEFAULT_ARMS, list(CORPORA))), 4)
+        # SWEEP/DEFAULT arms are the budgeted V1 sweep; they resolve only over
+        # the two corpora that carry a base_20k (the re-cert tiers have none).
+        budgeted = [c for c, cor in CORPORA.items() if cor.char_budget_20k is not None]
+        self.assertEqual(budgeted, ["ts40", "py_nosphinx"])
+        self.assertEqual(len(cells(SWEEP_ARMS, budgeted)), 14)
+        self.assertEqual(len(cells(DEFAULT_ARMS, budgeted)), 4)
         self.assertEqual(DEFAULT_ARMS, ("wf_b3", "a0_off"))
 
     def test_undeclared_omission_still_raises(self) -> None:
@@ -418,21 +427,24 @@ class T6Privacy(unittest.TestCase):
     """The private corpus appears in no public artifact."""
 
     def test_no_private_corpus_in_package(self) -> None:
-        this_file = Path(__file__).resolve()
+        # No self-exclusion: this file imports PRIVATE_CORPUS from ttg.privacy
+        # (fragment-built), so it never needs the literal and is scanned like
+        # every other tracked file. The earlier self-exclusion hid a token that
+        # a comment here had spelled out.
         for path in PKG.rglob("*"):
             if not path.is_file() or "__pycache__" in path.parts:
                 continue
             if path.suffix.lower() == ".json":
                 continue  # gold payloads checked separately below
-            if path.resolve() == this_file:
-                continue  # this file must NAME the token in order to forbid it
             rel = str(path.relative_to(PKG))
             with self.subTest(path=rel):
                 found = PRIVATE_CORPUS in path.read_text(errors="ignore").lower()
                 self.assertFalse(found, f"private corpus name leaked into {rel}")
 
     def test_public_corpora_only(self) -> None:
-        self.assertEqual(set(CORPORA), {"ts40", "py_nosphinx"})
+        # V1 shipped two; the 2026-09 re-cert added the go34/rust43 tiers. The
+        # held-out corpus must still never appear.
+        self.assertEqual(set(CORPORA), {"ts40", "py_nosphinx", "go34", "rust43"})
 
     def test_gold_payloads_carry_no_private_corpus(self) -> None:
         for name in ("frozen_gold_ts40.json", "frozen_gold_py_nosphinx.json"):

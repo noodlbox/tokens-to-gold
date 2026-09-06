@@ -11,6 +11,8 @@ Subcommands:
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import itertools
 import hashlib
 import json
@@ -203,18 +205,34 @@ def cmd_check_arms(args: argparse.Namespace) -> int:
 
     An arm's flags may depend on per-corpus data (every waterfill and
     per-file-caps cell derives its char budget from a corpus base_20k that only
-    the V1 tiers have). Without this, an unresolvable (arm, corpus) pair is
-    discovered by run_matrix AFTER provisioning, derivation and the sidecar --
-    hours in. Resolving the whole grid up front turns that into an immediate
-    refusal carrying the exact error it would have raised later."""
+    the V1 tiers have), AND the corpus must be an accepted choice of the `flags`
+    subcommand's parser -- run_arm.sh resolves each cell via `ttg.cli flags`, so
+    a corpus missing from CORPORA is rejected by argparse `choices` even when
+    flags_for() itself would resolve it. This gate therefore exercises the SAME
+    path run_arm.sh does (the `flags` subcommand through `main`), not flags_for()
+    directly: testing the wrong layer let go34/rust43 pass the gate yet fail
+    every cell at run time. Without this, an unresolvable pair is discovered by
+    run_matrix AFTER provisioning and derivation -- hours in."""
     arms = _resolve_arms(args.arms)
     corpora = [c.strip() for c in args.corpora.split(",") if c.strip()]
     failures: list[str] = []
     for arm, corpus in itertools.product(arms, corpora):
+        # Route through the real CLI (argparse choices + flags_for), capturing
+        # the exact stderr run_arm.sh would see, so the gate cannot pass while
+        # the run fails.
+        err = io.StringIO()
         try:
-            flags_for(arm, corpus)
-        except ArmError as exc:
-            failures.append(f"  {arm} x {corpus}: {exc}")
+            with contextlib.redirect_stderr(err), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                rc = main(["flags", "--arm", arm, "--corpus", corpus])
+        except SystemExit as exc:
+            # argparse `choices` rejects an unknown corpus with sys.exit(2) --
+            # exactly what run_arm.sh's `ttg.cli flags` would hit. Treat it as a
+            # failed cell, not an escaping error.
+            rc = int(exc.code or 0) or 2
+        if rc != 0:
+            detail = err.getvalue().strip().splitlines()
+            failures.append(f"  {arm} x {corpus}: {detail[-1] if detail else f'rc={rc}'}")
     if failures:
         print(f"check-arms: {len(failures)} unresolvable cell(s) — refusing "
               "before any stage runs:", file=sys.stderr)

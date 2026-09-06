@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Refuse a commit message that names the held-out corpus.
+#
+# Commit messages ship with a public repo (they are readable in the history of
+# every clone), so the held-out corpus name in a message is a real leak vector,
+# not a local artifact -- exactly the T6 privacy invariant, enforced at the
+# keyboard so it cannot reach a commit in the first place. The token lives in
+# one place, ttg/privacy.py, so this hook cannot itself spell it.
+#
+# Install:  git config core.hooksPath scripts/git-hooks
+set -euo pipefail
+msg_file="$1"
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+if python3 -c "
+import sys
+sys.path.insert(0, '$here')
+from ttg.privacy import contains_private
+sys.exit(1 if contains_private(open('$msg_file', encoding='utf-8', errors='ignore').read()) else 0)
+"; then
+  exit 0
+fi
+echo "commit-msg: REFUSED — the message names the held-out corpus, which would" >&2
+echo "  leak it into public history. Refer to it as 'the held-out corpus' or" >&2
+echo "  'the private tier' instead." >&2
+exit 1
