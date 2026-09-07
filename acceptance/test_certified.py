@@ -253,6 +253,19 @@ class T1InstanceBasis(unittest.TestCase):
                 )
                 self.assertAlmostEqual(delta, drift_contrib, places=6)
 
+    def test_render_labels_both_bases(self) -> None:
+        # The rendered rollup must LABEL the two bases so a reader cannot mistake
+        # the engine's all-rows basis for the binding one, and must state that the
+        # ts40 engine-vs-frozen drift is EXPECTED (the pre-registered addendum),
+        # not a discrepancy. Fail-loud (no skip): `_require` fetches or fails.
+        text = rollup(
+            load_report(_require(self, "shipped_treatment", "ts40")),
+            frozen_instance_ids=list(load_frozen_gold("ts40")),
+        ).render("ts40")
+        self.assertIn("BINDING", text)
+        self.assertIn("NOT binding", text)
+        self.assertIn("EXPECTED, not a discrepancy", text)
+
 
 class T7RealCaptures(unittest.TestCase):
     def test_real_captures_load(self) -> None:
