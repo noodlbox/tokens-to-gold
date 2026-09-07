@@ -72,6 +72,19 @@ against a frozen denominator, so there is no noise to absorb. Only a fresh
 python3 -m ttg.cli accept --report <r> --corpus ts40 --arm shipped_treatment
 ```
 
+**Running the acceptance suite.** The one supported entry is `./reproduce.sh
+verify` — it fetches the pinned v2.0.0 release attachments with the repo token,
+sha-verifies each, and runs the acceptance suite with `TTG_REPORTS_DIR` pointed
+at the fetched dir. It FAILS LOUDLY if the fetch is missing — no skip-if-absent
+anywhere. On a fresh clone this is the whole ceremony. To run the suite by hand
+against an existing report tree, set the env yourself (the fetched dir is the
+published surface — the certified reports, one per arm×corpus):
+
+```sh
+./reproduce.sh verify                                        # supported path; a clone runs exactly this
+TTG_REPORTS_DIR=<dir-of-reports> python3 -m unittest discover -s acceptance -p 'test_*.py' -t .
+```
+
 ### Two corpora, two lineages
 
 The two tiers come from **different benchmarks** and are never blended:
