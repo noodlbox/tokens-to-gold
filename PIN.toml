@@ -27,10 +27,12 @@ clone_url = "https://github.com/noodlbox/tokens-to-gold.git"
 public_url = "https://github.com/noodlbox/tokens-to-gold"
 
 [binary]
-# The released noodl-eval a third party runs — the EXACT binary the pinned
-# acceptance numbers were measured with (main @ 3a3f01fd). Identity is pinned
-# by digest; the SHA of the binary FILE is not a reproduction target (OUT_DIR
-# bakes in the absolute build path) — see README.
+# The V1 measurement binary — the EXACT noodl-eval the V1 acceptance numbers
+# were measured with (main @ 3a3f01fd). IDENTITY ONLY, not a fetch target:
+# `artifact_targets` no longer pulls it, because a binary file digest is not a
+# reproduction target (OUT_DIR bakes in the absolute build path — see README;
+# BUNDLE.md publication contract, row 13). Kept so the V1 numbers' producer is
+# cross-checkable, exactly as [recert.binary] is for the re-cert.
 release_tag = "v1.0.0-rc1"
 asset_name = "noodl-eval-official"
 sha256 = "c5dbaf91d0502b1c792834d3c3f19e520e68eff50088fab8b1a2f731f04e7c65"
@@ -143,11 +145,11 @@ url = "https://github.com/noodlbox/tokens-to-gold/releases/download/v2.0.0/shipp
 # resolver are all new; the report/metric surface is not V1-compatible.
 proposed_tag = "v2.0.0"
 staged_dir = "runs/recert-2026-09/R16-staging"
-# Carries: the 12 arm reports + the 4 frozen-gold files + noodl-eval +
-# SHA256SUMS + MANIFEST.json (each file, its sha, its certified source path).
-# The certified tree carries only the 65-byte noodl-eval.sha256, not the
-# binary; a third party repeats the byte-check via the R16 noodl-eval
-# attachment (recompute sha256 == the pinned bf920e4a).
+# Carries the 16 payload files — the 12 arm reports + the 4 frozen-gold files —
+# plus SHA256SUMS + MANIFEST.json (each file, its sha, its certified source
+# path). NO binary ships: the measuring binary is dropped (see [recert.binary]),
+# because a binary file digest is not a reproduction target (BUNDLE.md
+# publication contract, row 13). The public binary is R17 ([recert.released_binary]).
 
 [gold]
 # Small enough to ship in the repo; digests also in gold/SHA256SUMS.
@@ -191,14 +193,38 @@ url = "https://install.noodlbox.io/releases/v2.3.18/macos-arm64/nbx.tar.gz"
 sha256 = "3c24c4124e173aa28229340b1293b4356de65310ad648743c146f136da4151bf"
 
 [recert.binary]
+# The MEASUREMENT binary — the exact noodl-eval every re-cert number was scored
+# with, MEASURED-WITH but NOT PUBLISHED. It is dropped from the R16 attachments
+# and is never a fetch target: a binary file digest is not a reproduction target
+# (the build path bakes into it — BUNDLE.md publication contract, row 13), and
+# the binary once embedded the held-out corpus name in SQL-comment strings, so
+# it does not ship. Its identity is pinned here so a third party can cross-check
+# the numbers' producer; the PUBLIC binary is the separate [recert.released_binary]
+# below, built + published at R17.
+#
 # Filled from the certified lease artifacts by READING them (A4 step 8), never
 # typed: build_commit + eval_features from each lease's provenance_header.txt,
 # sha256 from bin/noodl-eval.sha256 AND recomputed from the actual carried
 # binary — every source identical across both leases (cross-lease "one binary"
-# assertion). Verified 2026-09-07.
+# assertion). Verified 2026-09-07. report.py's _cross_lease_binary_sha reads
+# THIS section (not released_binary) — the "one binary, every cell" claim is
+# about the binary the cells were measured with.
 eval_features = "rust-analysis"
 build_commit = "cece1486222fe100dce0d3ec34aba9b7899e484f"
 sha256 = "bf920e4a765b0fa5a403ee95ddfbb3d3a66449d07d2286da2bce878520e30783"
+
+[recert.released_binary]
+# The PUBLIC binary — a DISTINCT, later artifact from the measurement binary
+# above. R16 ships NO binary; the public build + upload is R17, so every field
+# here is the PENDING-RELEASE sentinel (distinct from [recert].status's
+# PENDING-RUN — two lifecycles, two sentinels). `ttg validate-pins --flip`
+# RUNS `validate_released_binary` and FAILS while this stands, so a go-live
+# cannot proceed on the measurement sentinel. At R17 these become the real
+# release_tag / asset_name / sha256 of the published, privacy-scanned binary
+# (which must pass `ttg scan-binary` before upload) and --flip then passes.
+release_tag = "PENDING-RELEASE"
+asset_name = "PENDING-RELEASE"
+sha256 = "PENDING-RELEASE"
 
 [recert.corpora]
 # go34/rust43 join ts40/py_nosphinx at the re-cert. N and exclusions are the

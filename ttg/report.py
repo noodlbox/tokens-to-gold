@@ -39,7 +39,7 @@ from ttg.acceptance import (
     load_frozen_gold,
     score_arm,
 )
-from ttg.pins import is_pending, load_pins
+from ttg.pins import is_pending, load_pins, released_binary_sha
 from ttg.regression import DEFAULT_METRICS, compare_reports, render_table
 from ttg.report_io import load_report, result_rows, wire_curve
 from ttg.rollup import rollup
@@ -96,11 +96,17 @@ class ProvenanceError(RuntimeError):
 @dataclass(frozen=True)
 class Provenance:
     """Derived provenance for the published artifact — every field READ, never a
-    literal, so the stamp cannot drift from the tree/pins it describes."""
+    literal, so the stamp cannot drift from the tree/pins it describes.
+
+    Two binaries, rendered honestly: `binary_sha` is the MEASUREMENT binary (what
+    the numbers were scored with, never published); `released_binary_sha` is the
+    PUBLIC binary (R17) — `None` while it is still the PENDING-RELEASE sentinel,
+    which is the state R16 ships in and is NOT a refusal."""
 
     harness_tip: str
     binary_sha: str
     untracked_count: int
+    released_binary_sha: str | None
 
 
 def _git(pkg: Path, *args: str) -> str:
@@ -190,7 +196,11 @@ def resolve_provenance(pkg: Path = PKG) -> Provenance:
         )
     binary_sha = _cross_lease_binary_sha(pkg, doc)
     tip = _derive_harness_tip(pkg)
-    return Provenance(tip, binary_sha, _count_untracked(pkg))
+    # The RELEASE binary being pending (R17) is NOT a refusal — R16 ships no
+    # binary by design; it is rendered honestly as pending.
+    return Provenance(
+        tip, binary_sha, _count_untracked(pkg), released_binary_sha(doc)
+    )
 
 
 def gold_distribution(gold_path: str | Path) -> GoldDistribution:
@@ -526,14 +536,32 @@ def render_gold_distribution(gold_dir: Path) -> str:
 
 
 def render_provenance(prov: Provenance) -> str:
+    if prov.released_binary_sha is None:
+        release_line = (
+            "- **Release binary — PENDING (R17).** The measurement binary above "
+            "is deliberately NOT published (a binary file digest is not a "
+            "reproduction target — BUNDLE.md contract row 13 — and it once "
+            "embedded the held-out corpus name), so R16 ships no binary. The "
+            "public binary is a distinct, later artifact; `ttg validate-pins "
+            "--flip` gates the go-live on [recert.released_binary] and FAILS "
+            "until R17 fills it."
+        )
+    else:
+        release_line = (
+            f"- **Release binary.** sha256 `{prov.released_binary_sha}` — the "
+            "public binary published at R17, distinct from the measurement "
+            "binary above (which is measured-with, never published)."
+        )
     return "\n".join(
         [
             "## Provenance",
             "",
-            f"- **One binary, every cell.** eval `noodl-eval` sha256 "
-            f"`{prov.binary_sha}` (features: rust-analysis) — read from PIN.toml "
-            "[recert.binary] and asserted identical across every certified "
-            "lease's provenance header and bin/noodl-eval.sha256.",
+            f"- **One measurement binary, every cell.** eval `noodl-eval` sha256 "
+            f"`{prov.binary_sha}` (features: rust-analysis) — the binary every "
+            "cell was MEASURED with (measured-with, not published), read from "
+            "PIN.toml [recert.binary] and asserted identical across every "
+            "certified lease's provenance header and bin/noodl-eval.sha256.",
+            release_line,
             "- **Cell leases.** ts40 + py_nosphinx arms and the rust43 frozen "
             "gold: lease `harbor-hermit` (`cbx_cf3818ae73ee`). go34 frozen gold: "
             "reused from run8 (`bf8de741…`, adjudicated). go34 + rust43 arms: "

@@ -34,7 +34,13 @@ GOLD = PKG / "gold"
 
 # A stand-in provenance so the table/plumbing tests exercise the full compose
 # without depending on the pending PIN (the gate is tested separately below).
-_FAKE_PROV = Provenance(harness_tip="deadbeefcafe", binary_sha="ab" * 32, untracked_count=3)
+# released_binary_sha=None is the state R16 ships in (the public binary is R17).
+_FAKE_PROV = Provenance(
+    harness_tip="deadbeefcafe",
+    binary_sha="ab" * 32,
+    untracked_count=3,
+    released_binary_sha=None,
+)
 
 
 class PendingPlumbingTest(unittest.TestCase):
@@ -250,6 +256,31 @@ class ProvenanceGateTest(unittest.TestCase):
         bad = Cell("ts40", "shipped_treatment", _cellscore(n=999), None)
         with self.assertRaises(ProvenanceError):
             report._corpus_n("ts40", [bad], GOLD)
+
+
+class RenderBothBinariesTest(unittest.TestCase):
+    """The provenance renders BOTH binaries honestly: the measurement binary
+    (measured-with, not published) always, and the release binary as either
+    PENDING (R17) or its published sha — never conflating the two."""
+
+    def test_pending_release_renders_measurement_and_pending(self) -> None:
+        out = report.render_provenance(_FAKE_PROV)
+        self.assertIn("ab" * 32, out)  # measurement sha shown
+        self.assertIn("measured-with, not published", out)
+        self.assertIn("Release binary — PENDING (R17)", out)
+        self.assertIn("validate-pins --flip", out)
+
+    def test_published_release_renders_the_release_sha(self) -> None:
+        flipped = Provenance(
+            harness_tip="deadbeefcafe",
+            binary_sha="ab" * 32,
+            untracked_count=3,
+            released_binary_sha="cd" * 32,
+        )
+        out = report.render_provenance(flipped)
+        self.assertIn("cd" * 32, out)  # release sha shown
+        self.assertIn("ab" * 32, out)  # measurement sha still shown
+        self.assertNotIn("PENDING (R17)", out)
 
 
 def _cellscore(n: int) -> CellScore:

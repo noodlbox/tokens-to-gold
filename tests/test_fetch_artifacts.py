@@ -32,7 +32,7 @@ class ArtifactTargetsTest(unittest.TestCase):
     def test_pin_targets_split_by_tag(self) -> None:
         targets = artifact_targets(load_pins())
         names = {t.name for t in targets}
-        # the 12 re-cert reports + the V1 deepswe pair are all fetch targets.
+        # the 12 re-cert reports + the V1 deepswe pair are the ONLY fetch targets.
         self.assertIn("native_floor_ts40.json", names)
         self.assertIn("shipped_treatment_go34.json", names)
         self.assertIn("deepswe_frozen_ts40.json", names)
@@ -42,6 +42,19 @@ class ArtifactTargetsTest(unittest.TestCase):
         deepswe = [t for t in targets if t.name.startswith("deepswe")]
         self.assertEqual(len(deepswe), 2)
         self.assertTrue(all(t.release_tag == "v1.0.0-rc1" for t in deepswe))
+
+    def test_no_binary_is_a_fetch_target(self) -> None:
+        # Binary-drop: a binary file digest is not a reproduction target
+        # (BUNDLE.md contract row 13), so `artifact_targets` fetches 14 files —
+        # the 12 re-cert reports + the 2 V1 reports — and NO binary. Every
+        # target is a .json report.
+        targets = artifact_targets(load_pins())
+        self.assertEqual(len(targets), 14, sorted(t.name for t in targets))
+        self.assertTrue(
+            all(t.name.endswith(".json") for t in targets),
+            [t.name for t in targets if not t.name.endswith(".json")],
+        )
+        self.assertFalse(any("noodl-eval" in t.name for t in targets))
 
 
 class FetchArtifactsCliTest(unittest.TestCase):

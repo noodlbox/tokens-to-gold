@@ -14,7 +14,16 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from ttg.pins import PENDING, PinError, is_pending, load_pins, validate_recert
+from ttg.pins import (
+    PENDING,
+    PENDING_RELEASE,
+    PinError,
+    is_pending,
+    is_release_pending,
+    load_pins,
+    validate_recert,
+    validate_released_binary,
+)
 
 PKG = Path(__file__).resolve().parent.parent
 
@@ -27,6 +36,18 @@ def _filled() -> dict:
         "eval_features": "rust-analysis",
         "build_commit": "573bfcfb2",
         "sha256": "a" * 64,
+    }
+    return doc
+
+
+def _release_filled() -> dict:
+    """A doc whose [recert.released_binary] names a real published binary — the
+    R17 state in which `validate-pins --flip` passes."""
+    doc = _filled()
+    doc["recert"]["released_binary"] = {
+        "release_tag": "v2.0.0",
+        "asset_name": "noodl-eval-official",
+        "sha256": "b" * 64,
     }
     return doc
 
@@ -91,6 +112,72 @@ class RefusalTest(unittest.TestCase):
         doc["recert"]["status"] = "COMPLETE"
         with self.assertRaises(PinError):
             validate_recert(doc)
+
+
+class FlipGateTest(unittest.TestCase):
+    """R17 flip gate: `validate_released_binary` is a SEPARATE gate from the
+    measurement gate — it FAILS while the release binary is the PENDING-RELEASE
+    sentinel and passes once R17 fills a real published identity. Both
+    directions are asserted."""
+
+    def test_committed_pin_is_release_pending_and_flip_refuses(self) -> None:
+        # R16 ships with the release binary pending: the measurement gate passes
+        # but the flip gate refuses — the two lifecycles are independent.
+        doc = load_pins()
+        validate_recert(doc)  # measurement complete
+        self.assertTrue(is_release_pending(doc))
+        with self.assertRaises(PinError):
+            validate_released_binary(doc)
+
+    def test_filled_release_passes_the_flip_gate(self) -> None:
+        doc = _release_filled()
+        self.assertFalse(is_release_pending(doc))
+        validate_released_binary(doc)  # must not raise
+
+    def test_release_sentinel_in_any_field_is_refused(self) -> None:
+        for field in ("release_tag", "asset_name", "sha256"):
+            doc = _release_filled()
+            doc["recert"]["released_binary"][field] = PENDING_RELEASE
+            with self.assertRaises(PinError, msg=field):
+                validate_released_binary(doc)
+
+    def test_release_blank_or_missing_is_refused(self) -> None:
+        for bad in ("", "   "):
+            doc = _release_filled()
+            doc["recert"]["released_binary"]["asset_name"] = bad
+            with self.assertRaises(PinError):
+                validate_released_binary(doc)
+        doc = _release_filled()
+        del doc["recert"]["released_binary"]["sha256"]
+        with self.assertRaises(PinError):
+            validate_released_binary(doc)
+
+    def test_release_malformed_sha_is_refused(self) -> None:
+        doc = _release_filled()
+        doc["recert"]["released_binary"]["sha256"] = "not-a-digest"
+        with self.assertRaises(PinError):
+            validate_released_binary(doc)
+
+    def test_measurement_sentinel_and_release_sentinel_are_distinct(self) -> None:
+        # A single shared sentinel would let a filled measurement satisfy the
+        # flip gate; they must be different strings.
+        self.assertNotEqual(PENDING, PENDING_RELEASE)
+
+    def test_cli_validate_pins_passes_but_flip_refuses_on_committed_pin(self) -> None:
+        from ttg import cli
+
+        # Measurement gate: the committed pin passes (numbers are publishable).
+        self.assertEqual(cli.main(["validate-pins"]), 0)
+        # Flip gate: the same pin refuses, because the release binary is pending.
+        self.assertEqual(cli.main(["validate-pins", "--flip"]), 2)
+
+    def test_cli_flip_passes_once_release_is_filled(self) -> None:
+        from unittest import mock
+
+        from ttg import cli
+
+        with mock.patch.object(cli, "load_pins", return_value=_release_filled()):
+            self.assertEqual(cli.main(["validate-pins", "--flip"]), 0)
 
 
 if __name__ == "__main__":

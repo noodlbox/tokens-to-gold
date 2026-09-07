@@ -17,12 +17,22 @@ from dataclasses import dataclass
 from pathlib import Path
 
 PKG = Path(__file__).resolve().parent.parent
+# Two DISTINCT sentinels for two DISTINCT lifecycles, never conflated:
+#   PENDING-RUN     — the measurement identity awaits the lease run (validate_recert)
+#   PENDING-RELEASE — the RELEASE binary is not yet built + published (validate_released_binary)
+# The measuring binary is deliberately never the released binary, so the two
+# gates are independent: the measurement can be complete (numbers publishable)
+# while the release binary is still pending (R17). One shared sentinel would
+# make a filled measurement silently satisfy the flip gate.
 PENDING = "PENDING-RUN"
+PENDING_RELEASE = "PENDING-RELEASE"
 _SHA256 = re.compile(r"\A[0-9a-f]{64}\Z")
 _COMMIT = re.compile(r"\A[0-9a-f]{7,40}\Z")
 
 # Fields the lease run must fill before any re-cert number is publishable.
 _REQUIRED_BINARY_FIELDS = ("build_commit", "sha256", "eval_features")
+# Fields the R17 release step must fill before the public flip.
+_RELEASED_BINARY_FIELDS = ("release_tag", "asset_name", "sha256")
 
 
 class PinError(ValueError):
@@ -81,9 +91,15 @@ class ArtifactTarget:
 def artifact_targets(doc: Mapping[str, object]) -> list[ArtifactTarget]:
     """The pinned release attachments named in PIN.toml that `fetch-artifacts`
     downloads and sha-verifies: every `[[artifacts.files]]` entry (its own
-    `release_tag` overriding the `[artifacts].release_tag` default) plus the
-    `[binary]` asset. The frozen gold is committed in-repo, so it is not
-    fetched."""
+    `release_tag` overriding the `[artifacts].release_tag` default). The frozen
+    gold is committed in-repo, so it is not fetched.
+
+    NO binary is a fetch target. The reproducible target is the artifact (the
+    gold payload + scored curves) and the pinned committed source, NEVER a binary
+    file digest — the build path bakes into the binary (BUNDLE.md publication
+    contract, row 13), so downloading 213 MB to sha-check a non-repro number buys
+    nothing. The `[binary]` and `[recert.binary]` sections remain as measurement
+    IDENTITY, not as attachments to pull."""
     targets: list[ArtifactTarget] = []
     artifacts = doc.get("artifacts")
     if isinstance(artifacts, Mapping):
@@ -96,11 +112,6 @@ def artifact_targets(doc: Mapping[str, object]) -> list[ArtifactTarget]:
                 tag = entry.get("release_tag", default_tag)
                 if isinstance(tag, str):
                     targets.append(ArtifactTarget(str(entry["name"]), str(entry["sha256"]), tag))
-    binary = doc.get("binary")
-    if isinstance(binary, Mapping):
-        name, sha, tag = binary.get("asset_name"), binary.get("sha256"), binary.get("release_tag")
-        if isinstance(name, str) and isinstance(sha, str) and isinstance(tag, str):
-            targets.append(ArtifactTarget(name, sha, tag))
     return targets
 
 
@@ -144,3 +155,50 @@ def validate_recert(doc: Mapping[str, object]) -> None:
     artifact = _section(doc, "recert", "cli_artifact")
     if not _SHA256.fullmatch(str(artifact.get("sha256", ""))):
         raise PinError("PIN.toml [recert.cli_artifact].sha256 is not a sha256 digest")
+
+
+def is_release_pending(doc: Mapping[str, object]) -> bool:
+    """True while `[recert.released_binary]` still holds the PENDING-RELEASE
+    sentinel — the state R16 ships in. The measuring binary ([recert.binary]) is
+    NOT the released binary: the released binary is a distinct, later artifact
+    built + published at R17. This is orthogonal to `is_pending` (measurement)."""
+    released = _section(doc, "recert", "released_binary")
+    return any(released.get(f) == PENDING_RELEASE for f in _RELEASED_BINARY_FIELDS)
+
+
+def validate_released_binary(doc: Mapping[str, object]) -> None:
+    """The FLIP gate (R17): raise unless `[recert.released_binary]` names a real,
+    published binary. It FAILS by design while R16 stands — the measuring binary
+    is deliberately never published, so the release identity is the PENDING-RELEASE
+    sentinel until the public binary is built and uploaded. `validate-pins --flip`
+    runs this so a go-live cannot proceed on the measurement sentinel; it is a
+    SEPARATE gate from `validate_recert`, which only asserts the measurement
+    identity is complete."""
+    released = _section(doc, "recert", "released_binary")
+    for field in _RELEASED_BINARY_FIELDS:
+        value = released.get(field)
+        if value == PENDING_RELEASE:
+            raise PinError(
+                f"PIN.toml [recert.released_binary].{field} is still "
+                f"{PENDING_RELEASE} — the release binary has not been built and "
+                "published (R17); the measuring binary is never the released one"
+            )
+        if not isinstance(value, str) or not value.strip():
+            raise PinError(
+                f"PIN.toml [recert.released_binary].{field} is missing or blank "
+                "— a released-binary identity is never allowed to be silently empty"
+            )
+    if not _SHA256.fullmatch(str(released["sha256"])):
+        raise PinError(
+            "PIN.toml [recert.released_binary].sha256 is not a sha256 digest"
+        )
+
+
+def released_binary_sha(doc: Mapping[str, object]) -> str | None:
+    """The PUBLIC binary's sha256 once R17 has filled `[recert.released_binary]`,
+    else None while it is still the PENDING-RELEASE sentinel. Callers render this
+    honestly (pending vs published), never refuse on the pending state."""
+    if is_release_pending(doc):
+        return None
+    sha = _section(doc, "recert", "released_binary").get("sha256")
+    return str(sha) if isinstance(sha, str) else None

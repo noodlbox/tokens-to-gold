@@ -38,7 +38,13 @@ from ttg.derive_checks import (
     zero_gold_check,
 )
 from ttg.own_repo import OWN_REPO_ARMS, OwnRepoError, fetch_pr, own_repo_flags
-from ttg.pins import PinError, artifact_targets, load_pins, validate_recert
+from ttg.pins import (
+    PinError,
+    artifact_targets,
+    load_pins,
+    validate_recert,
+    validate_released_binary,
+)
 from ttg.preflight import (
     MissingToolError,
     PreU1BinaryError,
@@ -458,8 +464,21 @@ def cmd_validate_pins(args: argparse.Namespace) -> int:
 
     The module and PIN.toml advertise this guard; this is where it is enforced.
     validate_recert raises PinError on a PENDING-RUN, blank, or malformed
-    identity, which main() turns into a clean refusal."""
-    validate_recert(load_pins())
+    MEASUREMENT identity, which main() turns into a clean refusal.
+
+    `--flip` ADDS the R17 go-live gate: `validate_released_binary` refuses while
+    [recert.released_binary] is still the PENDING-RELEASE sentinel. It is a
+    SEPARATE gate — the measurement can be complete (numbers publishable) while
+    the release binary is still pending, so the flip check runs only when asked."""
+    doc = load_pins()
+    validate_recert(doc)
+    if args.flip:
+        validate_released_binary(doc)
+        print(
+            "validate-pins --flip: re-cert measurement identity complete AND the "
+            "release binary is published — the public flip may proceed"
+        )
+        return 0
     print("validate-pins: re-cert PIN identity is complete and well-formed")
     return 0
 
@@ -604,6 +623,11 @@ def main(argv: list[str] | None = None) -> int:
 
     p_vp = sub.add_parser(
         "validate-pins", help="A4: refuse a half-filled re-cert PIN (PENDING-RUN)"
+    )
+    p_vp.add_argument(
+        "--flip", action="store_true",
+        help="R17 go-live gate: ALSO refuse until [recert.released_binary] names "
+        "a published binary (PENDING-RELEASE fails)",
     )
     p_vp.set_defaults(func=cmd_validate_pins)
 
