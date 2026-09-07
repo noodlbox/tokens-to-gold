@@ -36,7 +36,13 @@ public_url = "https://github.com/noodlbox/tokens-to-gold"
 release_tag = "v1.0.0-rc1"
 asset_name = "noodl-eval-official"
 sha256 = "c5dbaf91d0502b1c792834d3c3f19e520e68eff50088fab8b1a2f731f04e7c65"
-url = "https://github.com/noodlbox/tokens-to-gold/releases/download/v1.0.0-rc1/noodl-eval-official"
+# The asset itself was REMOVED from the v1.0.0-rc1 release on 2026-09-08 by the
+# founder's ruling that the eval binary is an internal tool and is not published
+# (the same ruling as [recert.released_binary] below). No url: there is nothing
+# to download. The identity (tag, asset name, sha256) stays so the V1 numbers'
+# producer remains cross-checkable against the certified run headers.
+state = "asset-removed"
+removed_on = "2026-09-08"
 
 [artifacts]
 # Large derivation reports live as release attachments on this repo (the

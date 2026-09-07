@@ -312,15 +312,23 @@ class ArtifactUrlConsistencyTest(unittest.TestCase):
             len(self._every_url(doc)),
             "some url was not examined — a silent skip is the failure this guards",
         )
-        self.assertEqual(examined, 16, "PIN.toml carries 16 urls: 14 artifacts.files + binary + cli_artifact")
+        self.assertEqual(examined, 15, "PIN.toml carries 15 urls: 14 artifacts.files + cli_artifact; [binary] has none since its asset was removed")
 
     def test_a_url_outside_artifacts_files_is_still_caught(self) -> None:
-        """MUST-RED the old checks could not make: perturb `[binary].url`, which
-        is outside `[[artifacts.files]]` entirely."""
+        """MUST-RED the old checks could not make: a url in a table outside
+        `[[artifacts.files]]` — here a url ADDED back to `[binary]`, whose asset
+        was removed — must be checked against that table's own tag and asset."""
         doc = tomllib.loads((PKG / "PIN.toml").read_text())
         doc["binary"]["url"] = "https://github.com/x/y/releases/download/GONE/deleted-asset"
         offenders, _ = self._offenders(doc)
         self.assertIn("binary.url", offenders)
+
+    def test_the_removed_binary_asset_carries_no_url(self) -> None:
+        """The V1 binary asset was deleted from the release (founder, 2026-09-08).
+        A url on that table would be a 404 the consistency rule cannot see."""
+        doc = tomllib.loads((PKG / "PIN.toml").read_text())
+        self.assertNotIn("url", doc["binary"])
+        self.assertEqual(doc["binary"]["state"], "asset-removed")
 
     def test_a_cli_artifact_version_bumped_without_its_url_is_caught(self) -> None:
         """MUST-RED for the second grammar: bump the version in
