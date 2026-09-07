@@ -1,5 +1,7 @@
 # Pre-registration
 
+> **Versions** — TokensToGold benchmark **V1** (launch scope) · harness package **v2.0.0** · engine **noodlbox 2.3.18**. Three numbers coexist: the benchmark scope is V1 (the launch-scope doc); the harness package major-bumped to v2.0.0 for the reach-split metric-schema change (`reach_at_80` → `whole_list` + `within_32k`) — NOT a benchmark V2, none exists yet; the engine is the 2.3.18 build pinned in `PIN.toml [recert.binary]`.
+
 Fixed **before** the reported runs. Anything decided after the numbers were
 seen is not in this file.
 
