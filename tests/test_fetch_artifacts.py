@@ -38,7 +38,7 @@ class ArtifactTargetsTest(unittest.TestCase):
         self.assertIn("deepswe_frozen_ts40.json", names)
         recert = [t for t in targets if t.name.endswith(".json") and not t.name.startswith("deepswe")]
         self.assertEqual(len(recert), 12, sorted(t.name for t in recert))
-        self.assertTrue(all(t.release_tag == "v2.0.0" for t in recert))
+        self.assertTrue(all(t.release_tag == "v1-2.3.18" for t in recert))
         deepswe = [t for t in targets if t.name.startswith("deepswe")]
         self.assertEqual(len(deepswe), 2)
         self.assertTrue(all(t.release_tag == "v1.0.0-rc1" for t in deepswe))

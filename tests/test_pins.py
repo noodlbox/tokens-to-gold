@@ -45,7 +45,7 @@ def _release_filled() -> dict:
     R17 state in which `validate-pins --flip` passes."""
     doc = _filled()
     doc["recert"]["released_binary"] = {
-        "release_tag": "v2.0.0",
+        "release_tag": "v1-2.3.18",
         "asset_name": "noodl-eval-official",
         "sha256": "b" * 64,
     }
@@ -178,6 +178,39 @@ class FlipGateTest(unittest.TestCase):
 
         with mock.patch.object(cli, "load_pins", return_value=_release_filled()):
             self.assertEqual(cli.main(["validate-pins", "--flip"]), 0)
+
+
+class ArtifactUrlConsistencyTest(unittest.TestCase):
+    """finding-P: `artifact_targets` reads name / sha256 / release_tag and NEVER
+    `url`, so a release_tag rename that misses the `url` line leaves fetch green
+    while PIN.toml publishes URLs to a dead tag. Every `[[artifacts.files]]`
+    `url` must end with `/download/<release_tag>/<name>`; perturbing either field
+    reddens this, so the two can never disagree."""
+
+    def _files_and_default(self) -> tuple[list[dict[str, object]], object]:
+        doc = tomllib.loads((PKG / "PIN.toml").read_text())
+        artifacts = doc["artifacts"]
+        return list(artifacts["files"]), artifacts.get("release_tag")
+
+    def test_every_url_matches_its_release_tag_and_name(self) -> None:
+        files, default_tag = self._files_and_default()
+        self.assertTrue(files)
+        for entry in files:
+            tag = entry.get("release_tag", default_tag)
+            suffix = f"/download/{tag}/{entry['name']}"
+            self.assertTrue(
+                str(entry["url"]).endswith(suffix),
+                f"url/release_tag disagree for {entry['name']}: "
+                f"url={entry['url']} expected suffix {suffix}",
+            )
+
+    def test_a_release_tag_bumped_without_its_url_is_caught(self) -> None:
+        # MUST-RED: renaming a release_tag but not its url must be detectable.
+        files, default_tag = self._files_and_default()
+        entry = files[0]
+        bumped = f"{entry.get('release_tag', default_tag)}-PERTURBED"
+        suffix = f"/download/{bumped}/{entry['name']}"
+        self.assertFalse(str(entry["url"]).endswith(suffix))
 
 
 if __name__ == "__main__":

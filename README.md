@@ -1,6 +1,6 @@
 # tokens-to-gold
 
-> **Versions** — TokensToGold benchmark **V1** (launch scope) · harness package **v2.0.0** · engine **noodlbox 2.3.18**. Three numbers coexist: the benchmark scope is V1 (the launch-scope doc); the harness package major-bumped to v2.0.0 for the reach-split metric-schema change (`reach_at_80` → `whole_list` + `within_32k`) — NOT a benchmark V2, none exists yet; the engine is the 2.3.18 build pinned in `PIN.toml [recert.binary]`.
+> **Versions** — TokensToGold benchmark **V1** · harness release **v1-2.3.18** · engine **noodlbox 2.3.18**. Three numbers coexist: the benchmark scope is V1 (the launch-scope doc); the harness release is tagged `v1-2.3.18` (benchmark V1 · engine 2.3.18) — named so no tag reads as a benchmark V2, none exists yet — and carries the reach-split metric-schema change (`reach_at_80` → `whole_list` + `within_32k`); the engine is the 2.3.18 build pinned in `PIN.toml [recert.binary]`.
 
 A reproducible benchmark for **retrieval efficiency**: how many tokens must
 reach a coding agent's context before the symbols it actually needs are in
@@ -75,7 +75,7 @@ python3 -m ttg.cli accept --report <r> --corpus ts40 --arm shipped_treatment
 ```
 
 **Running the acceptance suite.** The one supported entry is `./reproduce.sh
-verify` — it fetches the pinned v2.0.0 release attachments with the repo token,
+verify` — it fetches the pinned v1-2.3.18 release attachments with the repo token,
 sha-verifies each, and runs the acceptance suite with `TTG_REPORTS_DIR` pointed
 at the fetched dir. It FAILS LOUDLY if the fetch is missing — no skip-if-absent
 anywhere. On a fresh clone this is the whole ceremony. To run the suite by hand

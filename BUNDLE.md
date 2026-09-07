@@ -1,6 +1,6 @@
 # The artifact bundle — the 14-row publication contract
 
-> **Versions** — TokensToGold benchmark **V1** (launch scope) · harness package **v2.0.0** · engine **noodlbox 2.3.18**. Three numbers coexist: the benchmark scope is V1 (the launch-scope doc); the harness package major-bumped to v2.0.0 for the reach-split metric-schema change (`reach_at_80` → `whole_list` + `within_32k`) — NOT a benchmark V2, none exists yet; the engine is the 2.3.18 build pinned in `PIN.toml [recert.binary]`.
+> **Versions** — TokensToGold benchmark **V1** · harness release **v1-2.3.18** · engine **noodlbox 2.3.18**. Three numbers coexist: the benchmark scope is V1 (the launch-scope doc); the harness release is tagged `v1-2.3.18` (benchmark V1 · engine 2.3.18) — named so no tag reads as a benchmark V2, none exists yet — and carries the reach-split metric-schema change (`reach_at_80` → `whole_list` + `within_32k`); the engine is the 2.3.18 build pinned in `PIN.toml [recert.binary]`.
 
 Every public benchmark result here ships with each row of this contract either
 **FILLED** (with its in-repo pointer) or **EXPLAINED-ABSENT** (with the reason,
