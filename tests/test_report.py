@@ -34,7 +34,8 @@ GOLD = PKG / "gold"
 
 # A stand-in provenance so the table/plumbing tests exercise the full compose
 # without depending on the pending PIN (the gate is tested separately below).
-# released_binary_sha=None is the state R16 ships in (the public binary is R17).
+# released_binary_sha=None is the shipped state: the engine is internal and not
+# published, so there is no release digest to quote.
 _FAKE_PROV = Provenance(
     harness_tip="deadbeefcafe",
     binary_sha="ab" * 32,
@@ -265,12 +266,16 @@ class RenderBothBinariesTest(unittest.TestCase):
     (measured-with, not published) always, and the release binary as either
     PENDING (R17) or its published sha — never conflating the two."""
 
-    def test_pending_release_renders_measurement_and_pending(self) -> None:
+    def test_absent_release_renders_the_explained_absence(self) -> None:
+        # No release sha to quote. The rendered line must EXPLAIN the absence
+        # rather than merely note it, and must not promise a later publication:
+        # the contract permits an explained absence and forbids a silent one.
         out = report.render_provenance(_FAKE_PROV)
         self.assertIn("ab" * 32, out)  # measurement sha shown
         self.assertIn("measured-with, not published", out)
-        self.assertIn("Release binary — PENDING (R17)", out)
-        self.assertIn("validate-pins --flip", out)
+        self.assertIn("NOT PUBLISHED", out)
+        self.assertIn("verifiable offline", out)
+        self.assertNotIn("PENDING (R17)", out)
 
     def test_published_release_renders_the_release_sha(self) -> None:
         flipped = Provenance(

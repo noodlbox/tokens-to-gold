@@ -43,6 +43,8 @@ from ttg.pins import (
     artifact_targets,
     load_pins,
     validate_recert,
+    NOT_PUBLISHED,
+    released_binary_state,
     validate_released_binary,
 )
 from ttg.preflight import (
@@ -579,18 +581,30 @@ def cmd_validate_pins(args: argparse.Namespace) -> int:
     validate_recert raises PinError on a PENDING-RUN, blank, or malformed
     MEASUREMENT identity, which main() turns into a clean refusal.
 
-    `--flip` ADDS the R17 go-live gate: `validate_released_binary` refuses while
-    [recert.released_binary] is still the PENDING-RELEASE sentinel. It is a
-    SEPARATE gate — the measurement can be complete (numbers publishable) while
-    the release binary is still pending, so the flip check runs only when asked."""
+    `--flip` ADDS the go-live gate: `validate_released_binary` requires the
+    release-binary position to be RESOLVED — either a real published identity or
+    an explicit `not-published` state carrying its reason. It refuses the
+    PENDING-RELEASE sentinel ("not yet") and refuses a reasonless
+    `not-published` ("absent, unexplained"). It is a SEPARATE gate: the
+    measurement can be complete while that position is open, so it runs only when
+    asked."""
     doc = load_pins(Path(args.pin_file) if args.pin_file else None)
     validate_recert(doc)
     if args.flip:
         validate_released_binary(doc)
-        print(
-            "validate-pins --flip: re-cert measurement identity complete AND the "
-            "release binary is published — the public flip may proceed"
-        )
+        state, detail = released_binary_state(doc)
+        if state == NOT_PUBLISHED:
+            print(
+                "validate-pins --flip: re-cert measurement identity complete; the "
+                f"release binary is NOT PUBLISHED — {detail} The public flip may "
+                "proceed."
+            )
+        else:
+            print(
+                "validate-pins --flip: re-cert measurement identity complete AND "
+                f"the release binary is published ({detail}) — the public flip "
+                "may proceed"
+            )
         return 0
     print("validate-pins: re-cert PIN identity is complete and well-formed")
     return 0
@@ -763,8 +777,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_vp.add_argument(
         "--flip", action="store_true",
-        help="R17 go-live gate: ALSO refuse until [recert.released_binary] names "
-        "a published binary (PENDING-RELEASE fails)",
+        help="go-live gate: ALSO refuse until the release-binary position is "
+        "RESOLVED — a published identity, or an explicit not-published state "
+        "with its reason (PENDING-RELEASE and a reasonless state both fail)",
     )
     p_vp.add_argument(
         "--pin-file",

@@ -15,7 +15,7 @@ import unittest
 from pathlib import Path
 
 from ttg import cli
-from ttg.pins import PENDING_RELEASE, PKG
+from ttg.pins import NOT_PUBLISHED, PENDING_RELEASE, PKG
 
 
 class PinFileCliTest(unittest.TestCase):
@@ -41,6 +41,42 @@ class PinFileCliTest(unittest.TestCase):
         ]
         dest.write_text("\n".join(lines[: start + 1] + replacement + lines[end:]))
         return dest
+
+    def _scratch_block(self, lines: list[str]) -> Path:
+        """A scratch PIN whose [recert.released_binary] body is exactly `lines`."""
+        import shutil as _shutil
+        import tempfile as _tempfile
+
+        tmp = Path(_tempfile.mkdtemp())
+        self.addCleanup(_shutil.rmtree, tmp, ignore_errors=True)
+        dest = tmp / "PIN.toml"
+        src = (PKG / "PIN.toml").read_text().split("\n")
+        start = src.index("[recert.released_binary]")
+        end = next(
+            (i for i in range(start + 1, len(src)) if src[i].startswith("[")), len(src)
+        )
+        dest.write_text("\n".join(src[: start + 1] + lines + src[end:]))
+        return dest
+
+    def test_not_published_with_a_reason_passes_the_flip(self) -> None:
+        pin = self._scratch_block(
+            [f'state = "{NOT_PUBLISHED}"', 'reason = "internal tool; verifies offline"']
+        )
+        self.assertEqual(
+            cli.main(["validate-pins", "--flip", "--pin-file", str(pin)]), 0
+        )
+
+    def test_not_published_WITHOUT_a_reason_is_refused(self) -> None:
+        """MUST-RED: the contract forbids a SILENT absence. A declared state with
+        no reason is a silent absence with a label on it."""
+        pin = self._scratch_block([f'state = "{NOT_PUBLISHED}"'])
+        self.assertEqual(
+            cli.main(["validate-pins", "--flip", "--pin-file", str(pin)]), 2
+        )
+
+    def test_the_committed_pin_declares_not_published_with_a_reason(self) -> None:
+        """The shipped state itself: --flip passes on the real PIN.toml."""
+        self.assertEqual(cli.main(["validate-pins", "--flip"]), 0)
 
     def test_pending_sentinel_still_refuses_the_flip(self) -> None:
         """MUST-RED: the gate must return to a refusal when the pin is reverted."""

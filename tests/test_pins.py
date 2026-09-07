@@ -15,6 +15,7 @@ import unittest
 from pathlib import Path
 
 from ttg.pins import (
+    NOT_PUBLISHED,
     PENDING,
     PENDING_RELEASE,
     PinError,
@@ -23,6 +24,8 @@ from ttg.pins import (
     load_pins,
     validate_recert,
     validate_released_binary,
+    released_binary_sha,
+    released_binary_state,
 )
 
 PKG = Path(__file__).resolve().parent.parent
@@ -49,6 +52,17 @@ def _release_filled() -> dict:
         "asset_name": "noodl-eval-official",
         "sha256": "b" * 64,
     }
+    return doc
+
+
+def _release_not_published(reason: str | None = "internal tool; numbers verify offline") -> dict:
+    """A doc whose release binary is declared NOT PUBLISHED with a reason — the
+    founder's ruling state, in which `--flip` passes without any release identity."""
+    doc = _filled()
+    block: dict = {"state": NOT_PUBLISHED}
+    if reason is not None:
+        block["reason"] = reason
+    doc["recert"]["released_binary"] = block
     return doc
 
 
@@ -120,14 +134,19 @@ class FlipGateTest(unittest.TestCase):
     sentinel and passes once R17 fills a real published identity. Both
     directions are asserted."""
 
-    def test_committed_pin_is_release_pending_and_flip_refuses(self) -> None:
-        # R16 ships with the release binary pending: the measurement gate passes
-        # but the flip gate refuses — the two lifecycles are independent.
+    def test_committed_pin_declares_not_published_and_the_flip_passes(self) -> None:
+        # The SHIPPED state after the founder's ruling: the engine is internal and
+        # is not published, declared with its reason, so both gates pass. The
+        # PENDING-RELEASE refusal is still asserted — on a synthetic doc, in
+        # NotPublishedStateTest — because the sentinel is still a real state this
+        # file could hold; it is simply no longer the one committed here.
         doc = load_pins()
         validate_recert(doc)  # measurement complete
-        self.assertTrue(is_release_pending(doc))
-        with self.assertRaises(PinError):
-            validate_released_binary(doc)
+        self.assertFalse(is_release_pending(doc))
+        state, reason = released_binary_state(doc)
+        self.assertEqual(state, NOT_PUBLISHED)
+        self.assertTrue(reason and reason.strip(), "the absence must be explained")
+        validate_released_binary(doc)  # must not raise
 
     def test_filled_release_passes_the_flip_gate(self) -> None:
         doc = _release_filled()
@@ -163,13 +182,13 @@ class FlipGateTest(unittest.TestCase):
         # flip gate; they must be different strings.
         self.assertNotEqual(PENDING, PENDING_RELEASE)
 
-    def test_cli_validate_pins_passes_but_flip_refuses_on_committed_pin(self) -> None:
+    def test_cli_both_gates_pass_on_the_committed_pin(self) -> None:
         from ttg import cli
 
-        # Measurement gate: the committed pin passes (numbers are publishable).
+        # Both gates pass on the committed pin: the measurement is complete and
+        # the release-binary position is RESOLVED (not-published, with a reason).
         self.assertEqual(cli.main(["validate-pins"]), 0)
-        # Flip gate: the same pin refuses, because the release binary is pending.
-        self.assertEqual(cli.main(["validate-pins", "--flip"]), 2)
+        self.assertEqual(cli.main(["validate-pins", "--flip"]), 0)
 
     def test_cli_flip_passes_once_release_is_filled(self) -> None:
         from unittest import mock
@@ -215,3 +234,51 @@ class ArtifactUrlConsistencyTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NotPublishedStateTest(unittest.TestCase):
+    """The founder ruled the eval binary is an INTERNAL tool and is not published.
+
+    The contract forbids a SILENT absence, so "not published" is a declared state
+    carrying its reason — never a blank field and never the PENDING-RELEASE
+    sentinel, which means "not published YET" and is a different claim.
+    """
+
+    def test_not_published_with_a_reason_passes_the_flip_gate(self) -> None:
+        validate_released_binary(_release_not_published())  # must not raise
+
+    def test_not_published_without_a_reason_is_REFUSED(self) -> None:
+        # MUST-RED: an unexplained absence is exactly what the artifact contract
+        # forbids. A state with no reason is a silent absence wearing a label.
+        with self.assertRaises(PinError):
+            validate_released_binary(_release_not_published(reason=None))
+
+    def test_a_blank_reason_is_REFUSED(self) -> None:
+        for blank in ("", "   ", "\t"):
+            with self.assertRaises(PinError):
+                validate_released_binary(_release_not_published(reason=blank))
+
+    def test_pending_release_is_still_REFUSED(self) -> None:
+        # The old sentinel keeps its meaning: "not published YET", still a refusal.
+        doc = _filled()
+        doc["recert"]["released_binary"] = {
+            "release_tag": PENDING_RELEASE,
+            "asset_name": PENDING_RELEASE,
+            "sha256": PENDING_RELEASE,
+        }
+        with self.assertRaises(PinError):
+            validate_released_binary(doc)
+
+    def test_the_three_markers_are_pairwise_DISTINCT(self) -> None:
+        # PENDING-RUN (measurement pending), PENDING-RELEASE (publication pending),
+        # not-published (publication ruled out) are three different claims. One
+        # shared string would let filling one silently satisfy another.
+        markers = {PENDING, PENDING_RELEASE, NOT_PUBLISHED}
+        self.assertEqual(len(markers), 3)
+
+    def test_a_filled_release_identity_still_passes(self) -> None:
+        # The publishing path is not removed, only no longer the only accepted one.
+        validate_released_binary(_release_filled())  # must not raise
+
+    def test_not_published_yields_no_release_sha(self) -> None:
+        self.assertIsNone(released_binary_sha(_release_not_published()))

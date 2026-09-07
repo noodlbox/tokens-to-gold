@@ -149,7 +149,9 @@ staged_dir = "runs/recert-2026-09/R16-staging"
 # plus SHA256SUMS + MANIFEST.json (each file, its sha, its certified source
 # path). NO binary ships: the measuring binary is dropped (see [recert.binary]),
 # because a binary file digest is not a reproduction target (BUNDLE.md
-# publication contract, row 13). The public binary is R17 ([recert.released_binary]).
+# publication contract, row 13). No binary is published at all — the engine is an
+# internal tool (see the released-binary section); the 16 payload files are the
+# reproduction surface.
 
 [gold]
 # Small enough to ship in the repo; digests also in gold/SHA256SUMS.
@@ -199,8 +201,9 @@ sha256 = "3c24c4124e173aa28229340b1293b4356de65310ad648743c146f136da4151bf"
 # (the build path bakes into it — BUNDLE.md publication contract, row 13), and
 # the binary once embedded the held-out corpus name in SQL-comment strings, so
 # it does not ship. Its identity is pinned here so a third party can cross-check
-# the numbers' producer; the PUBLIC binary is the separate [recert.released_binary]
-# below, built + published at R17.
+# the numbers' producer. It is not published, and neither is any other build of
+# the engine — the released-binary section below records that as a declared state
+# with its reason, not as a pending step.
 #
 # Filled from the certified lease artifacts by READING them (A4 step 8), never
 # typed: build_commit + eval_features from each lease's provenance_header.txt,
@@ -214,17 +217,27 @@ build_commit = "cece1486222fe100dce0d3ec34aba9b7899e484f"
 sha256 = "bf920e4a765b0fa5a403ee95ddfbb3d3a66449d07d2286da2bce878520e30783"
 
 [recert.released_binary]
-# The PUBLIC binary — a DISTINCT, later artifact from the measurement binary
-# above. R16 ships NO binary; the public build + upload is R17, so every field
-# here is the PENDING-RELEASE sentinel (distinct from [recert].status's
-# PENDING-RUN — two lifecycles, two sentinels). `ttg validate-pins --flip`
-# RUNS `validate_released_binary` and FAILS while this stands, so a go-live
-# cannot proceed on the measurement sentinel. At R17 these become the real
-# release_tag / asset_name / sha256 of the published, privacy-scanned binary
-# (which must pass `ttg scan-binary` before upload) and --flip then passes.
-release_tag = "PENDING-RELEASE"
-asset_name = "PENDING-RELEASE"
-sha256 = "PENDING-RELEASE"
+# NOT PUBLISHED — a decision, not a wait.
+#
+# The founder ruled the `noodl-eval` engine is an INTERNAL tool: no build of it is
+# published, so there is no release identity to name here and there will not be
+# one for this re-certification. The earlier PENDING-RELEASE sentinel said "not
+# yet", which is a different and now-wrong claim.
+#
+# The absence is EXPLAINED, never silent (BUNDLE.md publication contract): the
+# certified numbers are verifiable offline WITHOUT the binary, against the 16
+# sha-pinned release assets — the 12 arm reports and the 4 frozen-gold files —
+# through the harness's own scorer and `ttg.curve_recompute`. What the binary
+# would add is a re-RUN, not a verification, and a binary file digest was never a
+# reproduction target anyway (the build path bakes into it).
+#
+# `ttg validate-pins --flip` accepts this state only while `reason` is non-blank:
+# a bare `state` is refused exactly like a blank field, because an UNEXPLAINED
+# absence is the thing the contract forbids. `state` is a distinct marker from
+# both PENDING-RUN (measurement) and PENDING-RELEASE (publication pending), so
+# filling one can never silently satisfy another.
+state = "not-published"
+reason = "the engine is an internal tool and is not published; the certified numbers verify offline against the 16 sha-pinned release assets, measured with bf920e4a765b0fa5a403ee95ddfbb3d3a66449d07d2286da2bce878520e30783 at cece1486222fe100dce0d3ec34aba9b7899e484f."
 
 [recert.corpora]
 # go34/rust43 join ts40/py_nosphinx at the re-cert. N and exclusions are the

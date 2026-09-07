@@ -100,7 +100,9 @@ class Provenance:
 
     Two binaries, rendered honestly: `binary_sha` is the MEASUREMENT binary (what
     the numbers were scored with, never published); `released_binary_sha` is the
-    PUBLIC binary (R17) — `None` while it is still the PENDING-RELEASE sentinel,
+    published binary's sha — `None` when there is no published digest to quote,
+    which covers both the PENDING-RELEASE sentinel and the declared not-published
+    state,
     which is the state R16 ships in and is NOT a refusal."""
 
     harness_tip: str
@@ -546,19 +548,22 @@ def render_gold_distribution(gold_dir: Path) -> str:
 def render_provenance(prov: Provenance) -> str:
     if prov.released_binary_sha is None:
         release_line = (
-            "- **Release binary — PENDING (R17).** The measurement binary above "
-            "is deliberately NOT published (a binary file digest is not a "
-            "reproduction target — BUNDLE.md contract row 13 — and it once "
-            "embedded the held-out corpus name), so R16 ships no binary. The "
-            "public binary is a distinct, later artifact; `ttg validate-pins "
-            "--flip` gates the go-live on [recert.released_binary] and FAILS "
-            "until R17 fills it."
+            "- **Release binary — NOT PUBLISHED.** The engine is an internal "
+            "tool and no build of it is published; this is a decision, not a "
+            "pending step. The absence is explained rather than silent "
+            "(BUNDLE.md contract row 13): every certified number here is "
+            "verifiable offline WITHOUT the binary, against the sha-pinned "
+            "release assets — the arm reports and the frozen gold — through this "
+            "harness's scorer and `ttg.curve_recompute`. A binary file digest was "
+            "never a reproduction target in any case, because the build path "
+            "bakes into it. `ttg validate-pins --flip` accepts the declared state "
+            "only while it carries its reason."
         )
     else:
         release_line = (
             f"- **Release binary.** sha256 `{prov.released_binary_sha}` — the "
-            "public binary published at R17, distinct from the measurement "
-            "binary above (which is measured-with, never published)."
+            "published binary, distinct from the measurement binary above "
+            "(which is measured-with, never published)."
         )
     return "\n".join(
         [

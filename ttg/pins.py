@@ -26,6 +26,19 @@ PKG = Path(__file__).resolve().parent.parent
 # make a filled measurement silently satisfy the flip gate.
 PENDING = "PENDING-RUN"
 PENDING_RELEASE = "PENDING-RELEASE"
+NOT_PUBLISHED = "not-published"
+"""The release binary is ruled OUT of publication, not awaiting it.
+
+Three markers, three different claims, deliberately distinct strings:
+`PENDING-RUN` (the measurement has not happened), `PENDING-RELEASE` (publication
+has not happened YET), `not-published` (publication will not happen). Collapsing
+any two would let filling one silently satisfy another -- and would turn a
+decision into a wait.
+
+A `not-published` state MUST carry a `reason`. The artifact contract permits an
+absence that is publicly EXPLAINED and forbids a silent one, so an unexplained
+`not-published` is refused exactly like a blank field: it is a silent absence
+with a label on it."""
 _SHA256 = re.compile(r"\A[0-9a-f]{64}\Z")
 _COMMIT = re.compile(r"\A[0-9a-f]{7,40}\Z")
 
@@ -158,35 +171,69 @@ def validate_recert(doc: Mapping[str, object]) -> None:
 
 
 def is_release_pending(doc: Mapping[str, object]) -> bool:
-    """True while `[recert.released_binary]` still holds the PENDING-RELEASE
-    sentinel — the state R16 ships in. The measuring binary ([recert.binary]) is
-    NOT the released binary: the released binary is a distinct, later artifact
-    built + published at R17. This is orthogonal to `is_pending` (measurement)."""
+    """True only while `[recert.released_binary]` still holds the PENDING-RELEASE
+    sentinel — i.e. publication is an open question.
+
+    False both when a published identity is named AND when the position is
+    declared `not-published`, because neither is *pending*. Callers that need to
+    tell those two apart use `released_binary_state`, not this. Orthogonal to
+    `is_pending`, which is about the measurement."""
     released = _section(doc, "recert", "released_binary")
     return any(released.get(f) == PENDING_RELEASE for f in _RELEASED_BINARY_FIELDS)
 
 
 def validate_released_binary(doc: Mapping[str, object]) -> None:
-    """The FLIP gate (R17): raise unless `[recert.released_binary]` names a real,
-    published binary. It FAILS by design while R16 stands — the measuring binary
-    is deliberately never published, so the release identity is the PENDING-RELEASE
-    sentinel until the public binary is built and uploaded. `validate-pins --flip`
-    runs this so a go-live cannot proceed on the measurement sentinel; it is a
-    SEPARATE gate from `validate_recert`, which only asserts the measurement
-    identity is complete."""
+    """The FLIP gate: raise unless `[recert.released_binary]` states a resolved
+    position on the release binary -- either a real published identity, or an
+    explicit `not-published` state carrying its reason.
+
+    What it refuses, and why each is a distinct failure:
+
+    * `PENDING-RELEASE` -- publication has not happened yet. A go-live cannot
+      proceed on a wait; the state has to be resolved one way or the other.
+    * `not-published` with no reason, or a blank one -- the artifact contract
+      permits an EXPLAINED absence and forbids a silent one. A state with no
+      reason is a silent absence with a label on it, which is worse than the
+      sentinel because it looks decided.
+    * a half-filled or malformed published identity -- unchanged from before.
+
+    The founder ruled the eval binary is an internal tool that is not published,
+    so `not-published` is the shipped state; the publishing path stays accepted
+    because it is a real state this file may hold again, not because anything
+    plans to."""
     released = _section(doc, "recert", "released_binary")
+
+    state = released.get("state")
+    if state == NOT_PUBLISHED:
+        reason = released.get("reason")
+        if not isinstance(reason, str) or not reason.strip():
+            raise PinError(
+                f"PIN.toml [recert.released_binary].state is {NOT_PUBLISHED!r} but "
+                "carries no reason. The artifact contract permits an absence that "
+                "is publicly explained and forbids a silent one -- state the "
+                "reason on one line, or the absence is unexplained"
+            )
+        return
+    if isinstance(state, str) and state.strip():
+        raise PinError(
+            f"PIN.toml [recert.released_binary].state is {state!r}; the only "
+            f"declared state is {NOT_PUBLISHED!r} (otherwise name a real "
+            "published identity, or leave the PENDING-RELEASE sentinel)"
+        )
+
     for field in _RELEASED_BINARY_FIELDS:
         value = released.get(field)
         if value == PENDING_RELEASE:
             raise PinError(
                 f"PIN.toml [recert.released_binary].{field} is still "
-                f"{PENDING_RELEASE} — the release binary has not been built and "
-                "published (R17); the measuring binary is never the released one"
+                f"{PENDING_RELEASE} -- publication has not happened yet. Either "
+                f"name the published binary, or declare state = {NOT_PUBLISHED!r} "
+                "with a reason if it will not be published"
             )
         if not isinstance(value, str) or not value.strip():
             raise PinError(
                 f"PIN.toml [recert.released_binary].{field} is missing or blank "
-                "— a released-binary identity is never allowed to be silently empty"
+                "-- a released-binary identity is never allowed to be silently empty"
             )
     if not _SHA256.fullmatch(str(released["sha256"])):
         raise PinError(
@@ -195,10 +242,29 @@ def validate_released_binary(doc: Mapping[str, object]) -> None:
 
 
 def released_binary_sha(doc: Mapping[str, object]) -> str | None:
-    """The PUBLIC binary's sha256 once R17 has filled `[recert.released_binary]`,
-    else None while it is still the PENDING-RELEASE sentinel. Callers render this
-    honestly (pending vs published), never refuse on the pending state."""
-    if is_release_pending(doc):
+    """The published binary's sha256, or `None` when there is not one.
+
+    `None` covers both open states -- `PENDING-RELEASE` (not yet) and
+    `not-published` (ruled out) -- because neither has a digest. Callers render
+    the DISTINCTION honestly from `released_binary_state`; this function answers
+    only "is there a published digest to quote"."""
+    released = _section(doc, "recert", "released_binary")
+    if released.get("state") == NOT_PUBLISHED or is_release_pending(doc):
         return None
-    sha = _section(doc, "recert", "released_binary").get("sha256")
+    sha = released.get("sha256")
     return str(sha) if isinstance(sha, str) else None
+
+
+def released_binary_state(doc: Mapping[str, object]) -> tuple[str, str | None]:
+    """`(state, detail)` for rendering: `("not-published", reason)`,
+    `("pending-release", None)`, or `("published", sha256)`.
+
+    A single typed answer so a renderer cannot confuse "no digest yet" with "no
+    digest ever" -- the two absences read identically through a bare `None`."""
+    released = _section(doc, "recert", "released_binary")
+    if released.get("state") == NOT_PUBLISHED:
+        reason = released.get("reason")
+        return NOT_PUBLISHED, str(reason) if isinstance(reason, str) else None
+    if is_release_pending(doc):
+        return "pending-release", None
+    return "published", released_binary_sha(doc)
