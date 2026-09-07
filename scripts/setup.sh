@@ -12,5 +12,5 @@ git -C "$here" config core.hooksPath scripts/git-hooks
 echo "installed: core.hooksPath = scripts/git-hooks"
 echo "  the commit-msg held-out-corpus guard is now armed for this clone."
 echo
-echo "release gate (run before shipping the eval binary):"
+echo "release gate (run before an internal artifact leaves the machine):"
 echo "  python3 -m ttg.cli scan-binary --path <noodl-eval>"

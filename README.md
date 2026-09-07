@@ -22,6 +22,15 @@ Two curves are measured per instance:
 ./reproduce.sh ... --rederive-gold     # also re-derive the frozen gold (slow)
 ```
 
+**The `--binary` lines need an engine this project does not supply.** `noodl-eval`
+is an internal tool and is not published, so the reproduction path open to a third
+party is the FIRST line: `--score-only` over the sha-pinned release reports, plus
+offline curve recomputation (`ttg/curve_recompute.py`). That verifies every
+published number without the engine. The `--binary` forms re-RUN the arms, which
+is a different thing from verifying them, and they are here for whoever holds the
+engine. This absence is stated rather than left to be discovered — see
+`PIN.toml [recert.released_binary]` for the reason and `BUNDLE.md` row 13.
+
 Stages: **verify → (derive) → run → score → report.**
 
 ## Read this before quoting a number
@@ -115,11 +124,15 @@ solutions may touch different code than the reference.
 
 ### What a third party can and cannot reproduce
 
-The eval crate is **closed source**. You reproduce **L3 (arm runs) → L4
-(scoring)** from a **released binary** plus the shipped frozen gold, and — with
-`--rederive-gold` — **L1 (gold derivation)** from that same released binary.
-This package pins the binary's identity; it does not claim a buildable source
-tree.
+The eval crate is **closed source** and the `noodl-eval` engine is an internal
+tool that is **not published**. What a third party reproduces without it is
+**L4 (scoring)**: the sha-pinned release reports re-scored against the shipped
+frozen gold, plus the TtG curves recomputed offline from report primitives. That
+covers every published number. **L3 (arm runs)** and, with `--rederive-gold`,
+**L1 (gold derivation)** require the engine, so they are available to whoever
+holds it and not otherwise. This package pins the engine's identity so the
+numbers' producer is cross-checkable; it claims neither a buildable source tree
+nor a downloadable binary.
 
 **Binary SHA is not a reproduction target.** `OUT_DIR` bakes the absolute
 build path into the binary, so its SHA is a function of where it was built.
@@ -166,7 +179,11 @@ omission is declared in the arm table (`Curation.SHIPPED_DEFAULT`), so an
 The gold model transfers to any **public repository with a merged PR** — the
 PR's diff is the reference-patch proxy for "the symbols this change actually
 needed", derived by the **same versioned freezer pipeline** as the published
-numbers (there is no manual-gold path):
+numbers (there is no manual-gold path).
+
+**This path requires the noodlbox CLI**, which analyses the repository and runs
+the arms; the corpus-building and scoring steps below are this package's and need
+nothing else. No claim is made here about how or when that CLI is obtained:
 
 ```sh
 # 1) one merged PR becomes a one-instance corpus (title+body = the query)
@@ -233,6 +250,6 @@ That sets `core.hooksPath` to `scripts/git-hooks` and prints the release gate.
 `scripts/git-hooks/commit-msg` then refuses any message that names the corpus
 (checked via `ttg.privacy`, so the hook never spells it), reporting the resolved
 token *mode* — never the value — and distinguishing a violation from a check that
-could not run. Before shipping the eval binary, run the release gate
+could not run. Before an internal artifact leaves the machine, run the release gate
 `python3 -m ttg.cli scan-binary --path <noodl-eval>` (a byte scan; the eval
 binary once carried the name in embedded strings).
