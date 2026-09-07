@@ -151,5 +151,60 @@ class PlantCycleBothModesTest(unittest.TestCase):
         self._plant_cycle(token)
 
 
+class TextAllowlistTest(unittest.TestCase):
+    """The text-surface allowlist (`privacy.scan_text`) is IDENTIFIER- and
+    ASSET-scoped: a hit is excused only when its OWN enclosing identifier
+    contains the entry pattern, in the entry's asset. Every synthetic surface is
+    assembled at runtime from the resolved token, so this file never spells the
+    contiguous token. Reverting the scope to a character window, or dropping the
+    asset check, turns the discriminator / cross-file must-reds RED."""
+
+    ASSET = "deepswe_frozen_ts40.json"
+
+    def test_standalone_hit_is_a_violation(self) -> None:
+        # MUST-RED 1: a standalone occurrence fails even in the allowlisted asset.
+        t = privacy.PRIVATE_CORPUS
+        violations, allowlisted = privacy.scan_text(f'"file.ts:{t}"', self.ASSET)
+        self.assertTrue(violations)
+        self.assertEqual(allowlisted, {})
+
+    def test_in_word_outside_the_entry_is_a_violation(self) -> None:
+        # MUST-RED 2: an in-word coincidence no entry covers still fails.
+        t = privacy.PRIVATE_CORPUS
+        violations, _ = privacy.scan_text(f'"pas{t}ge"', self.ASSET)
+        self.assertTrue(violations)
+
+    def test_scoped_distill_identifier_is_allowlisted(self) -> None:
+        # MUST-RED 3: the reviewed distill-class coincidence passes and is COUNTED.
+        t = privacy.PRIVATE_CORPUS
+        violations, allowlisted = privacy.scan_text(
+            f'"ark/type/attributes.ts:dis{t}rray"', self.ASSET
+        )
+        self.assertEqual(violations, [])
+        self.assertEqual(allowlisted, {"arktype-distill": 1})
+
+    def test_neighbouring_distill_does_not_excuse_another_identifier(self) -> None:
+        # MUST-RED 4 (identifier- vs window-scope): `distill` is inside the ±24
+        # window but the HIT's OWN enclosing identifier is `<token>Thing` -> the
+        # hit is a VIOLATION; only the distill identifier is allowlisted. A
+        # window-scoped matcher would wrongly excuse BOTH.
+        t = privacy.PRIVATE_CORPUS
+        violations, allowlisted = privacy.scan_text(
+            f'"dis{t}rray": ["{t}Thing"]', self.ASSET
+        )
+        self.assertTrue(violations)
+        self.assertEqual(allowlisted, {"arktype-distill": 1})
+
+    def test_same_identifier_in_a_different_asset_is_a_violation(self) -> None:
+        # MUST-RED 5 (cross-file plant): the scoped entry never excuses any other
+        # file, including a re-cert report.
+        t = privacy.PRIVATE_CORPUS
+        violations, allowlisted = privacy.scan_text(
+            f'"ark/type/attributes.ts:dis{t}rray"', "shipped_treatment_ts40.json"
+        )
+        self.assertTrue(violations)
+        self.assertEqual(allowlisted, {})
+
+
 if __name__ == "__main__":
     unittest.main()

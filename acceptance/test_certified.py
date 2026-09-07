@@ -383,12 +383,26 @@ class T6CertifiedSurfaceScan(unittest.TestCase):
         surface = [f for f in files if f.is_file() and "__pycache__" not in f.parts]
         json_count = sum(1 for f in surface if f.suffix.lower() == ".json")
         src = "fetched" if _ENV else "certified"
-        print(f"\nfull surface: {len(surface)} files, {json_count} .json (tracked + {src})")
-        offenders = [
-            os.path.relpath(f, PKG)
-            for f in surface
-            if _privacy.contains_private(f.read_text(errors="ignore"))
-        ]
+        # Each hit is classified against the reviewed, asset+identifier-scoped
+        # TEXT_ALLOWLIST: a known public-symbol coincidence is COUNTED (never a
+        # silent skip); anything else is a violation.
+        offenders: list[str] = []
+        allowlisted: dict[str, int] = {}
+        for f in surface:
+            violations, allowed = _privacy.scan_text(
+                f.read_text(errors="ignore"), f.name
+            )
+            if violations:
+                offenders.append(os.path.relpath(f, PKG))
+            for name, count in allowed.items():
+                allowlisted[name] = allowlisted.get(name, 0) + count
+        allow_str = (
+            ", ".join(f"{n}={c}" for n, c in sorted(allowlisted.items())) or "none"
+        )
+        print(
+            f"\nfull surface: {len(surface)} files, {json_count} .json "
+            f"(tracked + {src}); allowlisted: {allow_str}"
+        )
         self.assertEqual(offenders, [], f"private corpus leaked into: {offenders}")
 
 
