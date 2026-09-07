@@ -26,12 +26,13 @@ class HistoryOffendersTest(unittest.TestCase):
         log = f"cccccccccccc\x1fsubject line\n\nbody names {t}\ntrailer\n\x1e"
         self.assertEqual(cli._history_offenders(log), ["cccccccccccc"])
 
-    def test_larger_word_substring_is_not_flagged(self) -> None:
-        # NEGATIVE CONTROL: the token inside a larger word (a letter on either
-        # side) is not a hit — the same boundary rule as the file scan.
+    def test_larger_word_substring_is_flagged(self) -> None:
+        # SUBSTRING GATE (RULED c): the token inside a larger word (a letter on
+        # either side) IS a hit — the history scan is the substring gate, no
+        # boundary exception, same as every other text surface.
         t = privacy.PRIVATE_CORPUS
         log = f"dddddddddddd\x1fword tor{t}ge in the body\n\x1e"
-        self.assertEqual(cli._history_offenders(log), [])
+        self.assertEqual(cli._history_offenders(log), ["dddddddddddd"])
 
 
 class ScanHistoryCliTest(unittest.TestCase):

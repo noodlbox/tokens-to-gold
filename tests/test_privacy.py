@@ -77,40 +77,49 @@ class SelfCanaryTest(unittest.TestCase):
             )
 
 
-class ScrubTest(unittest.TestCase):
+class ScrubBoundaryTest(unittest.TestCase):
+    """scrub keeps the ALPHANUMERIC-boundary matcher (redaction only): it cleans
+    the token as a whole word / identifier component, but leaves a longer word
+    that merely contains it un-mangled. Every example is assembled at runtime
+    from the resolved token, so this file never spells the contiguous token."""
+
     def test_mixed_case_all_redacted(self) -> None:
-        # MUST-RED: one case-insensitive matcher, so scrub redacts EVERY casing
-        # (the mixed-case bug: previously DETECTED but left un-redacted).
+        # One case-insensitive matcher, so scrub redacts EVERY casing (the
+        # mixed-case bug: previously DETECTED but left un-redacted).
         token = privacy.PRIVATE_CORPUS
         text = f"{token.upper()} {token.capitalize()} {token}"
         scrubbed = privacy.scrub(text)
         self.assertNotIn(token, scrubbed.lower())
         self.assertEqual(scrubbed.count(privacy.REDACTION), 3)
 
-
-class BoundaryTest(unittest.TestCase):
-    """Fold I: the token embedded in a larger WORD does not match; a whole word
-    and an underscore-separated identifier component DO. (Underscore is a
-    separator here, not a word char — so the scrubber still catches the token in
-    witness-log test identifiers, which `\\b` would miss.)"""
-
-    def test_substring_of_larger_word_does_not_match(self) -> None:
-        # A longer WORD that merely CONTAINS the token as a substring — a letter
-        # glued on before, after, or both — must NOT match. Every example is
-        # ASSEMBLED at runtime from the resolved token, so this file never spells
-        # the contiguous token (a literal would be a leak the boundary matcher
-        # passes but a raw content grep counts).
+    def test_scrub_cleans_identifier_component_not_a_larger_word(self) -> None:
         t = privacy.PRIVATE_CORPUS
-        self.assertFalse(privacy.contains_private("tor" + t))  # letter before
-        self.assertFalse(privacy.contains_private(t + "ge"))  # letter after
-        self.assertFalse(privacy.contains_private("x" + t + "9"))  # alnum both sides
+        # Underscore-joined component IS redacted (witness-log target):
+        self.assertNotIn(t, privacy.scrub(f"test_{t}_case"))
+        # A longer word that merely contains the token is NOT mangled by scrub:
+        self.assertEqual(privacy.scrub("tor" + t), "tor" + t)
 
-    def test_whole_word_and_identifier_component_match(self) -> None:
+
+class GateSubstringTest(unittest.TestCase):
+    """THE GATE (`contains_private`) is a CONTIGUOUS SUBSTRING (RULED c): it
+    catches EVERY occurrence, an in-word one included — the founder rule is that
+    the name never exists as a contiguous string in any public artifact, so the
+    gate needs no boundary exception."""
+
+    def test_whole_word_and_component_are_caught(self) -> None:
         t = privacy.PRIVATE_CORPUS
         self.assertTrue(privacy.contains_private(t))  # standalone
         self.assertTrue(privacy.contains_private(f"the {t} corpus"))  # spaced
         self.assertTrue(privacy.contains_private(f"test_{t}_case"))  # underscore comp
         self.assertTrue(privacy.contains_private(f"corpora/{t}/x"))  # slash-delimited
+
+    def test_in_word_occurrence_is_caught_by_the_gate(self) -> None:
+        # MUST-RED under the new gate: the token inside a larger word is a hit —
+        # examples assembled at runtime so this file never spells it contiguously.
+        t = privacy.PRIVATE_CORPUS
+        self.assertTrue(privacy.contains_private("tor" + t))  # letter before
+        self.assertTrue(privacy.contains_private(t + "ge"))  # letter after
+        self.assertTrue(privacy.contains_private("x" + t + "9"))  # alnum both sides
 
 
 class PlantCycleBothModesTest(unittest.TestCase):

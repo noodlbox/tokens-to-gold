@@ -1,8 +1,6 @@
-"""R15/R17: the privacy-scan-binary release gate.
-
-A byte scan catches the held-out corpus name embedded in a compiled artifact (an
-SQL-comment string in the eval binary, the R17 case) that a source scan misses.
-The plant token comes THROUGH the resolver, written to a throwaway temp path.
+"""R15/R17: the privacy-scan-binary release gate — a SUBSTRING scan (RULED c)
+with a reviewed allowlist of known identifier-table coincidences. The plant
+token comes THROUGH the resolver, written to a throwaway temp path; no literal.
 """
 
 from __future__ import annotations
@@ -18,27 +16,39 @@ from ttg.privacy import scan_bytes
 class ScanBytesTest(unittest.TestCase):
     def test_embedded_token_is_found(self) -> None:
         blob = b"\x00\x01-- get " + privacy.PRIVATE_CORPUS.encode() + b" rows\x00\xff"
-        hits = scan_bytes(blob)
-        self.assertEqual(len(hits), 1)
-        offset, ctx = hits[0]
-        self.assertGreater(offset, 0)
+        violations, skipped = scan_bytes(blob)
+        self.assertEqual((len(violations), skipped), (1, 0))
+        _offset, ctx = violations[0]
         # The reported context is REDACTED — the gate output is not a leak.
         self.assertIn(privacy.REDACTION, ctx)
         self.assertNotIn(privacy.PRIVATE_CORPUS, ctx)
 
     def test_clean_binary_has_no_hit(self) -> None:
-        self.assertEqual(scan_bytes(b"\x00 hello world get_data() \xff\xfe"), [])
+        self.assertEqual(scan_bytes(b"\x00 hello world get_data() \xff\xfe"), ([], 0))
 
-    def test_larger_word_substring_is_not_flagged(self) -> None:
-        # NEGATIVE CONTROL: the token as a substring of a larger word (a letter
-        # on either side) is not a hit — the boundary matcher, byte-side too.
+    def test_in_word_occurrence_is_a_violation(self) -> None:
+        # Substring gate (RULED c): the token inside a larger word IS a violation
+        # — no boundary exception. Assembled at runtime, never a literal.
         blob = b"xx tor" + privacy.PRIVATE_CORPUS.encode() + b"ge yy"
-        self.assertEqual(scan_bytes(blob), [])
+        violations, skipped = scan_bytes(blob)
+        self.assertEqual((len(violations), skipped), (1, 0))
 
-    def test_underscore_embedded_component_is_found(self) -> None:
-        # A symbol like get_<token>_rows in a binary's string table IS a hit.
+    def test_underscore_embedded_component_is_a_violation(self) -> None:
         blob = b"\x07get_" + privacy.PRIVATE_CORPUS.encode() + b"_rows\x00"
-        self.assertEqual(len(scan_bytes(blob)), 1)
+        self.assertEqual(len(scan_bytes(blob)[0]), 1)
+
+    def test_allowlisted_coincidence_is_skipped_and_counted(self) -> None:
+        # MUST-RED: an identifier-table coincidence is a violation UNLESS a NAMED
+        # allowlist entry covers its context — never a silent skip. Both the
+        # coincidence and the allowlist entry are built at runtime (no literal).
+        t = privacy.PRIVATE_CORPUS
+        blob = b"symbol get_" + t.encode() + b"_helper end"
+        # not allowlisted -> a violation, nothing skipped
+        violations, skipped = scan_bytes(blob)
+        self.assertEqual((len(violations), skipped), (1, 0))
+        # allowlisted -> skipped and COUNTED, no violation
+        violations, skipped = scan_bytes(blob, (f"get_{t}_helper",))
+        self.assertEqual((len(violations), skipped), (0, 1))
 
 
 class ScanBinaryCliTest(unittest.TestCase):

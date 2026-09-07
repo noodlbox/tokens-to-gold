@@ -378,17 +378,17 @@ def cmd_scan_binary(args: argparse.Namespace) -> int:
     string a source scan would miss. Reports the resolved MODE, never the value;
     hit contexts are redacted so the gate output is not itself a leak."""
     data = Path(args.path).read_bytes()
-    hits = scan_bytes(data)
+    violations, skipped = scan_bytes(data)
     print(
         f"privacy-scan-binary: {args.path} ({len(data)} bytes); token resolved "
-        f"via {mode()} mode"
+        f"via {mode()} mode; {skipped} allowlisted coincidence(s) skipped"
     )
-    if hits:
-        print(f"REFUSED: {len(hits)} held-out-corpus hit(s) — do not ship:")
-        for offset, ctx in hits[:20]:
+    if violations:
+        print(f"REFUSED: {len(violations)} held-out-corpus hit(s) — do not ship:")
+        for offset, ctx in violations[:20]:
             print(f"  offset {offset}: …{ctx}…")
         return 1
-    print("OK: no held-out-corpus hit")
+    print("OK: no held-out-corpus violation")
     return 0
 
 

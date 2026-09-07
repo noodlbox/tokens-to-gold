@@ -72,20 +72,26 @@ def resolve() -> tuple[str, str]:
     )
 
 
-def _matcher(token: str) -> re.Pattern[str]:
-    """One case-insensitive, alphanumeric-bounded matcher for a token -- the
-    shared unit both `scrub` and `contains_private` are built on, so their casing
-    can never disagree.
+def _substring_matcher(token: str) -> re.Pattern[str]:
+    """THE GATE: a case-insensitive CONTIGUOUS SUBSTRING, no boundary. The
+    founder rule is that the name never exists as a contiguous string in ANY
+    public artifact, so the gate (`contains_private`, consumed by T6, the
+    commit-msg hook, and scan-history) catches EVERY occurrence -- inside a
+    larger word included. A gate that needs a boundary exception is a weaker
+    gate."""
+    if not token:
+        raise PrivacyError("refusing to build a privacy matcher for an empty token")
+    return re.compile(re.escape(token), re.IGNORECASE)
 
-    The boundary is ALPHANUMERIC (letters+digits), NOT `\\b`. `\\b` treats `_` as
-    a word character, so a `\\b`-anchored pattern would MISS the token inside an
-    underscore-joined identifier (`test_<token>_case` in a witness log) -- the
-    scrubber's primary target, and under-redaction is the one direction a privacy
-    guard must never fail. Alphanumeric lookarounds reject the token embedded in a
-    larger WORD (a letter on either side) -- Finding I's intent -- while still
-    catching an underscore-separated component and a space/slash-delimited
-    occurrence. (This module spells the token only in fragments; the examples
-    here use `<token>` so the file is not itself a leak.)"""
+
+def _matcher(token: str) -> re.Pattern[str]:
+    """The REDACTION matcher (scrub only, NOT the gate): case-insensitive and
+    ALPHANUMERIC-bounded (letters+digits, NOT `\\b` -- `\\b` treats `_` as a word
+    char and would miss the token as an underscore-joined identifier component
+    like `test_<token>_case`, the scrubber's primary target). It catches the
+    token as a whole word / identifier component while leaving a longer word that
+    merely contains it un-mangled. scrub is a helper; `contains_private` (the
+    substring gate) is truth. (This module spells the token only in fragments.)"""
     if not token:
         raise PrivacyError("refusing to build a privacy matcher for an empty token")
     return re.compile(rf"(?<![a-z0-9]){re.escape(token)}(?![a-z0-9])", re.IGNORECASE)
@@ -94,7 +100,8 @@ def _matcher(token: str) -> re.Pattern[str]:
 MODE, PRIVATE_CORPUS = resolve()
 """The resolved mode name and the held-out corpus name, as data."""
 
-_TOKEN = _matcher(PRIVATE_CORPUS)
+_SUBSTRING = _substring_matcher(PRIVATE_CORPUS)  # the gate
+_BOUNDARY = _matcher(PRIVATE_CORPUS)  # scrub redaction only
 
 
 def mode() -> str:
@@ -111,26 +118,37 @@ def scrub(text: str) -> str:
     identifiers, so redacting it preserves everything the log is kept for --
     which test, and whether it passed -- while removing the one thing that may
     not ship."""
-    return _TOKEN.sub(REDACTION, text)
+    return _BOUNDARY.sub(REDACTION, text)
 
 
 def contains_private(text: str) -> bool:
-    return _TOKEN.search(text) is not None
+    """THE GATE: is the token present as a contiguous substring (any casing)?"""
+    return _SUBSTRING.search(text) is not None
 
 
-def scan_bytes(data: bytes) -> list[tuple[int, str]]:
-    """Every private-token hit in a byte blob (a compiled binary, any file), as
-    `(offset, redacted_context)`. Decoded latin-1 (byte-preserving) so the same
-    boundary matcher applies to a binary's embedded strings. R17: the eval binary
-    once carried the token in SQL-comment strings — this is the release-gate scan
-    that refuses to ship it. The context is SCRUBBED, so a hit can be reported
-    without the report itself becoming a leak."""
+def scan_bytes(
+    data: bytes, allowlist: "tuple[str, ...]" = ()
+) -> tuple[list[tuple[int, str]], int]:
+    """Substring-scan a byte blob (a compiled binary, any file) for the token,
+    returning `(violations, allowlisted_skipped)`. Each violation is
+    `(offset, redacted_context)` -- the context redacted with the SUBSTRING
+    matcher so even an in-word occurrence is not shown, keeping the report from
+    becoming a leak. `allowlist` is the reviewed set of known identifier-table
+    coincidences (a context substring that legitimately contains the token, e.g.
+    a symbol name); a hit whose context contains an allowlisted string is SKIPPED
+    and COUNTED, never silently dropped. R17: the eval binary once carried the
+    token in SQL-comment strings -- those are violations, not coincidences."""
     text = data.decode("latin-1")
-    hits: list[tuple[int, str]] = []
-    for m in _TOKEN.finditer(text):
+    violations: list[tuple[int, str]] = []
+    skipped = 0
+    for m in _SUBSTRING.finditer(text):
         ctx = text[max(0, m.start() - 24) : m.end() + 24]
-        hits.append((m.start(), scrub(ctx).replace("\n", " ").replace("\r", " ")))
-    return hits
+        if any(allowed in ctx for allowed in allowlist):
+            skipped += 1
+            continue
+        red = _SUBSTRING.sub(REDACTION, ctx).replace("\n", " ").replace("\r", " ")
+        violations.append((m.start(), red))
+    return violations, skipped
 
 
 def _self_canary(token: str, detector: Callable[[str], bool]) -> None:
