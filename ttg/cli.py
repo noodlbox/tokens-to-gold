@@ -54,6 +54,7 @@ from ttg.preflight import (
     require_native_floor_tools,
 )
 from ttg.privacy import PRIVATE_CORPUS, contains_private, mode, scan_bytes, scrub
+from ttg.replay import run as replay_run
 from ttg.provision import (
     UnsafeCorpusInputError,
     build_manifest,
@@ -611,6 +612,30 @@ def cmd_regress(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_replay(args: argparse.Namespace) -> int:
+    """R22 (c): the whole replay grid, derived from the arm matrix.
+
+    `accept`/`accept-vs` are per-cell; this asserts the GRID. A cell that is
+    absent, vacuous, or beyond the replay tolerance is a refusal naming the cell
+    — never a shorter table that reads green.
+
+    A failed replay is a STOP, not a re-pin (pre-registered): re-pinning the
+    released binary's numbers to match itself makes the witness circular and
+    destroys the only equivalence evidence R22 produces.
+    """
+    lines, failures = replay_run(Path(args.reports), Path(args.certified))
+    print(f"replay: reports={args.reports} certified={args.certified}")
+    for line in lines:
+        print(line)
+    if failures:
+        print(f"REFUSED: {len(failures)} cell(s) did not witness:")
+        for failure in failures:
+            print(f"  {failure}")
+        return 1
+    print("OK: every derived cell compared and passed")
+    return 0
+
+
 def cmd_report(args: argparse.Namespace) -> int:
     """Assemble the published 4-language re-cert report in the locked claims
     language. Cells whose arm report is not yet staged render as PENDING, so the
@@ -821,6 +846,17 @@ def main(argv: list[str] | None = None) -> int:
     p_drift.add_argument("--frozen", required=True)
     p_drift.add_argument("--rederived", required=True)
     p_drift.set_defaults(func=cmd_drift)
+
+    p_replay = sub.add_parser(
+        "replay",
+        help="R22 (c): witness EVERY derived (arm x corpus) cell against its "
+        "anchor; a cell that is absent or vacuous is a refusal, not a gap",
+    )
+    p_replay.add_argument("--reports", required=True, help="the run under test")
+    p_replay.add_argument(
+        "--certified", required=True, help="the certified baseline reports"
+    )
+    p_replay.set_defaults(func=cmd_replay)
 
     p_report = sub.add_parser(
         "report",
