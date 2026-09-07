@@ -53,7 +53,7 @@ from ttg.preflight import (
     require_corpus_support,
     require_native_floor_tools,
 )
-from ttg.privacy import contains_private, mode, scan_bytes, scrub
+from ttg.privacy import PRIVATE_CORPUS, contains_private, mode, scan_bytes, scrub
 from ttg.provision import (
     UnsafeCorpusInputError,
     build_manifest,
@@ -339,10 +339,13 @@ def cmd_fetch_artifacts(args: argparse.Namespace) -> int:
 
 
 def _history_offenders(log_text: str) -> list[str]:
-    """The abbreviated shas of commits whose message names the held-out corpus.
+    """The abbreviated shas of commits whose MESSAGE names the held-out corpus.
     `log_text` is `git log --format=%H\\x1f%B\\x1e` — sha, unit-sep, body,
     record-sep — so a multi-line body is one record and a body containing the
-    field/record separators (control chars, never in a message) cannot split."""
+    field/record separators (control chars, never in a message) cannot split.
+
+    This is the MESSAGE surface only — the EASY one. Committed CONTENT is the
+    other, harder surface: see `_content_carriers`."""
     offenders: list[str] = []
     for record in log_text.split("\x1e"):
         record = record.lstrip("\n")
@@ -354,26 +357,84 @@ def _history_offenders(log_text: str) -> list[str]:
     return offenders
 
 
+def _content_carriers(repo: Path) -> tuple[int, list[str]]:
+    """AUTHORITATIVE content-across-history scan: for EVERY reachable commit,
+    does its TREE carry the held-out token? Returns `(commits_examined,
+    carrier_shas)`.
+
+    This is the surface both earlier R18 misses skipped. The commit-msg hook and
+    the message scan read MESSAGES, not content; T6 reads the TIP TREE, not
+    history. A token committed into a blob and later removed leaves a CLEAN
+    working tree and a clean tip, yet every intermediate clone still ships the
+    carrying commit — the axis that exists only in git objects. `-S` under-reports
+    it (a commit that adds and removes in one step nets zero), so the check is a
+    per-commit tree grep, not a diff pickaxe. `git grep -q` is used so no matching
+    line is ever printed (the scan output is not itself a leak)."""
+    revs = subprocess.run(
+        ["git", "rev-list", "--all"],
+        cwd=repo, capture_output=True, text=True, check=True,
+    ).stdout.split()
+    carriers: list[str] = []
+    for commit in revs:
+        found = subprocess.run(
+            ["git", "grep", "-F", "-i", "-q", "-e", PRIVATE_CORPUS, commit],
+            cwd=repo, capture_output=True, text=True,
+        )
+        if found.returncode == 0:
+            carriers.append(commit[:12])
+        elif found.returncode != 1:  # 1 == no match; anything else is an error
+            raise RuntimeError(
+                f"git grep failed on {commit[:12]}: {found.stderr.strip()}"
+            )
+    return len(revs), carriers
+
+
 def cmd_scan_history(args: argparse.Namespace) -> int:
-    """R18b: scan EVERY commit message in history for the held-out corpus name —
-    the mechanical enforcement of the "not named in any public artifact" claim
-    ACROSS history, beyond the commit-msg hook (which only guards new commits).
-    Reports the resolved MODE; REFUSES (exit 1) on any hit, naming the commits."""
+    """R18: scan history for the held-out corpus name on BOTH surfaces — commit
+    MESSAGES and, authoritatively, committed CONTENT (every reachable commit's
+    tree). A clone ships full history, so a name that ever entered a committed
+    blob is permanent after a push however clean the tip is. Reports the resolved
+    MODE and the commit count EXAMINED; REFUSES (exit 1) on any hit on either
+    surface, or if zero commits were examined (a scan that examines nothing
+    proves nothing)."""
+    print(f"scan-history: token resolved via {mode()} mode")
     log = subprocess.run(
         ["git", "log", "--format=%H%x1f%B%x1e"],
         cwd=PKG, capture_output=True, text=True, check=True,
     ).stdout
-    print(f"scan-history: token resolved via {mode()} mode")
     offenders = _history_offenders(log)
-    total = sum(1 for record in log.split("\x1e") if record.strip())
-    if offenders:
+    examined, carriers = _content_carriers(PKG)
+    corroboration = subprocess.run(
+        ["git", "log", "-S", PRIVATE_CORPUS, "--all", "--format=%h"],
+        cwd=PKG, capture_output=True, text=True, check=True,
+    ).stdout.split()
+    print(
+        f"scan-history: {examined} commit(s) examined — content carriers="
+        f"{len(carriers)}, message offenders={len(offenders)}, -S corroboration="
+        f"{len(corroboration)}"
+    )
+    if examined == 0:
         print(
-            f"REFUSED: {len(offenders)} commit(s) name the held-out corpus: "
-            f"{', '.join(offenders)}",
+            "REFUSED: zero commits examined — a scan that examines nothing "
+            "proves nothing",
             file=sys.stderr,
         )
         return 1
-    print(f"scan-history: {total} commit(s) clean")
+    if carriers:
+        print(
+            f"REFUSED: {len(carriers)} commit(s) carry the held-out corpus in "
+            f"committed CONTENT: {', '.join(carriers)}",
+            file=sys.stderr,
+        )
+    if offenders:
+        print(
+            f"REFUSED: {len(offenders)} commit(s) name the held-out corpus in a "
+            f"MESSAGE: {', '.join(offenders)}",
+            file=sys.stderr,
+        )
+    if carriers or offenders:
+        return 1
+    print(f"scan-history: {examined} commit(s) clean on both surfaces")
     return 0
 
 
