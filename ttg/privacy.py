@@ -128,28 +128,33 @@ def contains_private(text: str) -> bool:
 
 
 def scan_bytes(
-    data: bytes, allowlist: "tuple[str, ...]" = ()
-) -> tuple[list[tuple[int, str]], int]:
-    """Substring-scan a byte blob (a compiled binary, any file) for the token,
-    returning `(violations, allowlisted_skipped)`. Each violation is
-    `(offset, redacted_context)` -- the context redacted with the SUBSTRING
-    matcher so even an in-word occurrence is not shown, keeping the report from
-    becoming a leak. `allowlist` is the reviewed set of known identifier-table
-    coincidences (a context substring that legitimately contains the token, e.g.
-    a symbol name); a hit whose context contains an allowlisted string is SKIPPED
-    and COUNTED, never silently dropped. R17: the eval binary once carried the
-    token in SQL-comment strings -- those are violations, not coincidences."""
-    text = data.decode("latin-1")
-    violations: list[tuple[int, str]] = []
-    skipped = 0
-    for m in _SUBSTRING.finditer(text):
-        ctx = text[max(0, m.start() - 24) : m.end() + 24]
-        if any(allowed in ctx for allowed in allowlist):
-            skipped += 1
-            continue
-        red = _SUBSTRING.sub(REDACTION, ctx).replace("\n", " ").replace("\r", " ")
-        violations.append((m.start(), red))
-    return violations, skipped
+    data: bytes, filename: str, allowlist: "tuple[AllowEntry, ...] | None" = None
+) -> tuple[list[tuple[int, str]], dict[str, int]]:
+    """Scan a byte blob (a compiled binary, any file) for the token — the SAME
+    scanner as the text tier, not a second one.
+
+    `latin-1` is the decode because it is BIJECTIVE over 0x00-0xFF: every byte
+    maps to exactly one code point and back, so a byte-substring scan is exactly
+    a text-substring scan. No byte can be lost, merged, or replaced, which a
+    lossy decode (utf-8 with `errors=`) would do — and a replaced byte is a hit
+    the gate never sees.
+
+    Delegating to `scan_text` means the bytes tier inherits the IDENTIFIER-scoped
+    `AllowEntry` walk and the allowlist validation, rather than the window-scoped
+    `tuple[str, ...]` form it used to carry. That form is DELETED: a window match
+    can excuse a hit two identifiers away, which is exactly the shape ruled
+    against for the text tier (an allowlist that widens under pressure is worse
+    than none).
+
+    `filename` is the asset's basename, so an entry scoped to one artifact can
+    never excuse a hit in another. Returns `scan_text`'s
+    `(violations, allowlisted)`.
+    """
+    return scan_text(
+        data.decode("latin-1"),
+        filename,
+        BINARY_ALLOWLIST if allowlist is None else allowlist,
+    )
 
 
 # Reviewed TEXT-surface allowlist (mirrors the binary tier): known
@@ -173,6 +178,36 @@ class AllowEntry(NamedTuple):
     pattern: str
     justification: str
 
+    def validate(self, token: str) -> None:
+        """Refuse an entry whose pattern is part of the token itself.
+
+        The G3 guarantee — prose can never hide behind an identifier entry —
+        holds only because a prose hit's enclosing run is the BARE token, which
+        no legitimate identifier pattern contains. An entry whose pattern were
+        the token (or any fragment of it) WOULD match that bare run, and
+        `-- Measured on a <token>-scale catalog ...` would be allowlisted. That
+        is the one way this mechanism can be turned against itself.
+
+        It RAISES (a refusal) rather than recording a violation or skipping the
+        entry: a malformed guard is an operator error to fix, not a finding to
+        report, and a guard that quietly ignored its own broken entry would be a
+        false GREEN. The message never spells either value.
+        """
+        if not self.pattern:
+            raise PrivacyError(
+                f"allowlist entry {self.name!r} has an empty pattern; an empty "
+                "pattern is contained in every identifier and would allowlist "
+                "everything in its asset"
+            )
+        if self.pattern.lower() in token.lower():
+            raise PrivacyError(
+                f"allowlist entry {self.name!r} has a pattern that is part of "
+                "the held-out corpus name itself; such an entry matches the "
+                "BARE-token run and would allowlist prose occurrences (the R17 "
+                "defect class). Patterns name the SURROUNDING identifier, never "
+                "the token."
+            )
+
 
 TEXT_ALLOWLIST: tuple[AllowEntry, ...] = (
     AllowEntry(
@@ -191,10 +226,76 @@ TEXT_ALLOWLIST: tuple[AllowEntry, ...] = (
 )
 
 
+BINARY_ALLOWLIST: tuple[AllowEntry, ...] = ()
+"""Reviewed exceptions for the BYTES tier. EMPTY on purpose.
+
+R22 expects exactly one: the `jiff` cross-seam coincidence, where two unrelated
+identifiers abut (`...MismatchTimeZone` / `largest...`) and the tail of one plus
+the head of the next spell the name across the boundary. It is not ours and no
+source reword removes it. The entry is added only AT R22, in its own commit, with
+the empirical confirmation attached — so the MECHANISM cannot be used to admit an
+entry before the evidence for it exists. Any other count or context at R22 is the
+R17 defect class: do not attach.
+"""
+
+
+_IDENT_CHARS: frozenset[str] = frozenset(
+    "_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+)
+
+
 def _is_ident_char(ch: str) -> bool:
-    """`[A-Za-z0-9_]` -- the identifier alphabet (ASCII only, so a non-ASCII
-    letter still bounds the identifier)."""
-    return ch == "_" or (ch.isascii() and ch.isalnum())
+    """`[A-Za-z0-9_]`, as an EXPLICIT ASCII set — never `str.isalnum()`.
+
+    This is load-bearing for the bytes tier: under `latin-1`, bytes 0xC0-0xFF
+    decode to accented letters that `str.isalnum()` accepts. If those extended an
+    identifier run, arbitrary binary garbage could pull a pattern into a hit's
+    "enclosing identifier" and widen what an allowlist entry covers. Identifiers
+    in this codebase are ASCII, so the class is written out rather than delegated
+    to Unicode tables that a future Python could widen underneath us.
+    """
+    return ch in _IDENT_CHARS
+
+
+def _classify_hits(
+    text: str, filename: str, allowlist: tuple[AllowEntry, ...]
+) -> tuple[list[tuple[int, str]], dict[str, int]]:
+    """THE FUNNEL: the one place an allowlist is turned into hit classifications.
+
+    Every scan — text tier and bytes tier alike — reaches this function, so the
+    entry validation below cannot be bypassed by adding another public entry
+    point that forgets to call it. Validation runs BEFORE the first hit is
+    examined and regardless of whether there are any, because a malformed entry
+    is an error in the guard itself, not a property of the artifact.
+    """
+    for entry in allowlist:
+        entry.validate(PRIVATE_CORPUS)
+    violations: list[tuple[int, str]] = []
+    allowlisted: dict[str, int] = {}
+    n = len(text)
+    for m in _SUBSTRING.finditer(text):
+        left = m.start()
+        while left > 0 and _is_ident_char(text[left - 1]):
+            left -= 1
+        right = m.end()
+        while right < n and _is_ident_char(text[right]):
+            right += 1
+        ident_low = text[left:right].lower()
+        entry_name = next(
+            (
+                e.name
+                for e in allowlist
+                if e.asset == filename and e.pattern.lower() in ident_low
+            ),
+            None,
+        )
+        if entry_name is not None:
+            allowlisted[entry_name] = allowlisted.get(entry_name, 0) + 1
+            continue
+        raw = text[max(0, m.start() - 24) : m.end() + 24]
+        red = _SUBSTRING.sub(REDACTION, raw).replace("\n", " ").replace("\r", " ")
+        violations.append((m.start(), red))
+    return violations, allowlisted
 
 
 def scan_text(
@@ -213,32 +314,7 @@ def scan_text(
     contains the pattern; everything else -- a standalone hit, an in-word
     coincidence no entry covers, or the same identifier in a DIFFERENT file -- is
     a violation."""
-    violations: list[tuple[int, str]] = []
-    allowlisted: dict[str, int] = {}
-    n = len(text)
-    for m in _SUBSTRING.finditer(text):
-        left = m.start()
-        while left > 0 and _is_ident_char(text[left - 1]):
-            left -= 1
-        right = m.end()
-        while right < n and _is_ident_char(text[right]):
-            right += 1
-        ident_low = text[left:right].lower()
-        entry = next(
-            (
-                e.name
-                for e in allowlist
-                if e.asset == filename and e.pattern.lower() in ident_low
-            ),
-            None,
-        )
-        if entry is not None:
-            allowlisted[entry] = allowlisted.get(entry, 0) + 1
-            continue
-        raw = text[max(0, m.start() - 24) : m.end() + 24]
-        red = _SUBSTRING.sub(REDACTION, raw).replace("\n", " ").replace("\r", " ")
-        violations.append((m.start(), red))
-    return violations, allowlisted
+    return _classify_hits(text, filename, allowlist)
 
 
 def _self_canary(token: str, detector: Callable[[str], bool]) -> None:

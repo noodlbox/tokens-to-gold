@@ -438,25 +438,76 @@ def cmd_scan_history(args: argparse.Namespace) -> int:
     return 0
 
 
+class ExpectationError(ValueError):
+    """A `--expect-allowlisted` argument is malformed."""
+
+
+def _parse_expectations(pairs: list[str] | None) -> dict[str, int]:
+    """`NAME=N` pairs into a mapping. A malformed pair RAISES rather than being
+    ignored: a pre-registered expectation that silently does not apply is worse
+    than none, because the run reports GREEN having asserted nothing."""
+    expectations: dict[str, int] = {}
+    for raw in pairs or []:
+        name, sep, count = raw.partition("=")
+        if not sep or not name or not count.strip().lstrip("-").isdigit():
+            raise ExpectationError(
+                f"--expect-allowlisted {raw!r} is not NAME=N (e.g. jiff-seam=1)"
+            )
+        expectations[name] = int(count)
+    return expectations
+
+
 def cmd_scan_binary(args: argparse.Namespace) -> int:
-    """Release gate (R15/R17): scan a compiled artifact (the eval binary) for the
-    held-out corpus name and REFUSE to ship it on a hit. The eval binary once
-    carried the token in SQL-comment strings; a byte scan catches an embedded
-    string a source scan would miss. Reports the resolved MODE, never the value;
-    hit contexts are redacted so the gate output is not itself a leak."""
-    data = Path(args.path).read_bytes()
-    violations, skipped = scan_bytes(data)
+    """Release gate (R15/R17): scan a compiled artifact for the held-out corpus
+    name and REFUSE to ship it on a hit.
+
+    The scan is the SAME identifier-scoped scanner as the text tier
+    (`privacy.scan_bytes` decodes latin-1 into `scan_text`), so an allowlist
+    entry is `(asset, pattern)`-scoped and can never excuse a hit in another
+    artifact or in a neighbouring identifier.
+
+    Output is never silent: `violations: N` and one `allowlisted: <name>=N` line
+    PER ENTRY, with `allowlisted: none=0` when nothing was allowlisted — a reader
+    can always tell an empty allowlist from an unreported one. Hit contexts are
+    redacted, and the resolved MODE is printed, never the value.
+
+    `--expect-allowlisted NAME=N` makes the pre-registered count a GATE: R22
+    expects exactly the jiff seam, so a scan of the wrong artifact (which would
+    allowlist nothing) fails instead of passing quietly.
+    """
+    expectations = _parse_expectations(args.expect_allowlisted)
+    path = Path(args.path)
+    data = path.read_bytes()
+    violations, allowlisted = scan_bytes(data, path.name)
     print(
-        f"privacy-scan-binary: {args.path} ({len(data)} bytes); token resolved "
-        f"via {mode()} mode; {skipped} allowlisted coincidence(s) skipped"
+        f"privacy-scan-binary: {args.path} ({len(data)} bytes); asset "
+        f"{path.name}; token resolved via {mode()} mode"
     )
+    print(f"violations: {len(violations)}")
+    if allowlisted:
+        for name in sorted(allowlisted):
+            print(f"allowlisted: {name}={allowlisted[name]}")
+    else:
+        print("allowlisted: none=0")
+
+    rc = 0
     if violations:
         print(f"REFUSED: {len(violations)} held-out-corpus hit(s) — do not ship:")
         for offset, ctx in violations[:20]:
             print(f"  offset {offset}: …{ctx}…")
-        return 1
-    print("OK: no held-out-corpus violation")
-    return 0
+        rc = 1
+    unmet = {
+        name: (want, allowlisted.get(name, 0))
+        for name, want in expectations.items()
+        if allowlisted.get(name, 0) != want
+    }
+    if unmet:
+        for name, (want, got) in sorted(unmet.items()):
+            print(f"REFUSED: expected allowlisted {name}={want}, got {got}")
+        rc = 1
+    if rc == 0:
+        print("OK: no held-out-corpus violation; every expectation met")
+    return rc
 
 
 def _errored_instances(report_path: str) -> frozenset[str]:
@@ -531,7 +582,7 @@ def cmd_validate_pins(args: argparse.Namespace) -> int:
     [recert.released_binary] is still the PENDING-RELEASE sentinel. It is a
     SEPARATE gate — the measurement can be complete (numbers publishable) while
     the release binary is still pending, so the flip check runs only when asked."""
-    doc = load_pins()
+    doc = load_pins(Path(args.pin_file) if args.pin_file else None)
     validate_recert(doc)
     if args.flip:
         validate_released_binary(doc)
@@ -690,6 +741,12 @@ def main(argv: list[str] | None = None) -> int:
         help="R17 go-live gate: ALSO refuse until [recert.released_binary] names "
         "a published binary (PENDING-RELEASE fails)",
     )
+    p_vp.add_argument(
+        "--pin-file",
+        help="validate this PIN.toml instead of the package's own — so the "
+        "must-red (revert to the sentinel, expect a refusal) is operable from "
+        "the CLI without editing the real pins",
+    )
     p_vp.set_defaults(func=cmd_validate_pins)
 
     p_pf = sub.add_parser(
@@ -733,6 +790,11 @@ def main(argv: list[str] | None = None) -> int:
         "corpus name (byte scan; R15/R17)",
     )
     p_sb.add_argument("--path", required=True, help="binary/artifact to scan")
+    p_sb.add_argument(
+        "--expect-allowlisted", action="append", metavar="NAME=N",
+        help="pre-registered allowlist count to ASSERT (repeatable); a mismatch "
+        "is a refusal, so scanning the wrong artifact cannot pass quietly",
+    )
     p_sb.set_defaults(func=cmd_scan_binary)
 
     p_sh = sub.add_parser(
@@ -778,6 +840,7 @@ def main(argv: list[str] | None = None) -> int:
         return int(args.func(args))
     except (
         ArmError,
+        ExpectationError,
         PinError,
         PreU1BinaryError,
         MissingToolError,
