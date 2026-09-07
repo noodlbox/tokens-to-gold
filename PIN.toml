@@ -150,8 +150,8 @@ staged_dir = "runs/recert-2026-09/R16-staging"
 # path). NO binary ships: the measuring binary is dropped (see [recert.binary]),
 # because a binary file digest is not a reproduction target (BUNDLE.md
 # publication contract, row 13). No binary is published at all — the engine is an
-# internal tool (see the released-binary section); the 16 payload files are the
-# reproduction surface.
+# internal tool for this re-certification (see the released-binary section); the
+# 16 payload files are the reproduction surface.
 
 [gold]
 # Small enough to ship in the repo; digests also in gold/SHA256SUMS.
@@ -237,7 +237,7 @@ sha256 = "bf920e4a765b0fa5a403ee95ddfbb3d3a66449d07d2286da2bce878520e30783"
 # both PENDING-RUN (measurement) and PENDING-RELEASE (publication pending), so
 # filling one can never silently satisfy another.
 state = "not-published"
-reason = "the engine is an internal tool and is not published; the certified numbers verify offline against the 16 sha-pinned release assets, measured with bf920e4a765b0fa5a403ee95ddfbb3d3a66449d07d2286da2bce878520e30783 at cece1486222fe100dce0d3ec34aba9b7899e484f."
+reason = "the re-certification engine is an internal tool and is not published; the certified numbers verify offline against the 16 sha-pinned release assets, measured with bf920e4a765b0fa5a403ee95ddfbb3d3a66449d07d2286da2bce878520e30783 at cece1486222fe100dce0d3ec34aba9b7899e484f."
 
 [recert.corpora]
 # go34/rust43 join ts40/py_nosphinx at the re-cert. N and exclusions are the

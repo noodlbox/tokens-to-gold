@@ -57,6 +57,13 @@ def load_pins(path: Path | None = None) -> Mapping[str, object]:
 
 
 def _section(doc: Mapping[str, object], *names: str) -> Mapping[str, object]:
+    # Editing PIN.toml by TEXT: match a section header at LINE START, never as a
+    # substring. "[recert.released_binary]" also appears inside [recert.binary]'s
+    # comment, so a `partition`/`index` on that string rewrites PROSE and leaves
+    # the real section untouched — a scratch pin that silently still says
+    # PENDING-RELEASE, i.e. a must-red that cannot go red. This has now bitten
+    # twice (S313's pin test, and the not-published edit); the note lives here
+    # because this is where a reader comes looking for how sections are found.
     node: object = doc
     for name in names:
         if not isinstance(node, Mapping) or name not in node:
@@ -197,7 +204,8 @@ def validate_released_binary(doc: Mapping[str, object]) -> None:
       sentinel because it looks decided.
     * a half-filled or malformed published identity -- unchanged from before.
 
-    The founder ruled the eval binary is an internal tool that is not published,
+    The founder ruled the re-certification eval binary is an internal tool that
+    is not published,
     so `not-published` is the shipped state; the publishing path stays accepted
     because it is a real state this file may hold again, not because anything
     plans to."""

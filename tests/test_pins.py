@@ -231,9 +231,113 @@ class ArtifactUrlConsistencyTest(unittest.TestCase):
         suffix = f"/download/{bumped}/{entry['name']}"
         self.assertFalse(str(entry["url"]).endswith(suffix))
 
+    # --- EVERY url in the file, under a rule that FITS it ------------------
+    #
+    # The checks above walk `[[artifacts.files]]`, which is what
+    # `artifact_targets` reads. PIN.toml carries urls OUTSIDE that array —
+    # `[binary].url` and `[recert.cli_artifact].url` — and nothing looked at
+    # them, so a url could point at an asset that no longer exists while the
+    # authority file kept publishing it.
+    #
+    # The two shapes are NOT interchangeable, so there is no single regex:
+    # GitHub release urls end `/download/<release_tag>/<asset>`, while the CLI
+    # artifact is a different host and path grammar with no tag/asset pair at
+    # all. One widened pattern would either fail on the CLI url or — the worse
+    # outcome — skip what it could not parse while reporting success. So: a rule
+    # per table, and a COUNT assertion proving every url in the parsed document
+    # got one. A future table cannot slip past by being unrecognised.
 
-if __name__ == "__main__":
-    unittest.main()
+    @staticmethod
+    def _every_url(node: object, path: str = "") -> list[tuple[str, str, dict]]:
+        """Every `(path, url, owning table)` in the parsed document.
+
+        Walks the PARSED doc rather than grepping text, so a url added in a new
+        section is covered the day it lands, not the day someone remembers to
+        extend a list."""
+        found: list[tuple[str, str, dict]] = []
+        if isinstance(node, dict):
+            for key, value in node.items():
+                where = f"{path}.{key}" if path else key
+                if key == "url" and isinstance(value, str):
+                    found.append((where, value, node))
+                else:
+                    found.extend(ArtifactUrlConsistencyTest._every_url(value, where))
+        elif isinstance(node, list):
+            for i, value in enumerate(node):
+                found.extend(
+                    ArtifactUrlConsistencyTest._every_url(value, f"{path}[{i}]")
+                )
+        return found
+
+    @staticmethod
+    def _rule(where: str, owner: dict, doc: dict) -> tuple[str, str]:
+        """`(how, fragment)` — the rule for THIS table: `("endswith", …)` for a
+        GitHub release url, `("contains", …)` for the CLI artifact's grammar.
+
+        Two named modes rather than one clever predicate, because the two url
+        shapes really are different and a reader has to be able to see which rule
+        applied. Raises for a url no rule covers, so an unrecognised table fails
+        loudly instead of being skipped quietly."""
+        if where == "recert.cli_artifact.url":
+            # A different host and grammar: no tag/asset pair. The version it
+            # must agree with is [recert].target_release — the field that would
+            # be bumped at the next re-cert — so a version changed there and not
+            # here is caught. cli_artifact carries no version or platform field
+            # of its own to cross-check against.
+            return "contains", f"/releases/{doc['recert']['target_release']}/"
+        tag = owner.get("release_tag", doc.get("artifacts", {}).get("release_tag"))
+        asset = owner.get("name") or owner.get("asset_name")
+        if not (tag and asset):
+            raise AssertionError(f"{where}: no rule covers this url")
+        return "endswith", f"/download/{tag}/{asset}"
+
+    def _offenders(self, doc: dict) -> tuple[list[str], int]:
+        urls = self._every_url(doc)
+        offenders = []
+        for where, url, owner in urls:
+            how, fragment = self._rule(where, owner, doc)
+            ok = url.endswith(fragment) if how == "endswith" else fragment in url
+            if not ok:
+                offenders.append(where)
+        return offenders, len(urls)
+
+    def test_every_url_in_the_file_is_checked_and_agrees(self) -> None:
+        doc = tomllib.loads((PKG / "PIN.toml").read_text())
+        offenders, examined = self._offenders(doc)
+        self.assertEqual(offenders, [], "a url disagrees with its own table's fields")
+        # The count assertion: every url key in the document got a rule. Without
+        # it, an unrecognised table could be skipped and the suite still green.
+        self.assertEqual(
+            examined,
+            len(self._every_url(doc)),
+            "some url was not examined — a silent skip is the failure this guards",
+        )
+        self.assertEqual(examined, 16, "PIN.toml carries 16 urls: 14 artifacts.files + binary + cli_artifact")
+
+    def test_a_url_outside_artifacts_files_is_still_caught(self) -> None:
+        """MUST-RED the old checks could not make: perturb `[binary].url`, which
+        is outside `[[artifacts.files]]` entirely."""
+        doc = tomllib.loads((PKG / "PIN.toml").read_text())
+        doc["binary"]["url"] = "https://github.com/x/y/releases/download/GONE/deleted-asset"
+        offenders, _ = self._offenders(doc)
+        self.assertIn("binary.url", offenders)
+
+    def test_a_cli_artifact_version_bumped_without_its_url_is_caught(self) -> None:
+        """MUST-RED for the second grammar: bump the version in
+        [recert].target_release and leave the CLI url pointing at the old one."""
+        doc = tomllib.loads((PKG / "PIN.toml").read_text())
+        doc["recert"]["target_release"] = "v9.9.9"
+        offenders, _ = self._offenders(doc)
+        self.assertIn("recert.cli_artifact.url", offenders)
+
+    def test_a_url_no_rule_covers_fails_loudly(self) -> None:
+        """A future table with a url and no tag/asset must RAISE, not be skipped:
+        the silent-skip path is the one that would let a 404 through."""
+        doc = tomllib.loads((PKG / "PIN.toml").read_text())
+        doc["some_future_table"] = {"url": "https://example.test/thing"}
+        with self.assertRaises(AssertionError):
+            self._offenders(doc)
+
 
 
 class NotPublishedStateTest(unittest.TestCase):
@@ -282,3 +386,7 @@ class NotPublishedStateTest(unittest.TestCase):
 
     def test_not_published_yields_no_release_sha(self) -> None:
         self.assertIsNone(released_binary_sha(_release_not_published()))
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -22,9 +22,9 @@ Two curves are measured per instance:
 ./reproduce.sh ... --rederive-gold     # also re-derive the frozen gold (slow)
 ```
 
-**The `--binary` lines need an engine this project does not supply.** `noodl-eval`
-is an internal tool and is not published, so the reproduction path open to a third
-party is the FIRST line: `--score-only` over the sha-pinned release reports, plus
+**The `--binary` lines need an engine this project does not supply.** The
+re-certification engine is an internal tool and is not published, so the
+reproduction path open to a third party is the FIRST line: `--score-only` over the sha-pinned release reports, plus
 offline curve recomputation (`ttg/curve_recompute.py`). That verifies every
 published number without the engine. The `--binary` forms re-RUN the arms, which
 is a different thing from verifying them, and they are here for whoever holds the
@@ -124,8 +124,8 @@ solutions may touch different code than the reference.
 
 ### What a third party can and cannot reproduce
 
-The eval crate is **closed source** and the `noodl-eval` engine is an internal
-tool that is **not published**. What a third party reproduces without it is
+The eval crate is **closed source** and the `noodl-eval` build this
+re-certification was measured with is an internal tool that is **not published**. What a third party reproduces without it is
 **L4 (scoring)**: the sha-pinned release reports re-scored against the shipped
 frozen gold, plus the TtG curves recomputed offline from report primitives. That
 covers every published number. **L3 (arm runs)** and, with `--rederive-gold`,
