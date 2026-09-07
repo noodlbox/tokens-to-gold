@@ -26,6 +26,7 @@ from ttg.acceptance import (
 from ttg import privacy as _privacy
 from ttg.curve_recompute import curve_parity_findings
 from ttg.matcher import match_gold_spans
+from ttg.report import _run_wire_stats
 from ttg.report_io import (
     gold_bearing_rows,
     load_report,
@@ -265,6 +266,29 @@ class T1InstanceBasis(unittest.TestCase):
         self.assertIn("BINDING", text)
         self.assertIn("NOT binding", text)
         self.assertIn("EXPECTED, not a discrepancy", text)
+
+
+class NativeFloorRunWireMedian(unittest.TestCase):
+    """MUST-RED: the native_floor run-wire MEDIAN (the typical-instance floor
+    cost) replays the pinned B5 §5 reference EXACTLY — ts40 <- L167 = 123,044,
+    py_nosphinx <- L169 = 446,932; go34/rust43 are re-cert additions pinned in
+    the fixture. This exercises the SAME `_run_wire_stats` the gauge renders, so
+    a break in the median path (or a report that moved) reddens here."""
+
+    def test_medians_replay_the_pinned_reference_exactly(self) -> None:
+        pinned = load_fixture()["native_floor_run_wire_median"]["delivered_wire"]
+        # The two anchored to B5 §5 must equal the doc's stated values.
+        self.assertEqual(pinned["ts40"], 123044)  # B5 §5 L167
+        self.assertEqual(pinned["py_nosphinx"], 446932)  # B5 §5 L169
+        for corpus in ("ts40", "py_nosphinx", "go34", "rust43"):
+            with self.subTest(corpus=corpus):
+                report = load_report(_require(self, "native_floor", corpus))
+                _mean, median, _max = _run_wire_stats(report, corpus)
+                self.assertEqual(
+                    median, pinned[corpus],
+                    f"{corpus}: native_floor run-wire median {median:,} != pinned "
+                    f"{pinned[corpus]:,} (B5 §5 reference)",
+                )
 
 
 class T7RealCaptures(unittest.TestCase):

@@ -48,7 +48,7 @@
       "native_floor": {
         "n": 37,
         "gold_at_8k_wire": 0.1861,
-        "gold_at_32k_wire": 0.3160,
+        "gold_at_32k_wire": 0.316,
         "reach_at_80_whole_list": 0.6486,
         "reach_at_80_within_32k": 0.2162
       }
@@ -76,7 +76,7 @@
       },
       "native_floor": {
         "n": 39,
-        "gold_at_8k_wire": 0.1410,
+        "gold_at_8k_wire": 0.141,
         "gold_at_32k_wire": 0.5043,
         "reach_at_80_whole_list": 0.8718,
         "reach_at_80_within_32k": 0.4872
@@ -99,10 +99,23 @@
   ],
   "native_floor_reference": {
     "source": "noodlbox-wiki/strategy/projects/tokens-to-gold-benchmark/artifacts/B5_PAGE_SKELETON_2026-08-20.md",
-    "section": "§5 The arms (comparator honesty) (L132)",
-    "pricing_basis": "L154: floor spans are read content; wire ≡ read; same tokenizer; the R5 Explorer arm",
+    "section": "\u00a75 The arms (comparator honesty) (L132)",
+    "pricing_basis": "L154: floor spans are read content; wire \u2261 read; same tokenizer; the R5 Explorer arm",
     "measurement_stamp": "L156: measured 2026-08-26 with the pinned official binary (c5dbaf91)",
     "cells": "within_32k <- L160 (TS) / L162 (PY); whole_list (unbounded gauge) <- L166 (TS) / L168 (PY); Gold@32k is the coverage@32k column, a reach decoy",
     "regression": "the re-cert native_floor ts40/py cells replay these exact-to-4dp = floor HELD (explorer policy frozen; the rg fix only made failures loud)"
+  },
+  "native_floor_run_wire_median": {
+    "record": "native_floor run-wire MEDIAN (delivered_tokens) \u2014 the typical-instance floor cost",
+    "anchor": "B5 \u00a75 (comparator honesty), B5_PAGE_SKELETON_2026-08-20.md \u2014 ts40 <- L167, py_nosphinx <- L169 (the median-wire line under each whole_list gauge line, L166/L168)",
+    "basis": "statistics.median of token_coverage[_wire].delivered_tokens over the FROZEN gold-bearing basis; wire == read for spans (B5 \u00a75); uncapped whole hunt \u2014 robust to the long-tail max",
+    "tolerance": "EXACT integer; a re-cert native_floor replay must land on these",
+    "note": "go34 / rust43 are 2026-09 re-cert additions (no V1 B5 line); pinned here from the certified quick-shrimp derivation for the same exact-replay guard",
+    "delivered_wire": {
+      "ts40": 123044,
+      "py_nosphinx": 446932,
+      "go34": 110002,
+      "rust43": 400333
+    }
   }
 }

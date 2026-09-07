@@ -193,8 +193,10 @@ class SyntheticRenderTest(unittest.TestCase):
         self.assertIn("| TypeScript | `ts40` |", doc)
 
         # The run-wire cost gauge renders (additive), values tracing to the rows'
-        # delivered_tokens: 9,000 (symbol arms) and 80,000 (the span floor).
+        # delivered_tokens: 9,000 (symbol arms) and 80,000 (the span floor). The
+        # gauge now carries a median column (mean / median / max).
         self.assertIn("Run-wire cost gauge", doc)
+        self.assertIn("median run wire", doc)
         self.assertIn("9,000 wire", doc)
         self.assertIn("80,000 wire", doc)
 
@@ -297,6 +299,7 @@ def _cellscore(n: int) -> CellScore:
         ttg80_median_wire=None,
         whole_list_internal=0.0,
         mean_run_wire=0,
+        median_run_wire=0,
         max_run_wire=0,
     )
 

@@ -245,6 +245,7 @@ class CellScore:
     ttg80_median_wire: int | None
     whole_list_internal: float
     mean_run_wire: int
+    median_run_wire: int
     max_run_wire: int
 
 
@@ -266,10 +267,12 @@ def _gold_available(corpus: str, gold_dir: Path) -> bool:
     return (gold_dir / f"frozen_gold_{corpus}.json").is_file()
 
 
-def _run_wire_stats(report: Mapping[str, object], corpus: str) -> tuple[int, int]:
-    """(mean, max) delivered run wire per instance, over the FROZEN basis, from
-    each row's binding wire curve (`token_coverage[_wire].delivered_tokens`). The
-    adverse cost gauge — how much wire the arm burned, uncapped (B5 §5)."""
+def _run_wire_stats(report: Mapping[str, object], corpus: str) -> tuple[int, int, int]:
+    """(mean, median, max) delivered run wire per instance, over the FROZEN
+    basis, from each row's binding wire curve
+    (`token_coverage[_wire].delivered_tokens`). The adverse cost gauge — how much
+    wire the arm burned, uncapped (B5 §5). The MEDIAN is the typical-instance
+    cost, robust to the long-tail hunt the max reports."""
     rows = {r.get("instance_id"): r for r in result_rows(report)}
     delivered = [
         int(dt)
@@ -277,8 +280,12 @@ def _run_wire_stats(report: Mapping[str, object], corpus: str) -> tuple[int, int
         if isinstance(dt := wire_curve(rows.get(iid, {})).get("delivered_tokens"), (int, float))
     ]
     if not delivered:
-        return (0, 0)
-    return (round(sum(delivered) / len(delivered)), max(delivered))
+        return (0, 0, 0)
+    return (
+        round(sum(delivered) / len(delivered)),
+        round(statistics.median(delivered)),
+        max(delivered),
+    )
 
 
 def score_cell(report: Mapping[str, object], corpus: str, arm: str) -> CellScore:
@@ -286,7 +293,7 @@ def score_cell(report: Mapping[str, object], corpus: str, arm: str) -> CellScore
     `score_arm`; cost-to-coverage (median TtG@80) from the binding rollup."""
     metrics = score_arm(report, corpus)
     roll = rollup(report, frozen_instance_ids=list(load_frozen_gold(corpus)))
-    mean_run, max_run = _run_wire_stats(report, corpus)
+    mean_run, median_run, max_run = _run_wire_stats(report, corpus)
     return CellScore(
         corpus=corpus,
         arm=arm,
@@ -300,6 +307,7 @@ def score_cell(report: Mapping[str, object], corpus: str, arm: str) -> CellScore
         ttg80_median_wire=roll.binding.median_ttg_at_coverage[80],
         whole_list_internal=metrics.whole_list_INTERNAL,
         mean_run_wire=mean_run,
+        median_run_wire=median_run,
         max_run_wire=max_run,
     )
 
@@ -619,31 +627,36 @@ def render_disclosures() -> str:
 
 
 def render_run_wire_gauge(cells: Sequence[Cell]) -> str:
-    """Adverse cost gauge (ADDITIVE — not a coverage cell): mean / max delivered
-    RUN WIRE per instance, per arm per language, over the gold-bearing basis.
-    Uncapped, so for native_floor this is the full hunt (B5 §5, max ~1.72M on
-    ts40). Shares the report's provenance (one binary, frozen denominators)."""
+    """Adverse cost gauge (ADDITIVE — not a coverage cell): mean / median / max
+    delivered RUN WIRE per instance, per arm per language, over the gold-bearing
+    basis. Uncapped, so for native_floor this is the full hunt (B5 §5, max ~1.72M
+    on ts40); the median is the typical-instance cost, robust to that long tail.
+    Shares the report's provenance (one binary, frozen denominators)."""
     out: list[str] = [
-        "## Run-wire cost gauge (mean / max delivered wire per instance)",
+        "## Run-wire cost gauge (mean / median / max delivered wire per instance)",
         "",
         "The wire each arm actually delivers per instance (`token_coverage` "
         "delivered_tokens), over the gold-bearing basis — the adverse cost gauge, "
         "additive to the coverage table above and under the same provenance. "
-        "Uncapped: for native_floor this is the whole hunt (B5 §5).",
+        "Uncapped: for native_floor this is the whole hunt (B5 §5); the median is "
+        "the typical-instance cost, robust to the long-tail max.",
         "",
     ]
     for corpus, language in CORPUS_LANG.items():
         out.append(f"### {language}  (corpus `{corpus}`)")
         out.append("")
-        out.append("| Arm | mean run wire | max run wire |")
-        out.append("|---|---|---|")
+        out.append("| Arm | mean run wire | median run wire | max run wire |")
+        out.append("|---|---|---|---|")
         for arm in ARMS:
             cell = _cell_by(cells, corpus, arm)
             if cell.score is None:
-                out.append(f"| {arm} | _PENDING ({cell.pending_reason})_ | |")
+                out.append(f"| {arm} | _PENDING ({cell.pending_reason})_ | | |")
                 continue
             s = cell.score
-            out.append(f"| {arm} | {s.mean_run_wire:,} wire | {s.max_run_wire:,} wire |")
+            out.append(
+                f"| {arm} | {s.mean_run_wire:,} wire | {s.median_run_wire:,} wire "
+                f"| {s.max_run_wire:,} wire |"
+            )
         out.append("")
     return "\n".join(out)
 
