@@ -214,6 +214,15 @@ CORPORA: Final[dict[str, Corpus]] = {
     # `flags` parser still accepts them as valid corpora.
     "go34": Corpus("go34", None, scored_instances=30, corpus_instances=34),
     "rust43": Corpus("rust43", None, scored_instances=40, corpus_instances=43),
+    # R20: the first PUBLIC pre-registered held-out CONFIRM corpus
+    # (payloadcms/payload, MIT), replacing the private held-out monorepo.
+    # Budget-independent like the 2026-09 re-cert tiers (char_budget_20k=None: only
+    # shipped_treatment / levers_off_ablation / native_floor). scored_instances is
+    # filled from the frozen-gold derivation; until then it is 0, and the only
+    # consumer of that field — the scored-only REUSE arm's protocol guard
+    # (assert_corpus_matches_protocol) — is NOT run for payload in the deriving
+    # pass, so the placeholder never gates it.
+    "payload": Corpus("payload", None, scored_instances=0, corpus_instances=50),
 }
 
 ACCEPTANCE_ARMS: Final[tuple[str, ...]] = ("shipped_treatment", "levers_off_ablation")

@@ -42,6 +42,9 @@ LANGUAGE_BY_CORPUS = {
     "gauntlet_py56": "python",
     "go34": "go",
     "rust43": "rust",
+    # R20: the first PUBLIC pre-registered held-out CONFIRM corpus
+    # (payloadcms/payload, MIT) — replaces the private held-out monorepo.
+    "payload": "typescript",
 }
 
 
