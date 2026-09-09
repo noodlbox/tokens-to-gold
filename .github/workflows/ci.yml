@@ -21,7 +21,11 @@ jobs:
         with:
           python-version: "3.12"  # tomllib needs >= 3.11
       - name: install ruff
-        run: pipx install ruff
+        # Pin ruff: an unpinned `pipx install ruff` tracks the latest release,
+        # so a new ruff (0.16.x changed default isort/I001 behaviour) silently
+        # reddens CI on code that is clean under the version the repo is
+        # maintained against. Pin here; bump deliberately with the lint fixes.
+        run: pipx install ruff==0.15.5
       - name: lint
         run: ruff check ttg/ tests/ acceptance/ arms/
       - name: unit suite
