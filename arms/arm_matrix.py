@@ -218,11 +218,11 @@ CORPORA: Final[dict[str, Corpus]] = {
     # (payloadcms/payload, MIT), replacing the private held-out monorepo.
     # Budget-independent like the 2026-09 re-cert tiers (char_budget_20k=None: only
     # shipped_treatment / levers_off_ablation / native_floor). scored_instances is
-    # filled from the frozen-gold derivation; until then it is 0, and the only
-    # consumer of that field — the scored-only REUSE arm's protocol guard
-    # (assert_corpus_matches_protocol) — is NOT run for payload in the deriving
-    # pass, so the placeholder never gates it.
-    "payload": Corpus("payload", None, scored_instances=0, corpus_instances=50),
+    # scored_instances is the frozen-gold-bearing count from the R20-2 derivation
+    # (215 gold symbols across 38 instances; 6 zero-gold + 6 errored excluded from
+    # the 44 scored). Set from the measured derive, so the harness never ships a
+    # bare 0 that a later reader mistakes for a measurement (rel2-t2g ruling 2).
+    "payload": Corpus("payload", None, scored_instances=38, corpus_instances=50),
 }
 
 ACCEPTANCE_ARMS: Final[tuple[str, ...]] = ("shipped_treatment", "levers_off_ablation")
