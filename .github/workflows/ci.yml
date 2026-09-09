@@ -17,8 +17,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # full history for the privacy history scan (T6 + R18b)
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"  # tomllib needs >= 3.11
@@ -28,8 +26,6 @@ jobs:
         run: ruff check ttg/ tests/ acceptance/ arms/
       - name: unit suite
         run: python3 -m unittest discover -s tests
-      - name: privacy history scan (R18b)
-        run: python3 -m ttg.cli scan-history
 
   acceptance:
     # The acceptance suite: fetch the pinned release attachments (the 12

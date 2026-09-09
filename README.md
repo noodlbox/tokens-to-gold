@@ -234,22 +234,12 @@ lets you recompute it.
 
 - **2026-09 re-certification.** Added `ttg/paired_stats.py` (paired bootstrap CI + exact sign test), homed byte-identical from the m23gate harness (sha `4d359404…`). V1 documented this tool as shipped; it was not — the regression report now carries per-metric paired 95% CI + sign test alongside the ±2.75pp floor.
 
-## Commit-message privacy guard
+## Held-out confirm corpus
 
-The canonical claim about the held-out corpus is stated once in `BUNDLE.md`
-("Held-out corpus (canonical claim)"): **it is not named in any public
-artifact** — a mechanical not-named property, enforced by the guards below, not
-a secrecy claim. Commit messages ship with a public clone, so the name must
-never enter git history. Arm the guards once:
-
-```sh
-bash scripts/setup.sh
-```
-
-That sets `core.hooksPath` to `scripts/git-hooks` and prints the release gate.
-`scripts/git-hooks/commit-msg` then refuses any message that names the corpus
-(checked via `ttg.privacy`, so the hook never spells it), reporting the resolved
-token *mode* — never the value — and distinguishing a violation from a check that
-could not run. Before an internal artifact leaves the machine, run the release gate
-`python3 -m ttg.cli scan-binary --path <noodl-eval>` (a byte scan; the eval
-binary once carried the name in embedded strings).
+The held-out confirm corpus is a public, pre-registered repository —
+`payloadcms/payload` (MIT), pinned by commit — stated canonically in `BUNDLE.md`
+("Held-out corpus (canonical statement)"). It is named openly; "held-out" means
+it is never tuned on, not that it is secret. R20 (founder ruling 2026-09-09)
+retired the earlier private held-out monorepo and, with it, the name-privacy
+apparatus (a scrubber, a commit-message hook, the history and binary scanners) —
+those are gone; there is nothing to arm.
