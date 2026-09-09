@@ -168,6 +168,12 @@ frozen_gold_go34 = "bf8de741a03597d5db62b5c0dceee901799a12188fbae6b9253e9b094d42
 frozen_gold_py_nosphinx = "05033580302881b919729bdbd9b485c2b89e0531bd338f3e19acedbcebe67736"
 frozen_gold_rust43 = "7b45f6abbd8f3700fabfac37c292a91e523fae940588b44fb6565768fcb239fe"
 frozen_gold_ts40 = "fcc09bd98d5e648be1c46803b72140b233599ef91e2dd945ba4b52e72d02a0e3"
+# payload is the held-out CONFIRM tier — INTERNAL, not a published tier: absent
+# from CORPORA/preflight, so it never enters the public grid. Pinned here (and in
+# gold/SHA256SUMS) only so the harness's own score stage loads it offline. Tier
+# record — N, the twelve exclusions by id, provenance — in
+# reports/internal-confirm/MANIFEST.json.
+frozen_gold_payload = "56e60e71fa326a8e6ef26f1730be369399561c40b8d820a912ee233a0b60da7f"
 
 [provenance]
 gold_derived_at_commit = "0c061c57"
@@ -251,3 +257,31 @@ reason = "the re-certification engine is an internal tool and is not published; 
 # checkout-set proof emitted by `ttg.cli provision`.
 go34 = "3f221ceed33cd0b34cf1f71acc47e51424090b36aae62be2f2e5b89e90d2b54d"
 rust43 = "32661b0c77aff0e5cdbad9e82c21be6a0ef493a7945a0923174629fc8f36ce03"
+
+[recert.confirm]
+# The 2026-09 held-out CONFIRM tier (R20-2): payloadcms/payload (MIT), scored
+# INTERNAL — NOT a published tier. It is deliberately absent from CORPORA and
+# preflight, so it never enters the public results grid, and its numbers are
+# internal (locked claims language). Recorded here so the confirm is
+# reproducible offline; the tier record (N, the twelve exclusions by id,
+# provenance, and the score-own reproduce command) is
+# reports/internal-confirm/MANIFEST.json.
+#
+# The gold ships in-repo (gold/frozen_gold_payload.json, pinned in [gold]). The
+# scored shipped report is a v1.0.0-rc1 release asset — NOT in git — per the
+# PIN convention for large reports. It is deliberately NOT a [[artifacts.files]]
+# entry, so `reproduce.sh verify` (the public fetch set) does not pull it; an
+# operator reproducing the internal confirm fetches it explicitly.
+scored_instances = 38
+gold = "56e60e71fa326a8e6ef26f1730be369399561c40b8d820a912ee233a0b60da7f"
+
+# No literal `url` here by design: identity is name + release_tag + sha256 (what
+# the harness reads), and PIN.toml's url-consistency gate covers only the public
+# [[artifacts.files]] fetch set — this internal report is not in it. Fetch it with
+# `gh release download <release_tag> -p <name>` (see the MANIFEST reproduce block).
+[[recert.confirm.reports]]
+name = "shipped_treatment_payload.json"
+arm = "shipped_treatment"
+corpus = "payload"
+sha256 = "b940b858d7bce9edd95e9227244d4e303822976b2e922c0241b5587a99c4710f"
+release_tag = "v1.0.0-rc1"

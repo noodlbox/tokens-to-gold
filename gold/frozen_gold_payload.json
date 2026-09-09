@@ -1,0 +1,301 @@
+{
+ "corpus": "payload",
+ "binary": "noodl-eval f79f84b9",
+ "protocol": "deepswe-frozen ForceReindex",
+ "graph_gold_derivation_version": 4,
+ "total_gold_symbols": 215,
+ "instances_with_gold": 38,
+ "gold": {
+  "payloadcms-payload-pr17597": [
+   "packages/graphql/src/schema/initCollections.ts:initCollections",
+   "packages/payload/src/auth/operations/me.ts:meOperation",
+   "packages/payload/src/auth/operations/refresh.ts:refreshOperation",
+   "test/hooks/collections/Users/refreshHook.ts:refreshHook"
+  ],
+  "payloadcms-payload-pr17602": [
+   "packages/payload/src/index.ts:getPayload",
+   "packages/tanstack-start/src/utilities/devReloadStrategy.ts:connect",
+   "packages/tanstack-start/src/utilities/devReloadStrategy.ts:handleUpdate",
+   "packages/tanstack-start/src/withPayload/index.ts:withPayload_return"
+  ],
+  "payloadcms-payload-pr17618": [
+   "packages/ui/src/forms/Form/index.tsx:submit"
+  ],
+  "payloadcms-payload-pr17632": [
+   "packages/payload/src/index.ts:defaultNextJsDevReloadStrategy",
+   "packages/payload/src/index.ts:connect"
+  ],
+  "payloadcms-payload-pr17640": [
+   "packages/richtext-lexical/src/features/toolbars/fixed/client/Toolbar/index.tsx:FixedToolbar"
+  ],
+  "payloadcms-payload-pr17649": [
+   "packages/ui/src/elements/ListHeader/TitleActions/ListBulkUploadButton.tsx:ListBulkUploadButton",
+   "packages/ui/src/elements/ListHeader/TitleActions/ListBulkUploadButton.tsx:openBulkUpload",
+   "packages/ui/src/views/List/ListHeader/index.tsx:CollectionListHeader",
+   "packages/ui/src/views/List/index.client.tsx:DefaultListView",
+   "packages/ui/src/views/List/index.client.tsx:openBulkUpload"
+  ],
+  "payloadcms-payload-pr17651": [
+   "packages/drizzle/src/postgres/init.ts:init",
+   "packages/drizzle/src/schema/build.ts:buildTable",
+   "packages/drizzle/src/schema/buildRawSchema.spec.ts:createAdapter",
+   "packages/drizzle/src/utilities/buildForeignKeyName.ts:buildForeignKeyName",
+   "packages/drizzle/src/utilities/buildIndexName.ts:buildIndexName"
+  ],
+  "payloadcms-payload-pr17652": [
+   "packages/create-payload-app/src/lib/create-project.ts:createProject",
+   "packages/create-payload-app/src/lib/download-skill.ts:downloadSkill",
+   "packages/create-payload-app/src/lib/download-skill.ts:filter",
+   "packages/create-payload-app/src/lib/select-agent.ts:validAgentValues",
+   "packages/create-payload-app/src/lib/select-agent.ts:getAgentChoice",
+   "packages/create-payload-app/src/lib/select-agent.ts:choice",
+   "packages/create-payload-app/src/lib/select-agent.ts:getSkillsDir",
+   "packages/create-payload-app/src/lib/select-agent.ts:selectAgent",
+   "packages/create-payload-app/src/main.ts:constructor",
+   "packages/create-payload-app/src/main.ts:init",
+   "packages/create-payload-app/src/utils/messages.ts:helpMessage"
+  ],
+  "payloadcms-payload-pr17657": [
+   "packages/tanstack-start/src/routes/adminRoutes.tsx:AdminNotFound",
+   "packages/tanstack-start/src/routes/adminRoutes.tsx:adminRouteOptions",
+   "packages/tanstack-start/src/routes/layoutRoute.tsx:handler",
+   "packages/tanstack-start/src/routes/layoutRoute.tsx:payloadLayoutRoute",
+   "packages/tanstack-start/src/utilities/loadLayoutData.ts:loadLayoutData",
+   "packages/tanstack-start/src/utilities/toSerializable.ts:toSerializable",
+   "packages/tanstack-start/src/withPayload/index.ts:payloadTanstackStartOptions",
+   "test/live-preview/app-tanstack/functions/livePreview.functions.ts:getLivePreviewDoc"
+  ],
+  "payloadcms-payload-pr17661": [
+   "packages/ui/src/elements/RelationshipTable/index.tsx:RelationshipTable"
+  ],
+  "payloadcms-payload-pr17665": [
+   "packages/payload/src/config/client.ts:createClientConfig",
+   "packages/payload/src/config/defaults.ts:addDefaultsToConfig",
+   "packages/payload/src/config/sanitize.ts:sanitizeConfig",
+   "packages/payload/src/index.ts:init",
+   "packages/payload/src/index.ts:reload",
+   "packages/payload/src/utilities/getRequestOrigin.ts:getTrustedOrigins",
+   "packages/payload/src/utilities/headersWithCors.ts:headersWithCors",
+   "packages/payload/src/utilities/logError.ts:logError",
+   "packages/ui/src/views/Root/getCustomCollectionViewByRoute.ts:getCustomCollectionViewByRoute",
+   "packages/ui/src/views/Root/getCustomGlobalViewByRoute.ts:getCustomGlobalViewByRoute",
+   "packages/ui/src/views/Root/getCustomViewByKey.ts:getCustomViewByKey"
+  ],
+  "payloadcms-payload-pr17674": [
+   "packages/payload/src/auth/baseFields/apiKey.ts:decryptKey",
+   "packages/payload/src/auth/crypto.ts:encrypt",
+   "packages/payload/src/auth/crypto.ts:decrypt",
+   "packages/payload/src/auth/strategies/apiKey.ts:APIKeyAuthentication_return",
+   "packages/payload/src/auth/strategies/jwt.ts:autoLogin",
+   "packages/payload/src/auth/strategies/jwt.ts:JWTAuthentication",
+   "packages/payload/src/index.ts:BasePayload",
+   "packages/payload/src/index.ts:resetPassword",
+   "packages/payload/src/index.ts:init"
+  ],
+  "payloadcms-payload-pr17678": [
+   "packages/tanstack-start/src/withPayload/index.ts:withPayload_return"
+  ],
+  "payloadcms-payload-pr17682": [
+   "examples/auth/src/app/(app)/create-account/CreateAccountForm/index.tsx:onSubmit",
+   "examples/auth/src/app/(app)/login/LoginForm/index.tsx:LoginForm",
+   "examples/auth/src/app/(app)/login/LoginForm/index.tsx:onSubmit",
+   "packages/payload/src/collections/operations/find.ts:findOperation",
+   "packages/payload/src/collections/operations/findDistinct.ts:findDistinctOperation",
+   "packages/payload/src/collections/operations/findVersions.ts:findVersionsOperation",
+   "packages/payload/src/collections/operations/update.ts:updateOperation",
+   "packages/payload/src/database/queryValidation/validateQueryPaths.ts:validateQueryPaths",
+   "packages/payload/src/database/sanitizeJoinQuery.ts:sanitizeJoinFieldQuery",
+   "packages/payload/src/globals/operations/findVersions.ts:findVersionsOperation",
+   "packages/payload/src/utilities/getSafeRedirect.ts:getSafeRedirect",
+   "packages/payload/src/versions/drafts/appendVersionToQueryKey.ts:appendVersionToQueryKey",
+   "packages/plugin-import-export/src/export/handlePreview.ts:handlePreview",
+   "packages/plugin-import-export/src/utilities/getSelect.ts:getSelect",
+   "packages/plugin-import-export/src/utilities/setNestedValue.ts:setNestedValue",
+   "packages/plugin-multi-tenant/src/index.ts:plugin",
+   "test/access-control/getConfig.ts:getConfig"
+  ],
+  "payloadcms-payload-pr17685": [
+   "packages/ui/src/providers/Actions/index.tsx:ActionsProvider",
+   "packages/ui/src/templates/Default/index.tsx:DefaultTemplate",
+   "packages/ui/src/views/Root/index.tsx:renderRoot"
+  ],
+  "payloadcms-payload-pr17689": [
+   "tools/releaser/src/release-bump.spec.ts:baseDeps",
+   "tools/releaser/src/release-bump.ts:runReleaseBump",
+   "tools/releaser/src/release-bump.ts:main"
+  ],
+  "payloadcms-payload-pr17705": [
+   "packages/ui/src/elements/DuplicateDocument/SelectLocalesDrawer/index.tsx:SelectLocalesDrawer",
+   "packages/ui/src/elements/DuplicateDocument/SelectLocalesDrawer/index.tsx:handleConfirm",
+   "packages/ui/src/providers/Locale/index.tsx:LocaleProvider"
+  ],
+  "payloadcms-payload-pr17707": [
+   "packages/create-payload-app/src/lib/generate-secret.ts:generateSecret"
+  ],
+  "payloadcms-payload-pr17735": [
+   "packages/ui/src/fields/Upload/Input.tsx:UploadInput",
+   "packages/ui/src/fields/Upload/Input.tsx:populateDocs",
+   "packages/ui/src/fields/Upload/Input.tsx:fetches",
+   "packages/ui/src/fields/Upload/Input.tsx:loadInitialDocs"
+  ],
+  "payloadcms-payload-pr17739": [
+   "packages/plugin-multi-tenant/src/index.ts:plugin",
+   "packages/plugin-multi-tenant/src/utilities/addCollectionAccess.ts:addCollectionAccess",
+   "packages/plugin-multi-tenant/src/utilities/combineWhereConstraints.ts:combineWhereConstraints",
+   "packages/plugin-multi-tenant/src/utilities/withTenantAccess.ts:withTenantAccess",
+   "packages/plugin-multi-tenant/src/utilities/withTenantAccess.ts:withTenantAccess_return"
+  ],
+  "payloadcms-payload-pr17742": [
+   "packages/payload/src/globals/config/sanitize.ts:sanitizeGlobal",
+   "packages/ui/src/utilities/formatMetadata.ts:formatMetadata",
+   "packages/ui/src/views/Version/generateVersionViewMetadata.ts:generateVersionViewMetadata",
+   "packages/ui/src/views/Versions/generateVersionsViewMetadata.ts:generateVersionsViewMetadata"
+  ],
+  "payloadcms-payload-pr17745": [
+   "packages/db-mongodb/src/find.ts:find",
+   "packages/db-mongodb/src/findOne.ts:findOne",
+   "packages/db-mongodb/src/queryDrafts.ts:queryDrafts",
+   "packages/db-mongodb/src/utilities/buildJoinAggregation.ts:buildJoinAggregation"
+  ],
+  "payloadcms-payload-pr17747": [
+   "packages/db-mongodb/src/create.ts:create",
+   "packages/db-mongodb/src/createGlobalVersion.ts:createGlobalVersion",
+   "packages/db-mongodb/src/createVersion.ts:createVersion",
+   "packages/db-mongodb/src/predefinedMigrations/migrateRelationshipsV2_V3.ts:migrateModelWithBatching",
+   "packages/db-mongodb/src/predefinedMigrations/migrateRelationshipsV2_V3.ts:migrateRelationshipsV2_V3",
+   "packages/db-mongodb/src/queries/buildSearchParams.ts:buildSearchParam",
+   "packages/db-mongodb/src/queries/parseParams.ts:parseParams"
+  ],
+  "payloadcms-payload-pr17749": [
+   "packages/ui/src/elements/WhereBuilder/index.tsx:updateCondition",
+   "packages/ui/src/elements/WhereBuilder/index.tsx:WhereBuilder"
+  ],
+  "payloadcms-payload-pr17763": [
+   "packages/payload/src/hierarchy/addHierarchyToCollection.ts:addHierarchyToCollection"
+  ],
+  "payloadcms-payload-pr17768": [
+   "packages/payload/src/queues/config/collection.ts:getDefaultJobsCollection",
+   "packages/payload/src/queues/endpoints/handleSchedules.ts:handler",
+   "packages/payload/src/queues/endpoints/run.ts:handler",
+   "packages/ui/src/elements/PublishButton/ScheduleDrawer/index.tsx:ScheduleDrawer",
+   "packages/ui/src/elements/PublishButton/ScheduleDrawer/index.tsx:fetchUpcoming",
+   "packages/ui/src/providers/ServerFunctions/index.tsx:ServerFunctionsProvider",
+   "packages/ui/src/utilities/getHasScheduledPublish.ts:getHasScheduledPublish",
+   "packages/ui/src/utilities/schedulePublishHandler.ts:schedulePublishHandler",
+   "packages/ui/src/views/Document/index.tsx:renderDocument"
+  ],
+  "payloadcms-payload-pr17781": [
+   "packages/payload/src/bin/build.spec.ts:spawnMock",
+   "packages/payload/src/bin/build.spec.ts:on",
+   "packages/payload/src/bin/build.ts:build"
+  ],
+  "payloadcms-payload-pr17790": [
+   "packages/ui/src/forms/fieldSchemasToFormState/addFieldStatePromise.ts:addFieldStatePromise",
+   "packages/ui/src/views/Edit/index.tsx:onChange",
+   "packages/ui/src/views/Edit/index.tsx:DefaultEditView"
+  ],
+  "payloadcms-payload-pr17795": [
+   "packages/email-resend/src/email-resend.spec.ts:json",
+   "packages/email-resend/src/email-resend.spec.ts:adapter",
+   "packages/email-resend/src/index.ts:sendEmail"
+  ],
+  "payloadcms-payload-pr17809": [
+   "packages/richtext-lexical/src/features/converters/lexicalToHtml/shared/findConverterForNode.ts:findConverterForNode"
+  ],
+  "payloadcms-payload-pr17831": [
+   "packages/db-postgres/src/connect.ts:connectWithReconnect"
+  ],
+  "payloadcms-payload-pr17835": [
+   "packages/plugin-form-builder/src/collections/Forms/DynamicPriceSelector.tsx:DynamicPriceSelector",
+   "packages/plugin-search/src/Search/ui/ReindexButton/index.client.tsx:ReindexButtonClient",
+   "packages/plugin-search/src/Search/ui/ReindexButton/index.client.tsx:handleReindexSubmit",
+   "packages/plugin-search/src/Search/ui/ReindexButton/index.client.tsx:getPluralizedLabel",
+   "packages/plugin-seo/src/fields/MetaDescription/MetaDescriptionComponent.tsx:regenerateDescription",
+   "packages/plugin-seo/src/fields/MetaImage/MetaImageComponent.tsx:regenerateImage",
+   "packages/plugin-seo/src/fields/MetaTitle/MetaTitleComponent.tsx:regenerateTitle",
+   "packages/plugin-seo/src/fields/Preview/PreviewComponent.tsx:getHref",
+   "packages/ui/src/elements/AppHeader/index.tsx:AppHeader",
+   "packages/ui/src/elements/Autosave/index.tsx:Autosave",
+   "packages/ui/src/elements/BulkUpload/FormsManager/index.tsx:FormsManagerProvider",
+   "packages/ui/src/elements/CopyLocaleData/index.tsx:CopyLocaleData",
+   "packages/ui/src/elements/DeleteMany/index.tsx:DeleteMany",
+   "packages/ui/src/elements/DuplicateDocument/index.tsx:DuplicateDocument",
+   "packages/ui/src/elements/EditMany/DrawerContent.tsx:EditManyDrawerContent",
+   "packages/ui/src/elements/Hierarchy/MoveMany/index.tsx:MoveMany",
+   "packages/ui/src/elements/Hierarchy/Search/useHierarchySearch.ts:useHierarchySearch",
+   "packages/ui/src/elements/ListHeader/TitleActions/ListEmptyTrashButton.tsx:ListEmptyTrashButton",
+   "packages/ui/src/elements/LivePreview/Window/index.tsx:LivePreviewWindow",
+   "packages/ui/src/elements/Localizer/index.tsx:Localizer",
+   "packages/ui/src/elements/PublishButton/index.tsx:PublishButton",
+   "packages/ui/src/elements/PublishMany/DrawerContent.tsx:PublishManyDrawerContent",
+   "packages/ui/src/elements/RestoreMany/index.tsx:RestoreMany",
+   "packages/ui/src/elements/SaveDraftButton/index.tsx:SaveDraftButton",
+   "packages/ui/src/elements/Status/index.tsx:Status",
+   "packages/ui/src/elements/Table/OrderableTable.tsx:OrderableTable",
+   "packages/ui/src/elements/Table/RelationshipProvider/index.tsx:RelationshipProvider",
+   "packages/ui/src/elements/UnpublishButton/index.tsx:UnpublishButton",
+   "packages/ui/src/elements/UnpublishMany/DrawerContent.tsx:UnpublishManyDrawerContent",
+   "packages/ui/src/elements/WhereBuilder/Condition/Relationship/index.tsx:loadOptions",
+   "packages/ui/src/fields/Array/index.tsx:ArrayFieldComponent",
+   "packages/ui/src/fields/Blocks/index.tsx:BlocksFieldComponent",
+   "packages/ui/src/fields/FieldLabel/index.tsx:FieldLabel",
+   "packages/ui/src/fields/Relationship/Input.tsx:RelationshipInput",
+   "packages/ui/src/fields/Slug/index.tsx:SlugFieldComponent",
+   "packages/ui/src/fields/Upload/Input.spec.ts:useLocale",
+   "packages/ui/src/fields/Upload/Input.tsx:UploadInput",
+   "packages/ui/src/fields/shared/index.tsx:isFieldRTL",
+   "packages/ui/src/forms/Form/index.tsx:Form",
+   "packages/ui/src/forms/NullifyField/index.tsx:NullifyLocaleField",
+   "packages/ui/src/hooks/usePayloadAPI.ts:usePayloadAPI",
+   "packages/ui/src/providers/DocumentInfo/index.tsx:DocumentInfo",
+   "packages/ui/src/providers/Locale/index.tsx:[locale, setLocale]",
+   "packages/ui/src/providers/Locale/index.tsx:LocaleProvider",
+   "packages/ui/src/providers/Locale/index.tsx:useLocale",
+   "packages/ui/src/providers/Selection/index.tsx:SelectionProvider",
+   "packages/ui/src/views/API/index.client.tsx:APIViewClient",
+   "packages/ui/src/views/Version/Default/SetStepNav.tsx:SetStepNav",
+   "packages/ui/src/views/Version/Default/index.tsx:DefaultVersionView",
+   "packages/ui/src/views/Versions/VersionPillLabel/VersionPillLabel.tsx:VersionPillLabel"
+  ],
+  "payloadcms-payload-pr17836": [
+   "packages/ui/src/views/Edit/SetDocumentTitle/index.tsx:SetDocumentTitle"
+  ],
+  "payloadcms-payload-pr17876": [
+   "packages/payload/src/utilities/telemetry/index.ts:sendTelemetryEvent"
+  ],
+  "payloadcms-payload-pr17951": [
+   "packages/payload/src/collections/operations/create.ts:createOperation",
+   "packages/payload/src/fields/baseFields/slug/fillEmptyLocalizedSlugs.ts:fillEmptyLocalizedSlugs",
+   "packages/payload/src/fields/baseFields/slug/generateSlug.ts:generateSlug_return",
+   "packages/payload/src/fields/baseFields/slug/generateSlug.ts:slugify",
+   "packages/payload/src/fields/baseFields/slug/getSlugFallbackValue.ts:getSlugFallbackValue",
+   "packages/payload/src/fields/hooks/beforeChange/promise.ts:promise",
+   "packages/payload/src/utilities/fieldValueExists.ts:fieldValueExists",
+   "packages/payload/src/utilities/getUniqueFieldValue.ts:getUniqueFieldValue",
+   "packages/ui/src/utilities/slugify.ts:slugifyHandler"
+  ],
+  "payloadcms-payload-pr17966": [
+   "app-tanstack/app/__root.tsx:head",
+   "packages/create-payload-app/src/lib/update-payload-in-project.ts:updatePayloadInTanStackProject",
+   "templates/blank-tanstack/src/app/__root.tsx:head",
+   "test/admin-bar/app-tanstack/app/__root.tsx:head",
+   "test/app-tanstack/app/__root.tsx:head",
+   "test/create-payload-app/int.spec.ts:expectRequiredTanStackFiles",
+   "test/live-preview/app-tanstack/app/__root.tsx:head"
+  ],
+  "payloadcms-payload-pr18084": [
+   "packages/ui/src/providers/TableColumns/buildColumnState/index.tsx:sorted"
+  ],
+  "payloadcms-payload-pr18126": [
+   "packages/payload/src/cli/commands/collections/createDocuments.ts:handler",
+   "packages/payload/src/cli/commands/collections/updateDocument.ts:handler",
+   "packages/payload/src/cli/commands/data/input.ts:parseDocuments",
+   "packages/payload/src/uploads/endpoints/getFileFromURL.ts:getFileFromURLHandler",
+   "packages/payload/src/uploads/generateFileData.ts:generateFileData",
+   "packages/payload/src/uploads/getExternalFile.ts:getExternalFile",
+   "packages/plugin-import-export/src/utilities/getFileFromDoc.ts:getFileFromDoc",
+   "packages/plugin-mcp/src/mcp/builtin/collections/fileInput.ts:resolveFile",
+   "packages/plugin-mcp/src/mcp/builtin/collections/fileInput.ts:getURLFilename"
+  ]
+ }
+}
