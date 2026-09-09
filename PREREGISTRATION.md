@@ -271,18 +271,15 @@ pasted from B5 §5 (within_32k ← L160/L162; whole_list ← L166/L168; Gold@32k
 the coverage decoy). The re-cert floor replays them exact-to-4dp = floor HELD
 (explorer policy frozen; the rg fix only made failures loud).
 
-### Addendum — held-out corpus claim, 2026-09-07 (founder decision, Option 1)
+### Addendum — held-out corpus retired to a public one, 2026-09-09 (founder ruling, R20-3)
 
-The single canonical claim about the held-out corpus lives in `BUNDLE.md`
-("Held-out corpus (canonical claim)"); this pre-registration references it rather
-than restating it, so the four copies cannot drift. The claim is literal absence
-— a mechanical "not named" property, never confidentiality and never
-non-derivability (the corpus is itself a private repo, so the derivability of its
-name grants nothing). Because the claim is that narrow, the T6 privacy scan, the
-commit-message hook, and the history-scan CLI (R18b) are its SOLE evidence, not a
-defence in depth — the narrow claim raises the load on those guards. The harness
-keeps its in-module name fragments and the explicit-mode resolver is unchanged
-(Option 1, final).
+The earlier private held-out monorepo was retired; the held-out confirm corpus of
+record is now the public, pre-registered `payloadcms/payload` (MIT), stated
+canonically in `BUNDLE.md` ("Held-out corpus (canonical statement)"). Its name is
+no longer a secret, so the name-privacy apparatus (the `ttg.privacy` scrubber, the
+commit-message hook, the history-scan and binary scanners, the T6 surface scans)
+was deleted with this change — "held-out" is a process property, not a secrecy
+one. The prior 2026-09-07 "Option 1 / not-named claim" addendum is superseded.
 
 ### Addendum — ts40 engine-vs-frozen drift, 2026-09-07 (disclosed)
 

@@ -23,7 +23,6 @@ from ttg.acceptance import (
     load_frozen_gold,
     score_arm,
 )
-from ttg import privacy as _privacy
 from ttg.curve_recompute import curve_parity_findings
 from ttg.matcher import match_gold_spans
 from ttg.report import _run_wire_stats
@@ -39,12 +38,6 @@ PKG = Path(__file__).resolve().parent.parent
 _ENV = os.environ.get("TTG_REPORTS_DIR")
 _HH = PKG / "runs" / "recert-2026-09" / "certified" / "harbor-hermit-ts40py" / "reports"
 _QS = PKG / "runs" / "recert-2026-09" / "certified" / "quick-shrimp-go34rust43" / "reports"
-# The full-surface privacy scan resolves its certified surface the SAME way as
-# `_report_path`: the fetched dir (`TTG_REPORTS_DIR`) on a clone — where the
-# fetched attachments ARE the published surface — else the local certified trees.
-# It must never hard-code the local certified path, which a clone never has
-# (fold F: fail loud if the resolved surface is absent, never no-op).
-_SURFACE = Path(_ENV) if _ENV else PKG / "runs" / "recert-2026-09" / "certified"
 
 ARMS = ("shipped_treatment", "levers_off_ablation", "native_floor")
 CORPORA = ("ts40", "py_nosphinx", "go34", "rust43")
@@ -346,65 +339,3 @@ class T10ReporterAnnotation(unittest.TestCase):
         self.assertIn("NOT superiority-claimable", at10.note)
 
 
-class T6CertifiedSurfaceScan(unittest.TestCase):
-    """The full published-surface privacy scan (tracked + the certified tree),
-    which REQUIRES the certified tree (fold F: no silent no-op) and REPORTS its
-    scope. The clone-safe tracked-only scan lives in the unit suite."""
-
-    SURFACE = _SURFACE
-
-    def test_no_private_corpus_on_full_surface(self) -> None:
-        import subprocess
-
-        if not self.SURFACE.is_dir():
-            self.fail(
-                f"certified/fetched surface absent at {self.SURFACE} — run "
-                "`reproduce.sh verify` (fetch-artifacts) first; this full-surface "
-                "scan does not no-op"
-            )
-        extra = [
-            f for f in self.SURFACE.rglob("*")
-            if f.is_file() and "__pycache__" not in f.parts
-        ]
-        # finding-H cert_present guard: the resolved surface must actually carry
-        # the certified reports. An empty or mislaid TTG_REPORTS_DIR must FAIL,
-        # never silently degrade to a tracked-only scan.
-        if not any(f.suffix.lower() == ".json" for f in extra):
-            self.fail(
-                f"certified/fetched surface at {self.SURFACE} carries no reports "
-                "— run `reproduce.sh verify` (fetch-artifacts) first; this scan "
-                "does not no-op on an empty surface"
-            )
-        tracked = subprocess.run(
-            ["git", "ls-files", "-z"], cwd=PKG, capture_output=True, text=True, check=True
-        ).stdout.split("\0")
-        files = {PKG / p for p in tracked if p}
-        files.update(extra)
-        surface = [f for f in files if f.is_file() and "__pycache__" not in f.parts]
-        json_count = sum(1 for f in surface if f.suffix.lower() == ".json")
-        src = "fetched" if _ENV else "certified"
-        # Each hit is classified against the reviewed, asset+identifier-scoped
-        # TEXT_ALLOWLIST: a known public-symbol coincidence is COUNTED (never a
-        # silent skip); anything else is a violation.
-        offenders: list[str] = []
-        allowlisted: dict[str, int] = {}
-        for f in surface:
-            violations, allowed = _privacy.scan_text(
-                f.read_text(errors="ignore"), f.name
-            )
-            if violations:
-                offenders.append(os.path.relpath(f, PKG))
-            for name, count in allowed.items():
-                allowlisted[name] = allowlisted.get(name, 0) + count
-        allow_str = (
-            ", ".join(f"{n}={c}" for n, c in sorted(allowlisted.items())) or "none"
-        )
-        print(
-            f"\nfull surface: {len(surface)} files, {json_count} .json "
-            f"(tracked + {src}); allowlisted: {allow_str}"
-        )
-        self.assertEqual(offenders, [], f"private corpus leaked into: {offenders}")
-
-
-if __name__ == "__main__":
-    unittest.main()

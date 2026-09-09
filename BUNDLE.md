@@ -11,19 +11,20 @@ wire-priced, no LLM judge, no agent loop. Several contract rows exist for
 whole-agent benchmarks and are absent here **by construction**; each such row
 says so below, on the boundary that keeps the quantities honest.
 
-## Held-out corpus (canonical claim — the single source others reference)
+## Held-out corpus (canonical statement — the single source others reference)
 
-**The held-out corpus is not named in any public artifact.**
+**The held-out confirm corpus is a public, pre-registered repository:
+`payloadcms/payload` (MIT), pinned by commit.**
 
-That is the whole claim, and it is exactly this: a mechanical *not-named*
-property, never "confidential" and never "non-derivable". The held-out corpus is
-itself a private repository, so the derivability of its name grants nothing; the
-claim is literal absence and nothing more. Because the claim is that narrow, the
-guards that enforce it — the T6 privacy scan, the commit-message hook, and the
-history-scan CLI (R18b) — are its SOLE evidence, not a defence in depth; the
-narrow claim raises the load on those guards. Every other artifact
-(`PREREGISTRATION.md`, `README.md`, the page) references THIS sentence rather
-than restating it, so the copies cannot drift apart.
+Under R20 (founder ruling 2026-09-09) the earlier private held-out monorepo was
+retired and replaced by this public corpus; "held-out" is a **process** property
+(the corpus is never tuned on), not a secrecy property — TtG's
+contamination-resistance is by construction, so a public confirm corpus is
+strictly more reproducible: a third party can reconstruct the instances from the
+public repo's merged PRs and derive the same frozen gold. There is no privacy
+apparatus and no "not-named" claim — the corpus is named openly here. The
+former name-privacy guards (a scrubber, a commit-message hook, the history and
+binary scanners) were removed with this change; nothing references them.
 
 | # | Row | Status | Where / why |
 |---|---|---|---|

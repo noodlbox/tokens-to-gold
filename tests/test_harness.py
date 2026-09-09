@@ -18,7 +18,6 @@ from arms.arm_matrix import (
     StoreMode, assert_corpus_matches_protocol, assert_lane_invariants, cells,
     char_budget, flags_for,
 )
-from ttg import privacy as _privacy
 from ttg.own_repo import (
     OWN_REPO_ARMS, OwnRepoError, build_instance, own_repo_flags,
 )
@@ -40,14 +39,13 @@ HERE = Path(__file__).resolve().parent
 PKG = HERE.parent
 
 # The report-dependent tests (T1 basis, the curve-parity + real-capture +
-# acceptance-cell checks, and the full certified-surface privacy scan) live in
+# acceptance-cell checks) live in
 # the ACCEPTANCE suite (`acceptance/test_certified.py`, run by `reproduce.sh
 # verify`). This file is the clone-green UNIT suite: nothing here needs the
 # certified reports.
 
 # The private corpus name, as data — so the scan below can forbid it without
 # every other module having to spell it.
-PRIVATE_CORPUS = _privacy.PRIVATE_CORPUS
 
 
 def _naive_normalize(key: str) -> str:
@@ -351,109 +349,6 @@ class T8PinConsistency(unittest.TestCase):
                     self.assertNotIn(
                         "READY-TO-FLIP", line, f"{key} still carries a placeholder"
                     )
-
-
-class T6Privacy(unittest.TestCase):
-    """The held-out corpus appears nowhere the clone can see: the TRACKED files
-    and the GIT HISTORY (commit messages ride in every clone). The FULL surface
-    scan (tracked + the certified artifact tree, which REQUIRES the certified
-    tree) is the acceptance suite's T6CertifiedSurfaceScan.
-
-    Every file is scanned as TEXT -- .json INCLUDED, because the gold payloads
-    and the acceptance fixture are JSON and the earlier scan skipped every .json,
-    leaving the hole exactly where the gold lives. The check is the contiguous-
-    token detector `ttg.privacy.contains_private`, so a fragment-built holder
-    (`ttg.privacy` itself) is safe by construction. Scope is `git ls-files`, NOT
-    `rglob('*')`: untracked scratch never ships, so scanning it would raise false
-    leaks."""
-
-    @staticmethod
-    def _tracked_files() -> list[Path]:
-        """The TRACKED surface -- what a clone gets (git ls-files), clone-safe by
-        construction. The FULL surface scan (tracked + the certified tree, which
-        REQUIRES the certified tree) is the acceptance suite's
-        T6CertifiedSurfaceScan."""
-        import subprocess
-
-        tracked = subprocess.run(
-            ["git", "ls-files", "-z"],
-            cwd=PKG, capture_output=True, text=True, check=True,
-        ).stdout.split("\0")
-        return sorted(
-            PKG / p
-            for p in tracked
-            if p and (PKG / p).is_file() and "__pycache__" not in (PKG / p).parts
-        )
-
-    @staticmethod
-    def _scan(files: list[Path]) -> list[str]:
-        """Offenders: files whose TEXT carries the contiguous private token. No
-        .json skip -- a JSON payload is text like any other file."""
-        return [
-            str(p)
-            for p in files
-            if _privacy.contains_private(p.read_text(errors="ignore"))
-        ]
-
-    def test_no_private_corpus_on_tracked_surface(self) -> None:
-        tracked = self._tracked_files()
-        json_count = sum(1 for f in tracked if f.suffix.lower() == ".json")
-        print(f"\nT6 tracked surface: {len(tracked)} files, {json_count} .json")
-        offenders = self._scan(tracked)
-        self.assertEqual(offenders, [], f"private corpus leaked into: {offenders}")
-
-    def test_tracked_surface_includes_json(self) -> None:
-        # A bug in _tracked_files that dropped .json (Finding C's class) would
-        # leave the direct _scan([leak]) plant green; assert the surface has .json.
-        self.assertGreaterEqual(
-            sum(1 for f in self._tracked_files() if f.suffix.lower() == ".json"),
-            1,
-            "tracked surface has no .json — the scan would miss gold/fixture JSON",
-        )
-
-    def test_git_history_carries_no_private_corpus(self) -> None:
-        import subprocess
-
-        # Every commit message ships in the history of every clone.
-        log = subprocess.run(
-            ["git", "log", "--format=%B"],
-            cwd=PKG, capture_output=True, text=True, check=True,
-        ).stdout
-        self.assertFalse(
-            _privacy.contains_private(log), "private corpus in commit history"
-        )
-
-    def test_public_corpora_only(self) -> None:
-        # V1 shipped two; the 2026-09 re-cert added the go34/rust43 tiers. The
-        # held-out corpus must still never appear.
-        self.assertEqual(set(CORPORA), {"ts40", "py_nosphinx", "go34", "rust43"})
-
-    def test_gold_payloads_carry_no_private_corpus(self) -> None:
-        # DERIVED from CORPORA, never a hardcoded pair: a newly-added tier's gold
-        # is scanned automatically, so a tier cannot silently escape the check.
-        checked = 0
-        for corpus in CORPORA:
-            gold = PKG / "gold" / f"frozen_gold_{corpus}.json"
-            if not gold.is_file():
-                continue
-            with self.subTest(gold=gold.name):
-                self.assertFalse(_privacy.contains_private(gold.read_text()))
-            checked += 1
-        self.assertGreater(checked, 0, "no tier gold scanned")
-
-    def test_json_leak_is_scanned_not_skipped(self) -> None:
-        # PERMANENT NEGATIVE CONTROL (Finding C): the earlier scan skipped every
-        # .json, so a token planted in a gold / fixture / certified-report JSON
-        # was invisible. A planted .json on the scanned surface MUST be flagged.
-        import tempfile
-
-        with tempfile.TemporaryDirectory() as tmp:
-            leak = Path(tmp) / "frozen_gold_go34.json"
-            leak.write_text(
-                json.dumps({"gold": {"i": [f"{PRIVATE_CORPUS}/pkg.go:fn"]}})
-            )
-            self.assertEqual(leak.suffix.lower(), ".json")
-            self.assertEqual(self._scan([leak]), [str(leak)])
 
 
 class T7ReportIO(unittest.TestCase):

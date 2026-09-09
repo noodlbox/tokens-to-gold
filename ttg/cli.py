@@ -55,7 +55,6 @@ from ttg.preflight import (
     require_corpus_support,
     require_native_floor_tools,
 )
-from ttg.privacy import PRIVATE_CORPUS, contains_private, mode, scan_bytes, scrub
 from ttg.replay import run as replay_run
 from ttg.provision import (
     UnsafeCorpusInputError,
@@ -262,30 +261,6 @@ def cmd_check_arms(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_scrub_artifacts(args: argparse.Namespace) -> int:
-    """Remove the held-out corpus name from retrieved run artifacts.
-
-    A witness log captures every test name in the workspace, and some contain
-    the token, so artifacts retrieved from a lease can carry a name that may
-    never ship. Runs at the retrieval boundary, before anything can be
-    committed."""
-    changed = 0
-    for path in sorted(Path(args.dir).rglob("*")):
-        if not path.is_file():
-            continue
-        try:
-            text = path.read_text()
-        except (UnicodeDecodeError, OSError):
-            continue
-        if not contains_private(text):
-            continue
-        path.write_text(scrub(text))
-        print(f"  scrubbed: {path}")
-        changed += 1
-    print(f"scrub-artifacts: {changed} file(s) redacted under {args.dir}")
-    return 0
-
-
 def _verify_artifact(dest: Path, want_sha: str) -> str | None:
     """None if the downloaded file matches its pin; else a mismatch description."""
     if not dest.is_file():
@@ -339,178 +314,6 @@ def cmd_fetch_artifacts(args: argparse.Namespace) -> int:
         return 1
     print(f"fetch-artifacts: {len(targets)} attachment(s) verified into {out}")
     return 0
-
-
-def _history_offenders(log_text: str) -> list[str]:
-    """The abbreviated shas of commits whose MESSAGE names the held-out corpus.
-    `log_text` is `git log --format=%H\\x1f%B\\x1e` — sha, unit-sep, body,
-    record-sep — so a multi-line body is one record and a body containing the
-    field/record separators (control chars, never in a message) cannot split.
-
-    This is the MESSAGE surface only — the EASY one. Committed CONTENT is the
-    other, harder surface: see `_content_carriers`."""
-    offenders: list[str] = []
-    for record in log_text.split("\x1e"):
-        record = record.lstrip("\n")
-        if not record:
-            continue
-        sha, _, body = record.partition("\x1f")
-        if contains_private(body):
-            offenders.append(sha.strip()[:12])
-    return offenders
-
-
-def _content_carriers(repo: Path) -> tuple[int, list[str]]:
-    """AUTHORITATIVE content-across-history scan: for EVERY reachable commit,
-    does its TREE carry the held-out token? Returns `(commits_examined,
-    carrier_shas)`.
-
-    This is the surface both earlier R18 misses skipped. The commit-msg hook and
-    the message scan read MESSAGES, not content; T6 reads the TIP TREE, not
-    history. A token committed into a blob and later removed leaves a CLEAN
-    working tree and a clean tip, yet every intermediate clone still ships the
-    carrying commit — the axis that exists only in git objects. `-S` under-reports
-    it (a commit that adds and removes in one step nets zero), so the check is a
-    per-commit tree grep, not a diff pickaxe. `git grep -q` is used so no matching
-    line is ever printed (the scan output is not itself a leak)."""
-    revs = subprocess.run(
-        ["git", "rev-list", "--all"],
-        cwd=repo, capture_output=True, text=True, check=True,
-    ).stdout.split()
-    carriers: list[str] = []
-    for commit in revs:
-        found = subprocess.run(
-            ["git", "grep", "-F", "-i", "-q", "-e", PRIVATE_CORPUS, commit],
-            cwd=repo, capture_output=True, text=True,
-        )
-        if found.returncode == 0:
-            carriers.append(commit[:12])
-        elif found.returncode != 1:  # 1 == no match; anything else is an error
-            raise RuntimeError(
-                f"git grep failed on {commit[:12]}: {found.stderr.strip()}"
-            )
-    return len(revs), carriers
-
-
-def cmd_scan_history(args: argparse.Namespace) -> int:
-    """R18: scan history for the held-out corpus name on BOTH surfaces — commit
-    MESSAGES and, authoritatively, committed CONTENT (every reachable commit's
-    tree). A clone ships full history, so a name that ever entered a committed
-    blob is permanent after a push however clean the tip is. Reports the resolved
-    MODE and the commit count EXAMINED; REFUSES (exit 1) on any hit on either
-    surface, or if zero commits were examined (a scan that examines nothing
-    proves nothing)."""
-    print(f"scan-history: token resolved via {mode()} mode")
-    log = subprocess.run(
-        ["git", "log", "--format=%H%x1f%B%x1e"],
-        cwd=PKG, capture_output=True, text=True, check=True,
-    ).stdout
-    offenders = _history_offenders(log)
-    examined, carriers = _content_carriers(PKG)
-    corroboration = subprocess.run(
-        ["git", "log", "-S", PRIVATE_CORPUS, "--all", "--format=%h"],
-        cwd=PKG, capture_output=True, text=True, check=True,
-    ).stdout.split()
-    print(
-        f"scan-history: {examined} commit(s) examined — content carriers="
-        f"{len(carriers)}, message offenders={len(offenders)}, -S corroboration="
-        f"{len(corroboration)}"
-    )
-    if examined == 0:
-        print(
-            "REFUSED: zero commits examined — a scan that examines nothing "
-            "proves nothing",
-            file=sys.stderr,
-        )
-        return 1
-    if carriers:
-        print(
-            f"REFUSED: {len(carriers)} commit(s) carry the held-out corpus in "
-            f"committed CONTENT: {', '.join(carriers)}",
-            file=sys.stderr,
-        )
-    if offenders:
-        print(
-            f"REFUSED: {len(offenders)} commit(s) name the held-out corpus in a "
-            f"MESSAGE: {', '.join(offenders)}",
-            file=sys.stderr,
-        )
-    if carriers or offenders:
-        return 1
-    print(f"scan-history: {examined} commit(s) clean on both surfaces")
-    return 0
-
-
-class ExpectationError(ValueError):
-    """A `--expect-allowlisted` argument is malformed."""
-
-
-def _parse_expectations(pairs: list[str] | None) -> dict[str, int]:
-    """`NAME=N` pairs into a mapping. A malformed pair RAISES rather than being
-    ignored: a pre-registered expectation that silently does not apply is worse
-    than none, because the run reports GREEN having asserted nothing."""
-    expectations: dict[str, int] = {}
-    for raw in pairs or []:
-        name, sep, count = raw.partition("=")
-        if not sep or not name or not count.strip().lstrip("-").isdigit():
-            raise ExpectationError(
-                f"--expect-allowlisted {raw!r} is not NAME=N (e.g. jiff-seam=1)"
-            )
-        expectations[name] = int(count)
-    return expectations
-
-
-def cmd_scan_binary(args: argparse.Namespace) -> int:
-    """Release gate (R15/R17): scan a compiled artifact for the held-out corpus
-    name and REFUSE to ship it on a hit.
-
-    The scan is the SAME identifier-scoped scanner as the text tier
-    (`privacy.scan_bytes` decodes latin-1 into `scan_text`), so an allowlist
-    entry is `(asset, pattern)`-scoped and can never excuse a hit in another
-    artifact or in a neighbouring identifier.
-
-    Output is never silent: `violations: N` and one `allowlisted: <name>=N` line
-    PER ENTRY, with `allowlisted: none=0` when nothing was allowlisted — a reader
-    can always tell an empty allowlist from an unreported one. Hit contexts are
-    redacted, and the resolved MODE is printed, never the value.
-
-    `--expect-allowlisted NAME=N` makes the pre-registered count a GATE: R22
-    expects exactly the jiff seam, so a scan of the wrong artifact (which would
-    allowlist nothing) fails instead of passing quietly.
-    """
-    expectations = _parse_expectations(args.expect_allowlisted)
-    path = Path(args.path)
-    data = path.read_bytes()
-    violations, allowlisted = scan_bytes(data, path.name)
-    print(
-        f"privacy-scan-binary: {args.path} ({len(data)} bytes); asset "
-        f"{path.name}; token resolved via {mode()} mode"
-    )
-    print(f"violations: {len(violations)}")
-    if allowlisted:
-        for name in sorted(allowlisted):
-            print(f"allowlisted: {name}={allowlisted[name]}")
-    else:
-        print("allowlisted: none=0")
-
-    rc = 0
-    if violations:
-        print(f"REFUSED: {len(violations)} held-out-corpus hit(s) — do not ship:")
-        for offset, ctx in violations[:20]:
-            print(f"  offset {offset}: …{ctx}…")
-        rc = 1
-    unmet = {
-        name: (want, allowlisted.get(name, 0))
-        for name, want in expectations.items()
-        if allowlisted.get(name, 0) != want
-    }
-    if unmet:
-        for name, (want, got) in sorted(unmet.items()):
-            print(f"REFUSED: expected allowlisted {name}={want}, got {got}")
-        rc = 1
-    if rc == 0:
-        print("OK: no held-out-corpus violation; every expectation met")
-    return rc
 
 
 def _errored_instances(report_path: str) -> frozenset[str]:
@@ -805,13 +608,6 @@ def main(argv: list[str] | None = None) -> int:
     p_arms.add_argument("--corpora", required=True)
     p_arms.set_defaults(func=cmd_check_arms)
 
-    p_scrub = sub.add_parser(
-        "scrub-artifacts",
-        help="redact the held-out corpus name from retrieved run artifacts",
-    )
-    p_scrub.add_argument("--dir", required=True)
-    p_scrub.set_defaults(func=cmd_scrub_artifacts)
-
     p_fa = sub.add_parser(
         "fetch-artifacts",
         help="download + sha-verify the pinned release attachments (the acceptance "
@@ -823,26 +619,6 @@ def main(argv: list[str] | None = None) -> int:
         help="re-verify already-present files without downloading (offline)",
     )
     p_fa.set_defaults(func=cmd_fetch_artifacts)
-
-    p_sb = sub.add_parser(
-        "scan-binary",
-        help="release gate: refuse a compiled artifact that embeds the held-out "
-        "corpus name (byte scan; R15/R17)",
-    )
-    p_sb.add_argument("--path", required=True, help="binary/artifact to scan")
-    p_sb.add_argument(
-        "--expect-allowlisted", action="append", metavar="NAME=N",
-        help="pre-registered allowlist count to ASSERT (repeatable); a mismatch "
-        "is a refusal, so scanning the wrong artifact cannot pass quietly",
-    )
-    p_sb.set_defaults(func=cmd_scan_binary)
-
-    p_sh = sub.add_parser(
-        "scan-history",
-        help="refuse if any commit message in history names the held-out corpus "
-        "(R18b; the history-wide enforcement of the not-named claim)",
-    )
-    p_sh.set_defaults(func=cmd_scan_history)
 
     p_zg = sub.add_parser(
         "zero-gold", help="R-P5 zero-gold NO-GO alarm for a derived tier"
@@ -891,7 +667,6 @@ def main(argv: list[str] | None = None) -> int:
         return int(args.func(args))
     except (
         ArmError,
-        ExpectationError,
         PinError,
         PreU1BinaryError,
         MissingToolError,
