@@ -1,0 +1,58 @@
+{
+  "tier": "internal-held-out-confirm",
+  "created": "2026-09-09",
+  "guard": "payload is the held-out CONFIRM tier — INTERNAL, not a published tier. It is deliberately absent from arms/arm_matrix.py CORPORA and from preflight, so it never enters the public results grid; its confirm numbers stay internal (locked claims language). This record exists so the confirm is reproducible offline; the numbers themselves live in the internal R20-2 stamp, not here.",
+  "corpus": "payload",
+  "corpus_source": "payloadcms/payload (MIT), held-out confirm corpus of record (R20-3 founder ruling 2026-09-09)",
+  "arm": "shipped_treatment",
+  "scored_instances": 38,
+  "gold": {
+    "path": "gold/frozen_gold_payload.json",
+    "sha256": "56e60e71fa326a8e6ef26f1730be369399561c40b8d820a912ee233a0b60da7f",
+    "total_gold_symbols": 215,
+    "instances_with_gold": 38,
+    "protocol": "deepswe-frozen ForceReindex",
+    "graph_gold_derivation_version": 4
+  },
+  "report": {
+    "name": "shipped_treatment_payload.json",
+    "in_git": false,
+    "note": "6.5 MB — release asset per the PIN convention, NOT committed; recorded in PIN.toml [[recert.confirm.reports]].",
+    "sha256": "b940b858d7bce9edd95e9227244d4e303822976b2e922c0241b5587a99c4710f",
+    "release_tag": "v1.0.0-rc1",
+    "url": "https://github.com/noodlbox/tokens-to-gold/releases/download/v1.0.0-rc1/shipped_treatment_payload.json"
+  },
+  "exclusions": {
+    "total_before": 50,
+    "count": 12,
+    "note": "38 scored = 50 total − 6 errored − 6 zero-gold. Classified by the harness's own ttg.cli _errored_instances (engine index-class errors) and empty frozen gold; a disclosed exclusion, not a run failure.",
+    "errored": [
+      "payloadcms-payload-pr18076",
+      "payloadcms-payload-pr18075",
+      "payloadcms-payload-pr17956",
+      "payloadcms-payload-pr17952",
+      "payloadcms-payload-pr17934",
+      "payloadcms-payload-pr17605"
+    ],
+    "zero_gold": [
+      "payloadcms-payload-pr17830",
+      "payloadcms-payload-pr17800",
+      "payloadcms-payload-pr17787",
+      "payloadcms-payload-pr17677",
+      "payloadcms-payload-pr17672",
+      "payloadcms-payload-pr17619"
+    ]
+  },
+  "provenance": {
+    "run": "runs/recert-2026-09/r20-payload-shipped (mirror; untracked)",
+    "binary_build_commit": "cece1486222fe100dce0d3ec34aba9b7899e484f",
+    "binary_sha256": "450e3780d031ab631a3532176f8acce0b2c94a5292b577620d624187634ebe79",
+    "binary_sha_note": "built at cece1486 (the shipped 2.3.18 engine, per the R20-2 rider); the file sha differs from PIN [recert.binary] because OUT_DIR bakes the build path in — identity only, never gated.",
+    "eval_invocation": "NOODLBOX_DATA_DIR=<store> noodl-eval swe-bench payload.jsonl --graph-gold --raw-query --intent implement --reindex --timeout 900 -f json",
+    "started": "2026-09-09T05:28:47Z"
+  },
+  "reproduce": [
+    "gh release download v1.0.0-rc1 --repo noodlbox/tokens-to-gold -p shipped_treatment_payload.json -D /tmp/r20-confirm",
+    "python3 -m ttg.cli score-own --report /tmp/r20-confirm/shipped_treatment_payload.json --gold gold/frozen_gold_payload.json"
+  ]
+}
