@@ -1,0 +1,532 @@
+{
+  "schema_version": "ttg-v2-tier-a-a1-authority/v2",
+  "package": {
+    "id": "tokens-to-gold-v2-tier-a-a1-graphify",
+    "measured_on": "2026-09-09",
+    "status": "draft_unpublished",
+    "public_revision": null
+  },
+  "gates": {
+    "publication": {
+      "status": "pending_review",
+      "results_available": false,
+      "evidence_refs": [],
+      "reason": "The candidate package awaits independent review and a separate publication decision."
+    },
+    "public_evidence_retrieval": {
+      "status": "unavailable",
+      "results_available": false,
+      "evidence_refs": [],
+      "reason": "No immutable public revision or public evidence-bundle locator exists yet."
+    },
+    "public_reproduction": {
+      "status": "unavailable",
+      "results_available": false,
+      "evidence_refs": [],
+      "reason": "A local audit root can recompute the tuples, but the required raw assets are not publicly retrievable yet."
+    },
+    "paired_uncertainty": {
+      "status": "required_pending",
+      "results_available": false,
+      "evidence_refs": [],
+      "reason": "The preregistered paired per-corpus uncertainty analysis has not been stamped or published."
+    },
+    "tier_b_whole_agent": {
+      "status": "pending",
+      "results_available": false,
+      "evidence_refs": [],
+      "reason": "Whole-agent adaptive retrieval and patch-success evaluation is a separate pending tier."
+    },
+    "codedb_appendix": {
+      "status": "pending",
+      "results_available": false,
+      "evidence_refs": [],
+      "reason": "The CodeDB appendix is a separate pending study."
+    }
+  },
+  "evidence_roles": {
+    "preregistration_ref": {
+      "kind": "preregistration",
+      "id": "v2"
+    },
+    "doctrine_refs": [
+      {
+        "kind": "doctrine",
+        "id": "benchmark-map"
+      },
+      {
+        "kind": "doctrine",
+        "id": "claims-language"
+      }
+    ]
+  },
+  "measurement": {
+    "study_id": "tier_a_a1",
+    "wire_tokenizer_ref": {
+      "kind": "tokenizer",
+      "id": "o200k_base"
+    },
+    "coverage_observation_budgets_wire_tokens": [
+      2000,
+      8000,
+      32000
+    ],
+    "backend_query_budget_unit": "graphify_approx_tokens_3_chars_per_token",
+    "ttg_at_80_scope": "complete_delivered_response_may_exceed_32000_wire_tokens",
+    "gold_derivation_version": 4
+  },
+  "systems": [
+    {
+      "id": "native",
+      "label": "native floor"
+    },
+    {
+      "id": "nbx",
+      "label": "nbx shipped"
+    },
+    {
+      "id": "graphify",
+      "label": "Graphify",
+      "version": "0.9.28",
+      "sensitivity_only_version": "0.9.56"
+    }
+  ],
+  "arms": [
+    {
+      "id": "native_floor",
+      "system_id": "native",
+      "label": "native floor",
+      "config": "explorer",
+      "producer_ref": {
+        "kind": "producer",
+        "id": "noodl-eval-native-floor"
+      },
+      "retrieval_identity_kind": "span",
+      "backend_query_budget_approx_tokens": null
+    },
+    {
+      "id": "nbx_shipped",
+      "system_id": "nbx",
+      "label": "nbx shipped",
+      "config": "shipped_default",
+      "producer_ref": {
+        "kind": "producer",
+        "id": "noodl-eval-nbx-shipped"
+      },
+      "retrieval_identity_kind": "symbol",
+      "backend_query_budget_approx_tokens": null
+    },
+    {
+      "id": "graphify_32k",
+      "system_id": "graphify",
+      "label": "Graphify · 32K backend query",
+      "config": "code_only",
+      "producer_ref": {
+        "kind": "producer",
+        "id": "graphifyy-0.9.28"
+      },
+      "retrieval_identity_kind": "span",
+      "backend_query_budget_approx_tokens": 32000
+    },
+    {
+      "id": "graphify_default",
+      "system_id": "graphify",
+      "label": "Graphify · default 2K backend query",
+      "config": "code_only",
+      "producer_ref": {
+        "kind": "producer",
+        "id": "graphifyy-0.9.28"
+      },
+      "retrieval_identity_kind": "span",
+      "backend_query_budget_approx_tokens": 2000
+    }
+  ],
+  "corpora": [
+    {
+      "id": "py_nosphinx",
+      "language": "Python",
+      "source_identity": "SWE-bench Lite",
+      "run_header_ref": {
+        "kind": "run_header",
+        "id": "py-run"
+      },
+      "denominator_id": "py_nosphinx_frozen_gold"
+    },
+    {
+      "id": "ts40",
+      "language": "TypeScript",
+      "source_identity": "DataCurve DeepSWE",
+      "run_header_ref": {
+        "kind": "run_header",
+        "id": "tgr-run"
+      },
+      "denominator_id": "ts40_frozen_gold"
+    },
+    {
+      "id": "go34",
+      "language": "Go",
+      "source_identity": "DataCurve DeepSWE",
+      "run_header_ref": {
+        "kind": "run_header",
+        "id": "tgr-run"
+      },
+      "denominator_id": "go34_frozen_gold"
+    },
+    {
+      "id": "rust43",
+      "language": "Rust",
+      "source_identity": "SWE-bench Multilingual test split",
+      "run_header_ref": {
+        "kind": "run_header",
+        "id": "tgr-run"
+      },
+      "denominator_id": "rust43_frozen_gold"
+    }
+  ],
+  "denominators": [
+    {
+      "id": "py_nosphinx_frozen_gold",
+      "corpus_id": "py_nosphinx",
+      "selection": "frozen_gold",
+      "n": 39,
+      "matched_to_nbx": true,
+      "excluded_instance_ids": []
+    },
+    {
+      "id": "ts40_frozen_gold",
+      "corpus_id": "ts40",
+      "selection": "frozen_gold",
+      "n": 37,
+      "matched_to_nbx": true,
+      "excluded_instance_ids": []
+    },
+    {
+      "id": "go34_frozen_gold",
+      "corpus_id": "go34",
+      "selection": "frozen_gold",
+      "n": 30,
+      "matched_to_nbx": true,
+      "excluded_instance_ids": []
+    },
+    {
+      "id": "rust43_frozen_gold",
+      "corpus_id": "rust43",
+      "selection": "frozen_gold",
+      "n": 40,
+      "matched_to_nbx": true,
+      "excluded_instance_ids": []
+    },
+    {
+      "id": "rust43_graphify_failure_subset",
+      "corpus_id": "rust43",
+      "selection": "frozen_gold_minus_explicit_failures",
+      "n": 34,
+      "matched_to_nbx": false,
+      "excluded_instance_ids": [
+        "astral-sh__ruff-15309",
+        "astral-sh__ruff-15330",
+        "astral-sh__ruff-15356",
+        "astral-sh__ruff-15394",
+        "astral-sh__ruff-15443",
+        "astral-sh__ruff-15543"
+      ]
+    }
+  ],
+  "failure_sets": [
+    {
+      "id": "rust43_graphify_build_failures",
+      "corpus_id": "rust43",
+      "arm_ids": [
+        "graphify_32k",
+        "graphify_default"
+      ],
+      "report_ids": [
+        "rust-graphify-32k",
+        "rust-graphify-2k"
+      ],
+      "failures": [
+        {
+          "instance_id": "astral-sh__ruff-15309",
+          "category": "graphify_build_failed",
+          "raw_error": "graphify build failed on /home/crabbox/ttg/gfy-checkouts/astral-sh__ruff",
+          "gold_bearing": true
+        },
+        {
+          "instance_id": "astral-sh__ruff-15330",
+          "category": "graphify_build_failed",
+          "raw_error": "graphify build failed on /home/crabbox/ttg/gfy-checkouts/astral-sh__ruff",
+          "gold_bearing": true
+        },
+        {
+          "instance_id": "astral-sh__ruff-15356",
+          "category": "graphify_build_failed",
+          "raw_error": "graphify build failed on /home/crabbox/ttg/gfy-checkouts/astral-sh__ruff",
+          "gold_bearing": true
+        },
+        {
+          "instance_id": "astral-sh__ruff-15394",
+          "category": "graphify_build_failed",
+          "raw_error": "graphify build failed on /home/crabbox/ttg/gfy-checkouts/astral-sh__ruff",
+          "gold_bearing": true
+        },
+        {
+          "instance_id": "astral-sh__ruff-15443",
+          "category": "graphify_build_failed",
+          "raw_error": "graphify build failed on /home/crabbox/ttg/gfy-checkouts/astral-sh__ruff",
+          "gold_bearing": true
+        },
+        {
+          "instance_id": "astral-sh__ruff-15543",
+          "category": "graphify_build_failed",
+          "raw_error": "graphify build failed on /home/crabbox/ttg/gfy-checkouts/astral-sh__ruff",
+          "gold_bearing": true
+        },
+        {
+          "instance_id": "astral-sh__ruff-15626",
+          "category": "graphify_build_failed",
+          "raw_error": "graphify build failed on /home/crabbox/ttg/gfy-checkouts/astral-sh__ruff",
+          "gold_bearing": false
+        }
+      ]
+    }
+  ],
+  "execution_witnesses": [
+    {
+      "id": "rust-native-floor-completion",
+      "corpus_id": "rust43",
+      "arm_id": "native_floor",
+      "report_id": "rust-native-floor",
+      "report_manifest_id": "rust-native-floor-manifest",
+      "manifest_scope": "command_and_binary_identity_only",
+      "completion": {
+        "state": "absent",
+        "exit_status": null,
+        "report_size_at_completion_bytes": null,
+        "evidence_ref": null,
+        "reason": "No independently retained completion, process-exit, or report-size-at-completion witness was found; a parseable hashed report does not prove process completion."
+      }
+    }
+  ],
+  "results": [
+    {
+      "corpus_id": "py_nosphinx",
+      "arm_id": "native_floor",
+      "denominator_id": "py_nosphinx_frozen_gold",
+      "source_table_id": "py",
+      "report_id": "py-native-floor",
+      "report_manifest_id": "py-native-floor-manifest",
+      "metrics": {
+        "gold_at_wire_budget": {"2000": "0.025641026", "8000": "0.141025641", "32000": "0.504273504"},
+        "ttg_at_80_whole_response": {"reach": "0.871794872", "median_wire_tokens": 26150}
+      }
+    },
+    {
+      "corpus_id": "py_nosphinx",
+      "arm_id": "nbx_shipped",
+      "denominator_id": "py_nosphinx_frozen_gold",
+      "source_table_id": "py",
+      "report_id": "py-nbx-shipped",
+      "report_manifest_id": "py-nbx-shipped-manifest",
+      "metrics": {
+        "gold_at_wire_budget": {"2000": "0.735042735", "8000": "0.833333333", "32000": "0.910256410"},
+        "ttg_at_80_whole_response": {"reach": "0.897435897", "median_wire_tokens": 1121}
+      }
+    },
+    {
+      "corpus_id": "py_nosphinx",
+      "arm_id": "graphify_32k",
+      "denominator_id": "py_nosphinx_frozen_gold",
+      "source_table_id": "py",
+      "report_id": "py-graphify-32k",
+      "report_manifest_id": null,
+      "metrics": {
+        "gold_at_wire_budget": {"2000": "0.128205128", "8000": "0.141025641", "32000": "0.371794872"},
+        "ttg_at_80_whole_response": {"reach": "0.897435897", "median_wire_tokens": 96025}
+      }
+    },
+    {
+      "corpus_id": "py_nosphinx",
+      "arm_id": "graphify_default",
+      "denominator_id": "py_nosphinx_frozen_gold",
+      "source_table_id": "py",
+      "report_id": "py-graphify-2k",
+      "report_manifest_id": null,
+      "metrics": {
+        "gold_at_wire_budget": {"2000": "0.128205128", "8000": "0.141025641", "32000": "0.371794872"},
+        "ttg_at_80_whole_response": {"reach": "0.435897436", "median_wire_tokens": 20516}
+      }
+    },
+    {
+      "corpus_id": "ts40",
+      "arm_id": "native_floor",
+      "denominator_id": "ts40_frozen_gold",
+      "source_table_id": "ts",
+      "report_id": "ts-native-floor",
+      "report_manifest_id": "ts-native-floor-manifest",
+      "metrics": {
+        "gold_at_wire_budget": {"2000": "0.101544402", "8000": "0.186057486", "32000": "0.315986116"},
+        "ttg_at_80_whole_response": {"reach": "0.648648649", "median_wire_tokens": 65250}
+      }
+    },
+    {
+      "corpus_id": "ts40",
+      "arm_id": "nbx_shipped",
+      "denominator_id": "ts40_frozen_gold",
+      "source_table_id": "ts",
+      "report_id": "ts-nbx-shipped",
+      "report_manifest_id": "ts-nbx-shipped-manifest",
+      "metrics": {
+        "gold_at_wire_budget": {"2000": "0.490199290", "8000": "0.789118014", "32000": "0.889274014"},
+        "ttg_at_80_whole_response": {"reach": "0.783783784", "median_wire_tokens": 3051}
+      }
+    },
+    {
+      "corpus_id": "ts40",
+      "arm_id": "graphify_32k",
+      "denominator_id": "ts40_frozen_gold",
+      "source_table_id": "ts",
+      "report_id": "ts-graphify-32k",
+      "report_manifest_id": null,
+      "metrics": {
+        "gold_at_wire_budget": {"2000": "0.081490581", "8000": "0.189818065", "32000": "0.426323076"},
+        "ttg_at_80_whole_response": {"reach": "0.378378378", "median_wire_tokens": 52933}
+      }
+    },
+    {
+      "corpus_id": "ts40",
+      "arm_id": "graphify_default",
+      "denominator_id": "ts40_frozen_gold",
+      "source_table_id": "ts",
+      "report_id": "ts-graphify-2k",
+      "report_manifest_id": null,
+      "metrics": {
+        "gold_at_wire_budget": {"2000": "0.081490581", "8000": "0.189818065", "32000": "0.417314067"},
+        "ttg_at_80_whole_response": {"reach": "0.243243243", "median_wire_tokens": 18788}
+      }
+    },
+    {
+      "corpus_id": "go34",
+      "arm_id": "native_floor",
+      "denominator_id": "go34_frozen_gold",
+      "source_table_id": "go",
+      "report_id": "go-native-floor",
+      "report_manifest_id": "go-native-floor-manifest",
+      "metrics": {
+        "gold_at_wire_budget": {"2000": "0.038888889", "8000": "0.083413776", "32000": "0.264716895"},
+        "ttg_at_80_whole_response": {"reach": "0.566666667", "median_wire_tokens": 161511}
+      }
+    },
+    {
+      "corpus_id": "go34",
+      "arm_id": "nbx_shipped",
+      "denominator_id": "go34_frozen_gold",
+      "source_table_id": "go",
+      "report_id": "go-nbx-shipped",
+      "report_manifest_id": "go-nbx-shipped-manifest",
+      "metrics": {
+        "gold_at_wire_budget": {"2000": "0.313023295", "8000": "0.692971103", "32000": "0.855956451"},
+        "ttg_at_80_whole_response": {"reach": "0.733333333", "median_wire_tokens": 5314}
+      }
+    },
+    {
+      "corpus_id": "go34",
+      "arm_id": "graphify_32k",
+      "denominator_id": "go34_frozen_gold",
+      "source_table_id": "go",
+      "report_id": "go-graphify-32k",
+      "report_manifest_id": null,
+      "metrics": {
+        "gold_at_wire_budget": {"2000": "0.020000000", "8000": "0.115535325", "32000": "0.321935885"},
+        "ttg_at_80_whole_response": {"reach": "0.300000000", "median_wire_tokens": 26728}
+      }
+    },
+    {
+      "corpus_id": "go34",
+      "arm_id": "graphify_default",
+      "denominator_id": "go34_frozen_gold",
+      "source_table_id": "go",
+      "report_id": "go-graphify-2k",
+      "report_manifest_id": null,
+      "metrics": {
+        "gold_at_wire_budget": {"2000": "0.020000000", "8000": "0.115535325", "32000": "0.321935885"},
+        "ttg_at_80_whole_response": {"reach": "0.200000000", "median_wire_tokens": 11097}
+      }
+    },
+    {
+      "corpus_id": "rust43",
+      "arm_id": "native_floor",
+      "denominator_id": "rust43_frozen_gold",
+      "source_table_id": "rust",
+      "report_id": "rust-native-floor",
+      "report_manifest_id": "rust-native-floor-manifest",
+      "metrics": {
+        "gold_at_wire_budget": {"2000": "0.054166667", "8000": "0.178571429", "32000": "0.338988095"},
+        "ttg_at_80_whole_response": {"reach": "0.775000000", "median_wire_tokens": 70457}
+      }
+    },
+    {
+      "corpus_id": "rust43",
+      "arm_id": "nbx_shipped",
+      "denominator_id": "rust43_frozen_gold",
+      "source_table_id": "rust",
+      "report_id": "rust-nbx-shipped",
+      "report_manifest_id": "rust-nbx-shipped-manifest",
+      "metrics": {
+        "gold_at_wire_budget": {"2000": "0.372980859", "8000": "0.532189542", "32000": "0.774501050"},
+        "ttg_at_80_whole_response": {"reach": "0.700000000", "median_wire_tokens": 5448}
+      }
+    },
+    {
+      "corpus_id": "rust43",
+      "arm_id": "graphify_32k",
+      "denominator_id": "rust43_graphify_failure_subset",
+      "source_table_id": "rust",
+      "report_id": "rust-graphify-32k",
+      "report_manifest_id": null,
+      "metrics": {
+        "gold_at_wire_budget": {"2000": "0.062091503", "8000": "0.119493876", "32000": "0.257390701"},
+        "ttg_at_80_whole_response": {"reach": "0.529411765", "median_wire_tokens": 54679}
+      }
+    },
+    {
+      "corpus_id": "rust43",
+      "arm_id": "graphify_default",
+      "denominator_id": "rust43_graphify_failure_subset",
+      "source_table_id": "rust",
+      "report_id": "rust-graphify-2k",
+      "report_manifest_id": null,
+      "metrics": {
+        "gold_at_wire_budget": {"2000": "0.062091503", "8000": "0.119493876", "32000": "0.257390701"},
+        "ttg_at_80_whole_response": {"reach": "0.352941176", "median_wire_tokens": 27054}
+      }
+    }
+  ],
+  "scoring_implementation": [
+    {
+      "path": "ttg/comparable_path.py",
+      "sha256": "ad3926fbe6a4856e6a3b7d276bad187ad715c286baec4591d0b9c7e3ec3ce687"
+    },
+    {
+      "path": "ttg/curve_recompute.py",
+      "sha256": "df655aabb724d26cd909df8f83ea9970671225250bb403dc8219a2c7d6f8dbd3"
+    },
+    {
+      "path": "ttg/matcher.py",
+      "sha256": "6f7f47db138ee0ce325d141bb233ff94203d96a72fbe9523a03cb76d7d88b7f4"
+    },
+    {
+      "path": "ttg/rollup.py",
+      "sha256": "ba99f1b558152f8b7e5b521a9b8a6ff67fd216e1f0b3b730516a7ad06362a995"
+    },
+    {
+      "path": "ttg/report_io.py",
+      "sha256": "3ddc527515fb9db42c81a4068588a5663afd955e11628b68471d36a2aae72b13"
+    }
+  ],
+  "evidence_bundle": {
+    "manifest": "provenance.tsv",
+    "status": "local_preparation_available_public_assets_unavailable",
+    "public_locator": null,
+    "sha256": null
+  }
+}

@@ -2,7 +2,7 @@
 
 > **Versions** — The original TokensToGold benchmark is **V1**, with harness
 > release **v1-2.3.18** and engine **noodlbox 2.3.18**. The new
-> **V2 Tier A — A1 Graphify slice** is a separately versioned result package in
+> **V2 Tier A — A1 Graphify slice** is a separately versioned publication candidate in
 > [`v2/README.md`](v2/README.md), measured with the source and binary identities
 > recorded there. The `v1-2.3.18` tag remains a V1 harness release; it is not a
 > V2 measurement version.
@@ -20,17 +20,18 @@ Two curves are measured per instance:
 
 ## V2 Tier A — A1 Graphify slice
 
-The denominator-corrected V2 A1 package compares the native floor, shipped nbx,
-and Graphify 0.9.28 across Python, TypeScript, Go, and Rust. Start at
-[`v2/README.md`](v2/README.md); exact rows are in
-[`v2/results.tsv`](v2/results.tsv), source and report identities are in
-[`v2/provenance.tsv`](v2/provenance.tsv), and `./v2/verify.sh` checks the package
-offline.
+The denominator-corrected V2 A1 candidate compares the native floor, shipped
+nbx, and Graphify 0.9.28 across Python, TypeScript, Go, and Rust. Start at
+[`v2/README.md`](v2/README.md). The sole machine-readable result and status
+authority is [`v2/authority.json`](v2/authority.json); its generated gate view is
+[`v2/STATUS.md`](v2/STATUS.md), and artifact identities are in
+[`v2/provenance.tsv`](v2/provenance.tsv).
 
-This is a retrieval-response study. Its 8K point is a fixed output-observation
-budget, not a task cutoff. Tier B whole-agent adaptive retrieval and patch
-success are pending, and the CodeDB appendix is pending; neither has results in
-this repository.
+This is a retrieval-response study. Its 8K point is a fixed retrieval-output
+observation budget, not an agent or task cutoff. Coverage checkpoints and
+complete-response reach are separately labelled. Current availability and all
+pending-study boundaries come from the structured authority; this candidate is
+not published.
 
 ## The one command
 
@@ -234,8 +235,8 @@ tests/              the must-red suite (negative controls; run with unittest)
 PIN.toml            artifact pins (populated at packaging)
 BUNDLE.md           the 14-row publication contract: every row filled or
                     explained-absent — what ships with every public number
-v2/                 V2 Tier A A1 Graphify results, provenance, contract, and
-                    offline verifier
+v2/                 V2 Tier A A1 Graphify candidate authority, generated views,
+                    provenance, contract, and offline verifier
 ```
 
 ```sh
@@ -253,9 +254,10 @@ lets you recompute it.
 
 ## Changelog
 
-- **2026-09 V2 Tier A A1.** Added the four-corpus Graphify comparison as a
-  separately scoped, denominator-corrected package under `v2/`. V1 files and
-  release identities remain unchanged.
+- **2026-09 V2 Tier A A1 candidate.** Prepared the four-corpus Graphify
+  comparison as a separately scoped, denominator-corrected candidate under
+  `v2/`. Its structured status remains unpublished; V1 release identities are
+  unchanged.
 - **2026-09 re-certification.** Added `ttg/paired_stats.py` (paired bootstrap CI + exact sign test), homed byte-identical from the m23gate harness (sha `4d359404…`). V1 documented this tool as shipped; it was not — the regression report now carries per-metric paired 95% CI + sign test alongside the ±2.75pp floor.
 
 ## Held-out confirm corpus

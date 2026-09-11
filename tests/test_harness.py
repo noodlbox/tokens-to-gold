@@ -22,7 +22,11 @@ from ttg.own_repo import (
     OWN_REPO_ARMS, OwnRepoError, build_instance, own_repo_flags,
 )
 from ttg.comparable_path import ComparablePath, PathComparison, compare_paths
-from ttg.curve_recompute import recompute_wire_curve
+from ttg.curve_recompute import (
+    CurveInputError,
+    recompute_wire_curve,
+    reconstruct_selected_curves,
+)
 from ttg.gold_freezer import build_gold_map
 from ttg.matcher import match_gold, split_identity
 from ttg.report_io import (
@@ -242,6 +246,15 @@ class T5CurveRecompute(unittest.TestCase):
     RETRIEVED = ["a.ts:f", "x.ts:h", "b.ts:g"]
     POSITIONS = [100, 400, 900]
 
+    @staticmethod
+    def _stored_curve(*, whole: float = 0.0) -> dict[str, object]:
+        return {
+            "whole": whole,
+            "delivered_tokens": 0,
+            "by_budget": {"2000": whole},
+            "tokens_to_coverage": {"50": None},
+        }
+
     def test_curve_from_primitives(self) -> None:
         curve = recompute_wire_curve(
             self.GOLD, self.RETRIEVED, self.POSITIONS, (100, 500, 1000), (50, 100)
@@ -272,6 +285,65 @@ class T5CurveRecompute(unittest.TestCase):
         self.assertEqual(faithful.tokens_to_coverage[50], 100)
         self.assertEqual(naive.tokens_to_coverage[50], 300)
         self.assertNotEqual(faithful.by_budget[200], naive.by_budget[200])
+
+    def test_jointly_absent_vectors_are_serialized_empty_only(self) -> None:
+        report = {
+            "results": [
+                {
+                    "instance_id": "empty",
+                    "token_coverage_wire": self._stored_curve(),
+                }
+            ]
+        }
+        curves = reconstruct_selected_curves(
+            report,
+            {"empty": ["a.ts:f"]},
+            ["empty"],
+            "symbol",
+            budgets=(2000,),
+            thresholds=(50,),
+        )
+        self.assertEqual(curves["empty"].delivered_tokens, 0)
+        self.assertEqual(curves["empty"].whole, 0.0)
+
+    def test_one_sided_serialized_empty_vectors_raise(self) -> None:
+        report = {
+            "results": [
+                {
+                    "instance_id": "one-sided",
+                    "retrieved_symbols": [],
+                    "token_coverage_wire": self._stored_curve(),
+                }
+            ]
+        }
+        with self.assertRaises(CurveInputError):
+            reconstruct_selected_curves(
+                report,
+                {"one-sided": ["a.ts:f"]},
+                ["one-sided"],
+                "symbol",
+                budgets=(2000,),
+                thresholds=(50,),
+            )
+
+    def test_joint_absence_cannot_mask_nonzero_stored_curve(self) -> None:
+        report = {
+            "results": [
+                {
+                    "instance_id": "nonzero",
+                    "token_coverage_wire": self._stored_curve(whole=1.0),
+                }
+            ]
+        }
+        with self.assertRaises(CurveInputError):
+            reconstruct_selected_curves(
+                report,
+                {"nonzero": ["a.ts:f"]},
+                ["nonzero"],
+                "symbol",
+                budgets=(2000,),
+                thresholds=(50,),
+            )
 
 class T8PinConsistency(unittest.TestCase):
     """Every digest in PIN.toml must equal the real file. Hand-typed digests
@@ -605,4 +677,3 @@ class T10DeriveGoldScript(unittest.TestCase):
             # an own/unknown corpus skips Tier-1 EXPLICITLY, never crashes on
             # the missing shipped-gold file
             self.assertIn("Tier-1 n/a", proc.stdout)
-

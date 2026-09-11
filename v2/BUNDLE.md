@@ -1,31 +1,30 @@
-# V2 Tier A A1 publication contract
+# V2 Tier A A1 candidate artifact contract
 
-This table applies only to the model-free A1 Graphify retrieval slice. A row is
-either filled by a hashed artifact or explains why the artifact does not exist
-for this measurement unit.
+> Generated from `authority.json`; edit structured evidence or gate state, not this file.
 
-| # | Artifact | Status | Public evidence or boundary |
+This contract applies only to the model-free A1 Graphify retrieval slice.
+Legal lifecycle transitions are schema-defined and evidence-conditioned; validation
+does not constitute external review, release approval, or proof that a public locator
+is retrievable.
+
+| # | Artifact | Current structured state | Candidate evidence or boundary |
 |---:|---|---|---|
-| 1 | Manifest | FILLED | `provenance.tsv`: benchmark date, source-table hashes, corpus/gold identities, engine commit and binary identity, Graphify version, tokenizer, run hosts, reports, and audit paths |
-| 2 | Preregistration | FILLED | The dated V2 preregistration is hash-pinned in `provenance.tsv`; the later denominator correction is preserved in each frozen source table |
-| 3 | Gold lineage | FILLED | `../gold/` at ggv 4 plus corpus and gold hashes; `README.md` states the reference-patch-proxy limitation |
-| 4 | Conditions | FILLED | `README.md`, `results.tsv`, the hashed source tables, and native/nbx report manifests identify the query, arms, flags, versions, tokenizer, budgets, and treatment differences |
-| 5 | State policy | FILLED | Fresh per-instance reindex; repository/base-commit identity is retained in the hashed corpus manifests; a single box ID is explained unavailable |
-| 6 | Task definition | FILLED | Hashed corpus JSONL and frozen-gold files define inputs and scored symbols; zero-gold and build-failure handling is explicit |
-| 7 | Raw trajectory | EXPLAINED-ABSENT | No agent messages or sessions exist in Tier A. Ordered retrieval results and wire positions are retained in the hashed per-instance reports |
-| 8 | Output | FILLED | Hashed reports retain each ranked retrieval output. Final answers and patches do not exist because this slice has no agent loop |
-| 9 | Usage ledger | EXPLAINED-ABSENT | `ttg_wire` is retrieval-response accounting, not provider-billed usage; there is no model or dollar ledger |
-| 10 | Index ledger | EXPLAINED-ABSENT | Host identity is retained as provenance, but build time, memory, disk, and amortization are outside this slice's endpoint |
-| 11 | Scoring | FILLED | Exact per-corpus tuples are in `results.tsv`; `RESULTS.md` is verified from it; the source tables record offline `ttg.rollup` recomputation |
-| 12 | Failure publication | FILLED | Rust Graphify's seven ruff build failures, six-gold-bearing denominator loss, N=34 failure subset, and nonmatched status are public |
-| 13 | Reproduction | FILLED | `verify.sh` checks the package offline and can hash-audit the retained source tree; source tables record the exact recomputation command |
-| 14 | Longitudinal policy | EXPLAINED-ABSENT | Static public corpora, no participants, no telemetry cohort, and no retention or attrition endpoint |
-| 15 | Right of reply | FILLED | Exact config/version provenance and a standing issue-based correction invitation appear in `README.md` |
+| 1 | Authority | `draft_unpublished` | Sole tuple, unit, denominator, arm, corpus, evidence-reference, failure, and gate authority |
+| 2 | Preregistration | `verified` locally | Typed digest and canonical release path; no public locator |
+| 3 | Gold lineage | `verified` locally | Frozen ggv 4 corpus and gold assets; no public locator |
+| 4 | Conditions | filled | Typed query, systems, configurations, producers, tokenizer, backend budget unit, and wire checkpoints |
+| 5 | State policy | `verified` locally | Fresh per-instance reindex and repository/base-commit identities retained in corpus manifests |
+| 6 | Task definition | `verified` locally | Hashed corpus and frozen-gold assets define inputs and scored symbols |
+| 7 | Raw trajectory | explained absent | Tier A has no agent messages; ordered retrieval identities and aligned wire positions are retained, with jointly absent vectors encoding an empty ranked list |
+| 8 | Output | `verified` locally | Hashed reports retain ranked retrieval output; no final answers or patches exist |
+| 9 | Usage ledger | explained absent | `ttg_wire` is retrieval-response accounting, not provider-billed usage |
+| 10 | Index ledger | explained absent | Build time, memory, disk, and amortization are outside this endpoint |
+| 11 | Scoring | `required_pending` | Point estimates are primitive-reconstructed; preregistered paired uncertainty has not advanced |
+| 12 | Failure publication | filled | Seven Rust Graphify failures are structured; six gold-bearing failures define the nonmatched N=34 subset |
+| 13 | Public reproduction | `unavailable` | Clone checks and private replay do not establish public reproduction |
+| 14 | Rust native-floor completion | `absent` | Manifest proves command/binary identity only; completion, exit, and report-size-at-completion witnesses are absent |
+| 15 | Publication | `pending_review` | External accepted-byte/release approval remains required |
 
-The boundaries are binding: wire tokens are not billed tokens; one retrieval
-response is not a task or session; retrieval coverage is not task success;
-payload size is not cost; and this model-free comparison is not an isolated
-causal attribution study.
-
-Tier B whole-agent work and the CodeDB appendix are pending and have no result
-in this package.
+Wire observation checkpoints are not backend query budgets, a retrieval response
+is not a task or session, retrieval coverage is not patch success, payload size
+is not billed cost, and this is not an isolated causal attribution study.

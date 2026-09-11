@@ -2,9 +2,10 @@
 
 > **Versions** — This file remains the contract for TokensToGold benchmark
 > **V1**, harness release **v1-2.3.18**, and engine **noodlbox 2.3.18**. The
-> separate **V2 Tier A — A1 Graphify slice** has its own contract at
-> [`v2/BUNDLE.md`](v2/BUNDLE.md) and provenance at
-> [`v2/provenance.tsv`](v2/provenance.tsv).
+> separate **V2 Tier A — A1 Graphify slice** is an unpublished candidate with
+> its own contract at [`v2/BUNDLE.md`](v2/BUNDLE.md), machine authority at
+> [`v2/authority.json`](v2/authority.json), and generated status at
+> [`v2/STATUS.md`](v2/STATUS.md).
 
 Every public benchmark result here ships with each row of this contract either
 **FILLED** (with its in-repo pointer) or **EXPLAINED-ABSENT** (with the reason,
@@ -12,11 +13,12 @@ stated publicly). Explained absence is permitted; silent absence is not.
 
 ## V2 Tier A — A1 Graphify slice
 
-The V2 A1 retrieval package is rooted at [`v2/README.md`](v2/README.md). Its
+The V2 A1 retrieval candidate is rooted at [`v2/README.md`](v2/README.md). Its
 contract preserves the same must-remain-separate boundaries while adding exact
-source-table, corpus, arm, version, budget, report, and denominator provenance.
-Tier B whole-agent work and the CodeDB appendix are pending and are not results.
-The V1 contract below is unchanged in scope.
+source-table, corpus, arm, version, backend-budget, wire-checkpoint, report, and
+denominator provenance. Pending and unavailable states are rendered from
+`v2/authority.json`; they are not publication results. The V1 contract below is
+unchanged in scope.
 
 TokensToGold is a **retrieval / context-selection** benchmark — deterministic,
 wire-priced, no LLM judge, no agent loop. Several contract rows exist for

@@ -1,32 +1,45 @@
-# TokensToGold V2 Tier A — A1 Graphify slice
+# TokensToGold V2 Tier A — A1 Graphify publication candidate
 
-This package publishes the deterministic A1 retrieval comparison across four
-corpora: a competent native floor, the shipped noodlbox retrieval response, and
-Graphify. It is one completed slice of Tier A, not the wider preregistered
-competitor matrix.
+This directory is the unpublished candidate package for the deterministic A1
+retrieval comparison across four corpora. It contains descriptive point
+estimates for a competent native floor, the shipped nbx retrieval response, and
+two configurations of Graphify. Four configurations represent three systems.
+Results are never pooled across languages.
 
-The exact per-corpus values are in [`results.tsv`](./results.tsv). The readable
-view in [`RESULTS.md`](./RESULTS.md) is generated from that file and checked
-offline. Results are never pooled across languages.
+[`authority.json`](./authority.json) is the sole machine-readable authority for
+result tuples, corpus identities, denominators, arm metadata, measurement units,
+and gate status. [`RESULTS.md`](./RESULTS.md) and
+[`STATUS.md`](./STATUS.md) are generated views. The artifact ledger is
+[`provenance.tsv`](./provenance.tsv).
 
-## What the 8K point means
+The structured status view is binding. In particular, it keeps publication,
+public evidence retrieval, public reproduction, preregistered uncertainty, and
+the separate follow-on studies open until their own evidence is accepted.
 
-The 8K point is a fixed retrieval-output observation budget, not an agent or task cutoff.
-It asks how much frozen, edit-relevant reference-patch gold appeared within the
-first 8,000 `ttg_wire` tokens of one retrieval response. Tier A has no agent
-loop, patch attempt, test execution, turn limit, or model judge. Measurements
-outside the fixed 2K, 8K, and 32K observation points are outside this
-publication.
+## Measurement boundaries
 
-Accordingly, this evidence supports per-corpus retrieval-efficiency statements
-only. It does not establish billed-token savings, dollar savings, task success,
-patch correctness, or an isolated causal effect of graph structure.
+The 8K point is a fixed retrieval-output observation budget, not an agent or
+task cutoff. It asks how much frozen, edit-relevant reference-patch gold appeared
+within the first 8,000 `ttg_wire` tokens of one retrieval response. Tier A has no
+agent loop, patch attempt, test execution, turn limit, or model judge.
 
-Tier B whole-agent adaptive retrieval and patch success: **PENDING**.
+Gold coverage is observed at exactly 2K, 8K, and 32K `ttg_wire` checkpoints,
+tokenized with `o200k_base`. Reach@80 and median-to-80 are different: they scan
+the complete delivered response and may exceed 32K wire tokens. Their serialized
+field name and rendered table both say `whole_response` so they cannot be read
+as within-32K reach.
 
-CodeDB appendix: **PENDING**.
+Graphify's `--budget` is also a different unit. Pinned Graphify 0.9.28 estimates
+backend query tokens as approximately three characters per token. The authority
+therefore records `backend_query_budget_approx_tokens`, never `ttg_wire`, for its
+32K and default 2K configurations. The adapter expands returned node pointers
+into source bodies and prices that delivered body stream separately with
+`o200k_base`.
 
-Neither pending study contributes a result to this package.
+Accordingly, this evidence supports descriptive, per-corpus retrieval-efficiency
+statements only. It does not establish billed-token savings, dollar savings,
+task success, patch correctness, statistical certainty, or an isolated causal
+effect of graph structure.
 
 ## Frozen measurement contract
 
@@ -35,106 +48,111 @@ Neither pending study contributes a result to this package.
   symbols touched by a reference patch and is a localization proxy; another
   valid implementation can touch different code.
 - **State:** fresh `--reindex` per instance, with repository and base-commit
-  identities in the hashed corpus manifests. There is no single reusable box ID
-  to report.
-- **Unit:** `ttg_wire`, tokenized with `o200k_base` for every arm.
-- **Observation budgets:** 2,000, 8,000, and 32,000 wire tokens.
-- **Coverage:** mean per-instance frozen-gold coverage at the named observation
-  point.
-- **TtG@80 reach:** fraction of the declared denominator reaching 80% frozen-gold
-  coverage.
-- **TtG@80 median:** median wire position among the instances that reached 80%;
-  the reach fraction must be read beside it.
+  identities in the hashed corpus manifests. There is no single reusable box ID.
+- **Wire unit:** `ttg_wire`, tokenized with `o200k_base` for every arm.
+- **Coverage:** mean per-instance frozen-gold coverage at a named wire checkpoint.
+- **Reach@80 whole response:** fraction of the declared denominator that reaches
+  80% frozen-gold coverage anywhere in the complete delivered response.
+- **Median-to-80 whole response:** median wire position among reachers; it must be
+  read beside the whole-response reach fraction.
 
 The native floor uses `rg`/glob discovery plus targeted source spans. The nbx
 row uses the shipped default at engine commit
-`3723be44085ab470bad55241853276f85568291e`; both were produced by one binary
-with SHA-256
-`d02270de07b1f0d786ef49c80e71848fe57df4109a06eb5a3804cb8b68f66151`.
+`3723be44085ab470bad55241853276f85568291e`; both were produced by binary
+SHA-256 `d02270de07b1f0d786ef49c80e71848fe57df4109a06eb5a3804cb8b68f66151`.
 The shared query, truth, tokenizer, and scorer do not make this a same-engine
-ablation: implementation, configuration, and host differences remain disclosed
+ablation: implementation, configuration, and host differences are disclosed
 conditions, not a basis for isolated causal attribution.
 
-Graphify is pinned to `graphifyy==0.9.28` with `--code-only`. Its 32K query and
-documented 2K default are separate rows. A returned node is a pointer: the
-adapter reads its source body with the native floor's span policy and prices
-that body in retrieval order. The Graphify wheel and transitive dependency
-hashes were not captured, so this arm is version-pinned rather than hash-pinned.
-Graphify 0.9.56 was not used; it is reserved for a separately preregistered
-sensitivity study.
+Graphify is pinned to `graphifyy==0.9.28` with `--code-only`. Its wheel and
+transitive dependency hashes were not captured, so this arm is version-pinned
+rather than hash-pinned. Graphify 0.9.56 was not used; it is reserved for a
+separately preregistered sensitivity study.
 
-The exact arm commands are preserved in the frozen source tables and native/nbx
-report manifests listed in [`provenance.tsv`](./provenance.tsv). The Graphify
-arm runner did not emit a separate per-report manifest; its source table, report
-hash, fixed version, flags, query budget, and scorer identity are all retained.
-
-## Denominators and the Rust exception
+## Denominators and uncertainty
 
 Python uses frozen-gold N=39, TypeScript N=37, Go N=30, and the Rust native-floor
-and nbx rows use frozen-gold N=40. The post-run denominator audit found that the
-raw report-level aggregate fields included successful rows outside those frozen
-sets. Those aggregate fields are retained in the raw files for history but are
-not a numeric source for this publication. The four denominator-corrected,
-hash-pinned source tables are the authority for `results.tsv`.
+and nbx rows use frozen-gold N=40. Raw report aggregate fields include successful
+rows outside those frozen sets and are retained only as historical raw fields;
+they are not a numeric source for this package.
 
 Graphify failed to build all seven `astral-sh/ruff` instances in `rust43`. Six
-were gold-bearing:
+were gold-bearing and are recorded as exact exclusions in `authority.json`; the
+seventh was zero-gold. Rust Graphify is therefore descriptive on an explicitly
+nonmatched N=34 failure subset. The matched Rust comparison remains nbx versus
+the native floor on N=40. No common-N Graphify sensitivity is claimed.
 
-```
-astral-sh__ruff-15309  astral-sh__ruff-15330  astral-sh__ruff-15356
-astral-sh__ruff-15394  astral-sh__ruff-15443  astral-sh__ruff-15543
-```
+The preregistered paired per-corpus uncertainty analysis is not present. Its
+structured scoring/publication gate remains open in `authority.json` and the
+generated status view. Point estimates are not presented as completion of that
+requirement, and no paired median inference is made from different reacher sets.
 
-The seventh, `astral-sh__ruff-15626`, was zero-gold. The Rust Graphify rows
-therefore use the 34 gold-bearing instances they built. They are explicitly
-nonmatched against the native-floor and nbx N=40 rows. No Rust Graphify
-comparison is presented as matched; the matched Rust reading is nbx versus the
-native floor on N=40.
+## Evidence, consistency, and reproduction
 
-## Run and audit provenance
+The provenance ledger gives every retained source table, preregistration,
+doctrine file, corpus, frozen-gold file, run header, corpus manifest, report, and
+emitted report manifest a digest, safe local audit path, and canonical release
+path. Result rows are joined to those artifacts by typed corpus and arm IDs.
+Result-bearing evidence must remain `verified`; the verifier rejects state
+downgrades, cross-corpus swaps, path traversal, missing digests, and incomplete
+checksum membership.
 
-Python floor/nbx ran on `golden-hermit` (`n2-standard-32`,
-`cbx_551e68e1b7fa`); Python Graphify ran on `harbor-hermit`
-(`e2-standard-8`, `cbx_b1746817aab7`). The TypeScript, Go, and Rust arms ran on
-`swift-krill` (`n2-standard-32`, `cbx_aaed7ae9b582`). Hardware is run
-provenance, not an explanation for observed differences.
+The producer serializes empty ranked lists by omitting both
+`retrieved_symbols` and `retrieved_wire_positions`. Offline reconstruction
+accepts only that joint absence, then still requires the stored curve to equal
+the reconstructed zero-delivery curve. One-sided absence or a nonzero stored
+curve rejects.
 
-[`provenance.tsv`](./provenance.tsv) records SHA-256 identities and audit paths
-for the four frozen source tables, corpora, frozen gold, per-instance reports,
-run headers, corpus manifests, and native/nbx report manifests. The raw reports
-are retained evidence assets rather than duplicated into Git. Their per-instance
-rows support offline recomputation; their original aggregate fields are not the
-published values.
-
-From this repository:
+Clone-contained validation is available now:
 
 ```sh
 ./v2/verify.sh
 ./v2/verify.sh --self-test
 ```
 
-With the sibling `noodlbox-wiki`, `tokens-to-gold`, and `worktrees` source tree
-available beneath one directory, verify every retained source byte too:
+That proves consistency among the candidate authority, generated views,
+provenance relationships, scoring-code identities, and package checksums. It
+does not prove externally anchored authenticity: no accepted immutable public
+revision or public raw-evidence locator exists yet.
+
+With the private retained source tree available beneath one audit root, this
+separate gate verifies every source byte and actually recomputes all 16 tuples
+with `ttg.rollup`:
 
 ```sh
 ./v2/verify.sh --audit-root /path/to/noodlbox
 ```
 
-The verifier rejects result-file drift, missing provenance, a Rust denominator
-or comparability change, rendered-table drift, absent 8K scope language, and any
-claim that Tier B or CodeDB has results.
+The same verified inputs can be assembled into a portable local release
+directory and replayed from that directory:
 
-## Limits and correction path
+```sh
+./v2/verify.sh --audit-root /path/to/noodlbox \
+  --prepare-bundle /new/empty/path/ttg-v2-a1-evidence
+./v2/verify.sh --bundle-root /path/to/ttg-v2-a1-evidence
+```
 
-This slice compares retrieval delivery against a reference-patch proxy. It does
-not measure index economics, provider usage, agent behavior, or patch outcomes.
-The separate nbx full/progressive row was not run in this slice. Graphify's Rust
-build failures and missing package hashes remain disclosed limitations.
+A local audit or bundle is review evidence, not public reproduction. Public
+retrieval and reproduction remain unavailable until the bundle and accepted
+immutable revision receive real public locators.
 
-To correct a result, first restamp its source table, then update that table's
-hash and the exact row in `results.tsv`, regenerate `RESULTS.md`, refresh
-`SHA256SUMS`, and rerun both verifier modes. A displayed value cannot be edited
-independently of the frozen result file.
+## One correction and restamping workflow
 
-Ran your tool wrong? Open an issue on this repository; we will rerun with your
-correction and update the published numbers.
+`authority.json` is the only place to correct a tuple or structured status.
+Update the affected provenance digest or relationship in the same change, then
+regenerate every derived view and the exact checksum membership set:
+
+```sh
+python3 v2/verify.py --write-derived
+./v2/verify.sh --self-test
+./v2/verify.sh --audit-root /path/to/noodlbox
+```
+
+The final audit-root command must recompute every result from retained rows.
+After review, an external publication decision must anchor the accepted Git
+revision and evidence-bundle locators. Checksums alone establish internal byte
+consistency; the external revision or release anchor establishes authenticity.
+
+Graphify's missing package hashes and separate per-report manifests remain
+disclosed limitations. To report a correction, open an issue after publication;
+until then, this candidate is explicitly unpublished.
