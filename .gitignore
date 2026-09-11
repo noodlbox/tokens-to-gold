@@ -7,3 +7,4 @@ __pycache__/
 # runs/<run>/out/ -- exactly the headers, manifests and sidecars R-S4 requires
 # to be committed.
 /out/
+runs/
