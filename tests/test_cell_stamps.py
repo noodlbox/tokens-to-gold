@@ -15,6 +15,7 @@ from ttg.cell_stamps import (
     parse_model_lock,
     validated_build_commit,
     verify_corpus,
+    verify_reranker_absent,
     verify_reranker_install,
 )
 from ttg.cli import main
@@ -135,6 +136,14 @@ class RerankerInstallTest(unittest.TestCase):
             lock = parse_model_lock(LOCK.format(graph=_sha(b"m"), tokenizer=_sha(b"t")))
             with self.assertRaises(StampError):
                 verify_reranker_install(Path(tmp) / "store", lock)
+
+    def test_a_non_ranking_arm_must_leave_no_install(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            lock = parse_model_lock(LOCK.format(graph=_sha(b"m"), tokenizer=_sha(b"t")))
+            verify_reranker_absent(Path(tmp) / "store", lock)
+            store, lock_text = self._store_with(tmp, b"model", b"{}")
+            with self.assertRaises(StampError):
+                verify_reranker_absent(store, parse_model_lock(lock_text))
 
     def test_the_engine_lock_format_parses(self) -> None:
         lock = parse_model_lock(LOCK.format(graph="1" * 64, tokenizer="2" * 64))

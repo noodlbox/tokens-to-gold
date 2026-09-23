@@ -126,6 +126,11 @@ class Arm:
     """The task intent the arm measures (see LANE INVARIANTS)."""
     reuses_store_of: str = ""
     """For a REUSE arm: the arm whose FRESH store (same corpus) it reuses."""
+    ranks_with_reranker: bool = True
+    """Whether the arm's retrieval runs the cross-encoder reranker. The engine
+    installs the model lazily on first use, so the post-run provenance check
+    proves the locked model for a reranking arm and proves its ABSENCE for an
+    arm declared not to rank (the graph-free explorer)."""
 
 
 @dataclass(frozen=True)
@@ -207,6 +212,7 @@ ARMS: Final[dict[str, Arm]] = {
         store_mode=StoreMode.FRESH,
         reindex=True,
         scored_only_corpus=False,
+        ranks_with_reranker=False,
     ),
     # REPORT-ONLY (lane 4F, 2026-09-23): the shipped EXPLORE default, same
     # protocol as shipped_treatment (FRESH store + --reindex, no --curation).

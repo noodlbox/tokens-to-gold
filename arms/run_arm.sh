@@ -82,4 +82,5 @@ set -e
 } | tee -a "$MAN"
 [ "$RC" -eq 0 ] || exit "$RC"
 # A cell whose reranker cannot be proven is not a measurement.
-python3 -m ttg.cli cell-stamp --store "$STORE" --model-lock "$MODEL_LOCK" | tee -a "$MAN"
+python3 -m ttg.cli cell-stamp --arm "$ARM" --store "$STORE" --model-lock "$MODEL_LOCK" \
+  | tee -a "$MAN"

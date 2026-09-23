@@ -43,6 +43,7 @@ from ttg.cell_stamps import (
     parse_model_lock,
     validated_build_commit,
     verify_corpus,
+    verify_reranker_absent,
     verify_reranker_install,
 )
 from ttg.curve_recompute import curve_parity_findings
@@ -127,10 +128,16 @@ def cmd_cell_preflight(args: argparse.Namespace) -> int:
 
 
 def cmd_cell_stamp(args: argparse.Namespace) -> int:
-    """After the run: prove the reranker the cell ranked with is the locked one."""
+    """After the run: prove the reranker the cell ranked with is the locked one,
+    or — for an arm declared not to rank — that none was installed."""
     lock = parse_model_lock(Path(args.model_lock).read_text())
-    revision = verify_reranker_install(Path(args.store), lock)
-    print(f"reranker_rev: {revision} (installed files match model.lock)")
+    store = Path(args.store)
+    if ARMS[args.arm].ranks_with_reranker:
+        revision = verify_reranker_install(store, lock)
+        print(f"reranker_rev: {revision} (installed files match model.lock)")
+    else:
+        verify_reranker_absent(store, lock)
+        print("reranker_rev: none (arm declared not to rank; no model installed)")
     return 0
 
 
@@ -578,6 +585,7 @@ def main(argv: list[str] | None = None) -> int:
         help="after a cell: verify the reranker installed in its store against "
         "the engine's model.lock",
     )
+    p_cst.add_argument("--arm", required=True, choices=sorted(ARMS))
     p_cst.add_argument("--store", required=True)
     p_cst.add_argument(
         "--model-lock", required=True,

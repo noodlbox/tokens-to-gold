@@ -14,7 +14,8 @@ rows from a reused store). `run_arm.sh` therefore refuses a cell unless:
 4. after the run, the reranker installed under the store is exactly the
    revision and file digests the engine's `model.lock` pins (a cold cache
    resolves the model from its Hugging Face revision, so the lock alone does not
-   prove what ran).
+   prove what ran) — or, for an arm declared not to rank, that no model was
+   installed at all.
 
 The binary's compiled analysis languages (`noodl-eval capabilities`) are the
 feature stamp: they come from the binary itself, not from an operator's claim.
@@ -123,6 +124,17 @@ def parse_model_lock(text: str) -> ModelLock:
         )
     except (KeyError, TypeError) as exc:
         raise StampError(f"model.lock is missing a required field: {exc}") from None
+
+
+def verify_reranker_absent(store: Path, lock: ModelLock) -> None:
+    """For an arm declared not to rank: the engine must not have installed the
+    model into its store — an install means the declaration is wrong."""
+    root = store / lock.cache_dir
+    if root.exists():
+        raise StampError(
+            f"arm declared not to use the reranker, but {root} was installed: the "
+            "arm's `ranks_with_reranker` declaration is wrong"
+        )
 
 
 def verify_reranker_install(store: Path, lock: ModelLock) -> str:
