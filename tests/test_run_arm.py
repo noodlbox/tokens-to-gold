@@ -97,9 +97,10 @@ class _Harness(unittest.TestCase):
         ))))
         self.verdict = self.tmp / "receipt-verdict.json"
         self.verdict.write_text(json.dumps(asdict(ReceiptVerdict(
-            schema=1, receipt_sha256=hashlib.sha256(self.receipt.read_bytes()).hexdigest(),
+            schema=2, receipt_sha256=hashlib.sha256(self.receipt.read_bytes()).hexdigest(),
             commit=COMMIT, tree_digest="a" * 64,
-            model_lock_sha256=hashlib.sha256(LOCK.encode()).hexdigest(),
+            model_lock_sha256=hashlib.sha256(lock.encode()).hexdigest(),
+            rust_toolchain_sha256=hashlib.sha256(b"[toolchain]\n").hexdigest(),
             checked="test",
         ))))
 
@@ -136,7 +137,7 @@ class RunArmTest(_Harness):
         self.assertEqual(json.loads(report.read_text()), {})
         self.assertFalse(report.with_name(report.name + ".partial").exists())
         manifest = (self.out / "shipped_explore_ts40.manifest.txt").read_text()
-        for stamp in (f"build_commit: {COMMIT} (receipt verified against git history",
+        for stamp in (f"build_commit: {COMMIT} (receipt; verified against git history",
                       "(pinned)", "store:        fresh (verified absent or empty)",
                       "capabilities: go,python,rust,typescript (live; equals the receipt",
                       "model_lock:   jinaai/", "reranker_rev: rev1"):
@@ -184,6 +185,22 @@ class RunArmTest(_Harness):
         self.assertEqual(run.returncode, 2)
         self.assertIn("was not issued for", run.stderr)
         self.assertFalse(store.exists(), "the engine must not run")
+
+    def test_a_verdict_vouching_for_another_commit_or_tree_is_refused(self) -> None:
+        """The reviewer's forge: a verdict bound to this receipt's bytes but whose
+        own commit/tree/lock fields differ must not pass (and must never be the
+        source of a stamp)."""
+        store = self.tmp / "stores" / "shipped_explore_ts40"
+        doc = json.loads(self.verdict.read_text())
+        for field, value in (("commit", "d" * 40), ("tree_digest", "0" * 64),
+                             ("model_lock_sha256", "1" * 64),
+                             ("rust_toolchain_sha256", "2" * 64)):
+            with self.subTest(field=field):
+                self.verdict.write_text(json.dumps({**doc, field: value}))
+                run = self.run_arm("shipped_explore", store)
+                self.assertEqual(run.returncode, 2)
+                self.assertIn("vouches for", run.stderr)
+                self.assertFalse(store.exists(), "the engine must not run")
 
     def test_a_receipt_claiming_other_capabilities_is_refused(self) -> None:
         store = self.tmp / "stores" / "shipped_explore_ts40"

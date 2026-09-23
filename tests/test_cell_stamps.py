@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 from dataclasses import asdict, replace
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from ttg.cell_stamps import (
     BuildReceipt,
     CompletionMarker,
     StampError,
+    cell_preflight,
     check_store,
     consumed_marker,
     cpu_model_from_brand_string,
@@ -204,11 +206,11 @@ class WriteBuildReceiptTest(EngineTreeTest):
         verdict_path = self.synced.parent / "receipt-verdict.json"
         verdict = verify_receipt(engine_repo=self.repo, receipt_path=out, out=verdict_path)
         self.assertEqual(verdict.tree_digest, self.expected)
-        self.assertEqual(load_receipt_verdict(verdict_path, out), verdict)
+        self.assertEqual(load_receipt_verdict(verdict_path, out, receipt), verdict)
         # The verdict is bound to the receipt's bytes: any other receipt is refused.
         out.write_text(out.read_text() + " ")
         with self.assertRaisesRegex(StampError, "was not issued for"):
-            load_receipt_verdict(verdict_path, out)
+            load_receipt_verdict(verdict_path, out, load_build_receipt(out))
 
     def test_a_drifted_build_host_tree_gets_no_verdict(self) -> None:
         if shutil.which("rustc") is None:
@@ -414,6 +416,57 @@ class HostCpuTest(unittest.TestCase):
         for count in (None, 0):
             with self.subTest(count=count), self.assertRaisesRegex(StampError, "CPUs"):
                 format_host_cpu("Apple M4 Pro", count)
+
+
+class ReuseMarkerOrderTest(unittest.TestCase):
+    """The REUSE preflight takes the source marker only as its LAST step: a
+    refusal anywhere before it — including the host check — leaves the marker."""
+
+    def test_a_late_refusal_leaves_the_source_marker_in_place(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            binary = root / "noodl-eval"
+            binary.write_text(
+                "#!/bin/sh\necho '{\"analysis_languages\": [\"go\", \"python\", "
+                "\"typescript\"]}'\n"
+            )
+            binary.chmod(0o755)
+            receipt = _receipt(_sha(binary.read_bytes()))
+            receipt_path = root / "build-receipt.json"
+            receipt_path.write_text(json.dumps(asdict(receipt)))
+            verdict_path = root / "receipt-verdict.json"
+            verdict_path.write_text(json.dumps({
+                "schema": 2, "receipt_sha256": _sha(receipt_path.read_bytes()),
+                "commit": receipt.commit, "tree_digest": receipt.tree_digest,
+                "model_lock_sha256": receipt.model_lock_sha256,
+                "rust_toolchain_sha256": _sha(receipt.rust_toolchain_toml.encode()),
+                "checked": "test",
+            }))
+            jsonl = root / "ts40.jsonl"
+            jsonl.write_bytes(b"{}\n")
+            pins = root / "jsonl.SHA256SUMS"
+            pins.write_text(f"{_sha(jsonl.read_bytes())}  ts40.jsonl\n")
+            store = root / "shipped_treatment_ts40"
+            store.mkdir()
+            marker = CompletionMarker(
+                arm="shipped_treatment", corpus="ts40", commit=COMMIT,
+                binary_sha256=receipt.binary_sha256, corpus_sha256=_sha(jsonl.read_bytes()),
+                reranker="rev",
+            )
+            (store / COMPLETION_MARKER).write_text(json.dumps(asdict(marker)))
+            kwargs = {
+                "arm": ARMS["levers_off_ablation"], "corpus": "ts40", "corpus_jsonl": jsonl,
+                "store": store, "binary": binary, "receipt_path": receipt_path,
+                "verdict_path": verdict_path, "requested_commit": COMMIT, "pins": pins,
+            }
+            with mock.patch("ttg.cell_stamps.host_cpu", side_effect=StampError("no cpu")):
+                with self.assertRaisesRegex(StampError, "no cpu"):
+                    cell_preflight(**kwargs)
+            self.assertTrue((store / COMPLETION_MARKER).is_file(), "marker must survive")
+            lines = cell_preflight(**kwargs)
+            self.assertFalse((store / COMPLETION_MARKER).exists(), "now held by this run")
+            self.assertTrue(consumed_marker(store, ARMS["levers_off_ablation"]).is_file())
+            self.assertIn("host_cpu:", lines[-1])
 
 
 class ReuseMarkerTest(unittest.TestCase):

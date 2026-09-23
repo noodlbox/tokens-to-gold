@@ -63,7 +63,7 @@ from arms.arm_matrix import Arm, FreshStore
 from ttg.preflight import analysis_languages, require_corpus_support
 
 RECEIPT_SCHEMA: Final = 2
-VERDICT_SCHEMA: Final = 1
+VERDICT_SCHEMA: Final = 2
 MODEL_LOCK_PATH: Final = "assets/models/reranker/model.lock"
 TOOLCHAIN_PATH: Final = "rust-toolchain.toml"
 COMPLETION_MARKER: Final = ".ttg-cell-complete.json"
@@ -133,6 +133,10 @@ def _run(argv: list[str], what: str, cwd: Path | None = None) -> bytes:
     if proc.returncode != 0:
         raise StampError(f"{what} failed: {proc.stderr.decode(errors='replace').strip()}")
     return proc.stdout
+
+
+def _text_sha256(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
 
 
 def _decode(data: bytes, what: str) -> str:
@@ -303,6 +307,7 @@ class ReceiptVerdict:
     commit: str
     tree_digest: str
     model_lock_sha256: str
+    rust_toolchain_sha256: str
     checked: str
 
 
@@ -326,13 +331,17 @@ def verify_receipt(*, engine_repo: Path, receipt_path: Path, out: Path) -> Recei
         commit=receipt.commit,
         tree_digest=derived,
         model_lock_sha256=receipt.model_lock_sha256,
+        rust_toolchain_sha256=_text_sha256(receipt.rust_toolchain_toml),
         checked="tree digest vs git ls-tree -r; model.lock + rust-toolchain.toml vs git show",
     )
     out.write_text(json.dumps(asdict(verdict), indent=2, sort_keys=True) + "\n")
     return verdict
 
 
-def load_receipt_verdict(path: Path, receipt_path: Path) -> ReceiptVerdict:
+def load_receipt_verdict(path: Path, receipt_path: Path, receipt: BuildReceipt) -> ReceiptVerdict:
+    """The verdict must have been issued for exactly this receipt: its bytes,
+    and every identity it vouches for. Stamps print the RECEIPT's values; the
+    verdict only contributes the fact that they were checked against git."""
     try:
         verdict = ReceiptVerdict(**json.loads(_read_text(path, "receipt verdict")))
     except (json.JSONDecodeError, TypeError) as exc:
@@ -343,6 +352,14 @@ def load_receipt_verdict(path: Path, receipt_path: Path) -> ReceiptVerdict:
         raise StampError(
             f"receipt verdict {path} was not issued for {receipt_path}: run "
             "`ttg.cli verify-receipt` against the engine's git history"
+        )
+    vouched = (verdict.commit, verdict.tree_digest, verdict.model_lock_sha256,
+               verdict.rust_toolchain_sha256)
+    claimed = (receipt.commit, receipt.tree_digest, receipt.model_lock_sha256,
+               _text_sha256(receipt.rust_toolchain_toml))
+    if vouched != claimed:
+        raise StampError(
+            f"receipt verdict {path} vouches for {vouched}, the receipt claims {claimed}"
         )
     return verdict
 
@@ -603,31 +620,32 @@ def cell_preflight(
     effect — a REUSE cell taking its source store's completion marker — happens
     only after every check passed."""
     receipt = load_build_receipt(receipt_path)
-    verdict = load_receipt_verdict(verdict_path, receipt_path)
+    load_receipt_verdict(verdict_path, receipt_path, receipt)
     verify_binary_against_receipt(binary, receipt, requested_commit)
     live = verify_live_capabilities(binary, receipt)
     lock = parse_model_lock(receipt.model_lock_text)
     require_corpus_support(str(binary), corpus)
     corpus_sha = verify_corpus(corpus_jsonl, corpus, pins)
     store_line = check_store(store, arm, corpus, receipt, corpus_sha)
-    cpu = host_cpu()
-    if not isinstance(arm.store, FreshStore):
-        (store / COMPLETION_MARKER).replace(consumed_marker(store, arm))
-    return [
-        f"build_commit: {receipt.commit} (receipt verified against git history; "
-        "binary sha256 verified)",
-        f"engine_tree:  {verdict.tree_digest} (= git ls-tree -r {receipt.commit})",
+    lines = [
+        f"build_commit: {receipt.commit} (receipt; verified against git history by "
+        f"verdict {file_sha256(verdict_path)}; binary sha256 verified)",
+        f"engine_tree:  {receipt.tree_digest} (receipt; = git ls-tree -r per the verdict)",
         f"binary_sha256:{receipt.binary_sha256} (verified)",
         f"cargo:        profile={receipt.cargo_profile} features={receipt.cargo_features}",
         f"rustc:        {receipt.rustc_version}",
         f"capabilities: {','.join(live)} (live; equals the receipt; corpus language verified)",
         f"model_lock:   {lock.hf_repo}@{lock.revision} sha256={receipt.model_lock_sha256} "
-        "(= git show)",
+        "(receipt; = git show per the verdict)",
         f"corpus_sha256:{corpus_sha} (pinned)",
         f"store:        {store_line}",
         f"intent:       {arm.intent.value} (declared)",
-        f"host_cpu:     {cpu}",
+        f"host_cpu:     {host_cpu()}",
     ]
+    # The ONLY side effect, and the last step: every check above has passed.
+    if not isinstance(arm.store, FreshStore):
+        (store / COMPLETION_MARKER).replace(consumed_marker(store, arm))
+    return lines
 
 
 def cell_postrun(
