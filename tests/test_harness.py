@@ -15,8 +15,9 @@ from pathlib import Path
 
 from arms.arm_matrix import (
     ACCEPTANCE_ARMS, ARMS, CORPORA, DEFAULT_ARMS, REPORT_ONLY_ARMS, SECTION5_ARMS,
-    SWEEP_ARMS, ArmError, Curation, StoreMode, assert_corpus_matches_protocol,
-    assert_lane_invariants, cells, char_budget, flags_for, store_name,
+    SWEEP_ARMS, ArmError, ArmRole, Curation, FreshStore, ReuseStore,
+    assert_corpus_matches_protocol, assert_lane_invariants, cells, char_budget,
+    flags_for, store_name,
 )
 from ttg.own_repo import (
     OWN_REPO_ARMS, OwnRepoError, build_instance, own_repo_flags,
@@ -156,6 +157,36 @@ class T3ArmFlags(unittest.TestCase):
         # The REUSE arm names the FRESH store it reuses, same corpus.
         self.assertEqual(store_name("levers_off_ablation", "go34"), "shipped_treatment_go34")
 
+    def test_every_pre_existing_cell_is_byte_identical_to_the_base(self) -> None:
+        """The flag list of every (arm, corpus) cell and own-repo arm that existed
+        on 391f2b7 — refusals included — is pinned by a snapshot taken there."""
+        snapshot = json.loads((PKG / "tests" / "fixtures" / "flags_391f2b7.json").read_text())
+        for key, want in snapshot["matrix"].items():
+            arm, corpus = key.split("|")
+            with self.subTest(cell=key):
+                if want == "REFUSED":
+                    with self.assertRaises(ArmError):
+                        flags_for(arm, corpus)
+                else:
+                    self.assertEqual(flags_for(arm, corpus), want)
+        for arm, want in snapshot["own_repo"].items():
+            with self.subTest(own_repo=arm):
+                self.assertEqual(own_repo_flags(arm), want)
+
+    def test_roles_are_arm_fields_and_the_gate_sets_derive_from_them(self) -> None:
+        self.assertEqual(ACCEPTANCE_ARMS, ("shipped_treatment", "levers_off_ablation"))
+        self.assertEqual(
+            SECTION5_ARMS, ("shipped_treatment", "levers_off_ablation", "native_floor")
+        )
+        self.assertEqual(REPORT_ONLY_ARMS, ("shipped_explore",))
+        self.assertEqual(ARMS["shipped_explore"].roles, frozenset({ArmRole.REPORT_ONLY}))
+
+    def test_the_reuse_arm_reuses_a_fresh_arm(self) -> None:
+        store = ARMS["levers_off_ablation"].store
+        self.assertIsInstance(store, ReuseStore)
+        assert isinstance(store, ReuseStore)
+        self.assertIsInstance(ARMS[store.of].store, FreshStore)
+
     def test_section5_baseline_is_levers_off_not_a0(self) -> None:
         """Q4: a0_off numbers must NEVER be labelled levers-off."""
         self.assertIn("levers_off_ablation", SECTION5_ARMS)
@@ -223,7 +254,10 @@ class T3ArmFlags(unittest.TestCase):
         """
         arm = ARMS["native_floor"]
         self.assertTrue(arm.available)
-        self.assertIs(arm.store_mode, StoreMode.FRESH)  # control (c)
+        self.assertIsInstance(arm.store, FreshStore)  # control (c)
+        # The arm is graph-free and never ranks: its post-run stamp must prove NO
+        # reranker install, so the declaration itself is pinned here.
+        self.assertFalse(arm.ranks_with_reranker)
         self.assertTrue(arm.reindex)
         self.assertFalse(arm.scored_only_corpus)
         flags = flags_for("native_floor", "ts40")

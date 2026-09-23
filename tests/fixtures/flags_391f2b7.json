@@ -1,0 +1,274 @@
+{
+ "matrix": {
+  "a0_off|go34": [
+   "--graph-gold",
+   "--raw-query",
+   "--intent",
+   "implement",
+   "--curation",
+   "off"
+  ],
+  "a0_off|py_nosphinx": [
+   "--graph-gold",
+   "--raw-query",
+   "--intent",
+   "implement",
+   "--curation",
+   "off"
+  ],
+  "a0_off|rust43": [
+   "--graph-gold",
+   "--raw-query",
+   "--intent",
+   "implement",
+   "--curation",
+   "off"
+  ],
+  "a0_off|ts40": [
+   "--graph-gold",
+   "--raw-query",
+   "--intent",
+   "implement",
+   "--curation",
+   "off"
+  ],
+  "levers_off_ablation|go34": [
+   "--graph-gold",
+   "--raw-query",
+   "--intent",
+   "implement",
+   "--curation",
+   "off",
+   "--m22-levers-off"
+  ],
+  "levers_off_ablation|py_nosphinx": [
+   "--graph-gold",
+   "--raw-query",
+   "--intent",
+   "implement",
+   "--curation",
+   "off",
+   "--m22-levers-off"
+  ],
+  "levers_off_ablation|rust43": [
+   "--graph-gold",
+   "--raw-query",
+   "--intent",
+   "implement",
+   "--curation",
+   "off",
+   "--m22-levers-off"
+  ],
+  "levers_off_ablation|ts40": [
+   "--graph-gold",
+   "--raw-query",
+   "--intent",
+   "implement",
+   "--curation",
+   "off",
+   "--m22-levers-off"
+  ],
+  "native_floor|go34": [
+   "--graph-gold",
+   "--raw-query",
+   "--intent",
+   "implement",
+   "--curation",
+   "off",
+   "--explorer",
+   "--reindex"
+  ],
+  "native_floor|py_nosphinx": [
+   "--graph-gold",
+   "--raw-query",
+   "--intent",
+   "implement",
+   "--curation",
+   "off",
+   "--explorer",
+   "--reindex"
+  ],
+  "native_floor|rust43": [
+   "--graph-gold",
+   "--raw-query",
+   "--intent",
+   "implement",
+   "--curation",
+   "off",
+   "--explorer",
+   "--reindex"
+  ],
+  "native_floor|ts40": [
+   "--graph-gold",
+   "--raw-query",
+   "--intent",
+   "implement",
+   "--curation",
+   "off",
+   "--explorer",
+   "--reindex"
+  ],
+  "pfc_b1|go34": "REFUSED",
+  "pfc_b1|py_nosphinx": [
+   "--graph-gold",
+   "--raw-query",
+   "--intent",
+   "implement",
+   "--curation",
+   "perfilecaps:32,256,93000"
+  ],
+  "pfc_b1|rust43": "REFUSED",
+  "pfc_b1|ts40": [
+   "--graph-gold",
+   "--raw-query",
+   "--intent",
+   "implement",
+   "--curation",
+   "perfilecaps:32,256,90320"
+  ],
+  "pfc_b2|go34": "REFUSED",
+  "pfc_b2|py_nosphinx": [
+   "--graph-gold",
+   "--raw-query",
+   "--intent",
+   "implement",
+   "--curation",
+   "perfilecaps:32,256,83700"
+  ],
+  "pfc_b2|rust43": "REFUSED",
+  "pfc_b2|ts40": [
+   "--graph-gold",
+   "--raw-query",
+   "--intent",
+   "implement",
+   "--curation",
+   "perfilecaps:32,256,81288"
+  ],
+  "pfc_b3|go34": "REFUSED",
+  "pfc_b3|py_nosphinx": [
+   "--graph-gold",
+   "--raw-query",
+   "--intent",
+   "implement",
+   "--curation",
+   "perfilecaps:32,256,74400"
+  ],
+  "pfc_b3|rust43": "REFUSED",
+  "pfc_b3|ts40": [
+   "--graph-gold",
+   "--raw-query",
+   "--intent",
+   "implement",
+   "--curation",
+   "perfilecaps:32,256,72256"
+  ],
+  "shipped_treatment|go34": [
+   "--graph-gold",
+   "--raw-query",
+   "--intent",
+   "implement",
+   "--reindex"
+  ],
+  "shipped_treatment|py_nosphinx": [
+   "--graph-gold",
+   "--raw-query",
+   "--intent",
+   "implement",
+   "--reindex"
+  ],
+  "shipped_treatment|rust43": [
+   "--graph-gold",
+   "--raw-query",
+   "--intent",
+   "implement",
+   "--reindex"
+  ],
+  "shipped_treatment|ts40": [
+   "--graph-gold",
+   "--raw-query",
+   "--intent",
+   "implement",
+   "--reindex"
+  ],
+  "wf_b1|go34": "REFUSED",
+  "wf_b1|py_nosphinx": [
+   "--graph-gold",
+   "--raw-query",
+   "--intent",
+   "implement",
+   "--curation",
+   "waterfill:93000"
+  ],
+  "wf_b1|rust43": "REFUSED",
+  "wf_b1|ts40": [
+   "--graph-gold",
+   "--raw-query",
+   "--intent",
+   "implement",
+   "--curation",
+   "waterfill:90320"
+  ],
+  "wf_b2|go34": "REFUSED",
+  "wf_b2|py_nosphinx": [
+   "--graph-gold",
+   "--raw-query",
+   "--intent",
+   "implement",
+   "--curation",
+   "waterfill:83700"
+  ],
+  "wf_b2|rust43": "REFUSED",
+  "wf_b2|ts40": [
+   "--graph-gold",
+   "--raw-query",
+   "--intent",
+   "implement",
+   "--curation",
+   "waterfill:81288"
+  ],
+  "wf_b3|go34": "REFUSED",
+  "wf_b3|py_nosphinx": [
+   "--graph-gold",
+   "--raw-query",
+   "--intent",
+   "implement",
+   "--curation",
+   "waterfill:74400"
+  ],
+  "wf_b3|rust43": "REFUSED",
+  "wf_b3|ts40": [
+   "--graph-gold",
+   "--raw-query",
+   "--intent",
+   "implement",
+   "--curation",
+   "waterfill:72256"
+  ]
+ },
+ "own_repo": {
+  "levers_off_ablation": [
+   "--graph-gold",
+   "--raw-query",
+   "--intent",
+   "implement",
+   "--curation",
+   "off",
+   "--m22-levers-off"
+  ],
+  "native_floor": [
+   "--graph-gold",
+   "--raw-query",
+   "--intent",
+   "implement",
+   "--curation",
+   "off",
+   "--explorer"
+  ],
+  "shipped_treatment": [
+   "--graph-gold",
+   "--raw-query",
+   "--intent",
+   "implement"
+  ]
+ }
+}

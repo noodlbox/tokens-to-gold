@@ -1,10 +1,12 @@
-"""`arms/run_arm.sh` end to end with a stub `noodl-eval` (lane 4F).
+"""`arms/run_arm.sh` and `arms/run_matrix.sh` end to end with a stub `noodl-eval`
+(lane 4F).
 
 The stub stands in for the engine: `capabilities` prints a language list, and
-`swe-bench` records that it ran and installs the reranker files named by the
-test into its `NOODLBOX_DATA_DIR` (as a cold-cache engine run does). The
-package is copied into a temp dir so its corpus pins can name the test corpus
-without any test-only switch in the runner.
+`swe-bench` records that it ran and — unless told not to — installs the reranker
+files named by the test into its `NOODLBOX_DATA_DIR`, as a cold-cache engine run
+does. The package is copied into a temp dir so its corpus pins can name the test
+corpus without any test-only switch in the runner; the build receipt is written
+for the stub's own bytes.
 """
 
 from __future__ import annotations
@@ -17,14 +19,17 @@ import stat
 import subprocess
 import tempfile
 import unittest
+from dataclasses import asdict
 from pathlib import Path
+
+from ttg.cell_stamps import BuildReceipt
 
 PKG = Path(__file__).resolve().parent.parent
 COMMIT = "c" * 40
 MODEL = b"onnx-bytes"
-TOKENIZER = b"{}"
 CACHE_DIR = "models/reranker/jina/rev1"
 LOCK = f"""\
+hf_repo = "jinaai/jina-reranker-v1-turbo-en"
 revision = "rev1"
 cache_dir = "{CACHE_DIR}"
 
@@ -34,7 +39,7 @@ sha256 = "{hashlib.sha256(MODEL).hexdigest()}"
 
 [[files]]
 path = "tokenizer.json"
-sha256 = "{hashlib.sha256(TOKENIZER).hexdigest()}"
+sha256 = "{hashlib.sha256(b"{}").hexdigest()}"
 """
 
 STUB = """#!/usr/bin/env python3
@@ -45,15 +50,16 @@ if sys.argv[1] == "capabilities":
 store = pathlib.Path(os.environ["NOODLBOX_DATA_DIR"])
 store.mkdir(parents=True, exist_ok=True)
 (store / "ran").write_text(" ".join(sys.argv[1:]))
-root = store / os.environ["STUB_CACHE_DIR"]
-(root / "onnx").mkdir(parents=True, exist_ok=True)
-(root / "onnx" / "model.onnx").write_bytes(os.environ["STUB_MODEL"].encode())
-(root / "tokenizer.json").write_bytes(b"{}")
+if os.environ.get("STUB_INSTALL", "1") == "1":
+    root = store / os.environ["STUB_CACHE_DIR"]
+    (root / "onnx").mkdir(parents=True, exist_ok=True)
+    (root / "onnx" / "model.onnx").write_bytes(os.environ["STUB_MODEL"].encode())
+    (root / "tokenizer.json").write_bytes(b"{}")
 print("{}")
 """
 
 
-class RunArmTest(unittest.TestCase):
+class _Harness(unittest.TestCase):
     def setUp(self) -> None:
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
@@ -63,73 +69,161 @@ class RunArmTest(unittest.TestCase):
             PKG, self.pkg,
             ignore=shutil.ignore_patterns("runs", "worktrees", ".git", "__pycache__"),
         )
-        self.jsonl = self.tmp / "ts40.jsonl"
+        self.corpus_dir = self.tmp / "corpora"
+        self.corpus_dir.mkdir()
+        self.jsonl = self.corpus_dir / "ts40.jsonl"
         self.jsonl.write_bytes(b'{"instance_id": "a"}\n')
         digest = hashlib.sha256(self.jsonl.read_bytes()).hexdigest()
         (self.pkg / "corpora" / "jsonl.SHA256SUMS").write_text(f"{digest}  ts40.jsonl\n")
-        self.lock = self.tmp / "model.lock"
-        self.lock.write_text(LOCK)
         self.binary = self.tmp / "noodl-eval"
         self.binary.write_text(STUB)
         self.binary.chmod(self.binary.stat().st_mode | stat.S_IXUSR)
-        self.store = self.tmp / "stores" / "shipped_explore_ts40"
-        self.out = self.tmp / "out" / "shipped_explore_ts40.json"
+        self.receipt = self.tmp / "build-receipt.json"
+        self.receipt.write_text(json.dumps(asdict(BuildReceipt(
+            schema=1, commit=COMMIT, tree_digest="a" * 64,
+            binary_sha256=hashlib.sha256(self.binary.read_bytes()).hexdigest(),
+            cargo_profile="release", cargo_features="default",
+            rust_toolchain_toml="[toolchain]\n", rustc_version="rustc 1.95.0",
+            analysis_languages=("go", "python", "rust", "typescript"),
+            model_lock_text=LOCK,
+            model_lock_sha256=hashlib.sha256(LOCK.encode()).hexdigest(),
+        ))))
+        self.out = self.tmp / "out"
 
-    def _run(self, model: bytes = MODEL, commit: str = COMMIT) -> subprocess.CompletedProcess[str]:
-        env = {
-            **os.environ,
-            "STUB_CACHE_DIR": CACHE_DIR,
-            "STUB_MODEL": model.decode(),
+    def _env(self, install: bool = True, model: bytes = MODEL) -> dict[str, str]:
+        return {
+            **os.environ, "STUB_CACHE_DIR": CACHE_DIR, "STUB_MODEL": model.decode(),
+            "STUB_INSTALL": "1" if install else "0",
         }
+
+    def run_arm(self, arm: str, store: Path, *, commit: str = COMMIT,
+                install: bool = True, model: bytes = MODEL) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [
                 "bash", str(self.pkg / "arms" / "run_arm.sh"),
-                "--arm", "shipped_explore", "--corpus", "ts40",
-                "--binary", str(self.binary), "--corpus-jsonl", str(self.jsonl),
-                "--store", str(self.store), "--out", str(self.out),
-                "--build-commit", commit, "--model-lock", str(self.lock),
+                "--arm", arm, "--corpus", "ts40", "--binary", str(self.binary),
+                "--corpus-jsonl", str(self.jsonl), "--store", str(store),
+                "--out", str(self.out / f"{arm}_ts40.json"),
+                "--build-receipt", str(self.receipt), "--build-commit", commit,
             ],
-            capture_output=True, text=True, env=env, check=False,
+            capture_output=True, text=True, env=self._env(install, model), check=False,
         )
 
-    def _manifest(self) -> str:
-        return self.out.with_suffix(".manifest.txt").read_text()
 
-    def test_a_clean_cell_runs_and_stamps_its_provenance(self) -> None:
-        run = self._run()
+class RunArmTest(_Harness):
+    def test_a_clean_cell_publishes_its_report_with_every_stamp(self) -> None:
+        store = self.tmp / "stores" / "shipped_explore_ts40"
+        run = self.run_arm("shipped_explore", store)
         self.assertEqual(run.returncode, 0, run.stderr)
-        self.assertIn("--intent explore", (self.store / "ran").read_text())
-        manifest = self._manifest()
-        self.assertIn(f"build_commit: {COMMIT}", manifest)
-        self.assertIn("(pinned)", manifest)
-        self.assertIn("store_mode:   fresh (verified)", manifest)
-        self.assertIn('"analysis_languages"', manifest)
-        self.assertIn("reranker_rev: rev1", manifest)
-        self.assertEqual(json.loads(self.out.read_text()), {})
+        self.assertIn("--intent explore", (store / "ran").read_text())
+        report = self.out / "shipped_explore_ts40.json"
+        self.assertEqual(json.loads(report.read_text()), {})
+        self.assertFalse(report.with_name(report.name + ".partial").exists())
+        manifest = (self.out / "shipped_explore_ts40.manifest.txt").read_text()
+        for stamp in (f"build_commit: {COMMIT} (build receipt; binary sha256 verified)",
+                      "(pinned)", "store:        fresh (verified absent or empty)",
+                      "(corpus language verified)", "model_lock:   jinaai/",
+                      "reranker_rev: rev1"):
+            self.assertIn(stamp, manifest)
+        self.assertTrue((self.out / "shipped_explore_ts40.build-receipt.json").is_file())
+        self.assertTrue((store / ".ttg-cell-complete.json").is_file())
 
     def test_a_populated_fresh_store_is_refused_before_the_engine_runs(self) -> None:
-        self.store.mkdir(parents=True)
-        (self.store / "catalog.db").write_bytes(b"stale")
-        run = self._run()
-        self.assertNotEqual(run.returncode, 0)
-        self.assertFalse((self.store / "ran").exists(), "the engine must not run")
+        store = self.tmp / "stores" / "shipped_explore_ts40"
+        store.mkdir(parents=True)
+        (store / "catalog.db").write_bytes(b"stale")
+        run = self.run_arm("shipped_explore", store)
+        self.assertEqual(run.returncode, 2)
+        self.assertIn("given a populated store", run.stderr)
+        self.assertFalse((store / "ran").exists(), "the engine must not run")
 
     def test_an_unpinned_corpus_is_refused_before_the_engine_runs(self) -> None:
+        store = self.tmp / "stores" / "shipped_explore_ts40"
         self.jsonl.write_bytes(b'{"instance_id": "b"}\n')
-        run = self._run()
-        self.assertNotEqual(run.returncode, 0)
-        self.assertFalse((self.store / "ran").exists(), "the engine must not run")
+        run = self.run_arm("shipped_explore", store)
+        self.assertEqual(run.returncode, 2)
+        self.assertIn("pinned", run.stderr)
+        self.assertFalse(store.exists(), "the engine must not run")
 
-    def test_a_short_build_commit_is_refused(self) -> None:
-        run = self._run(commit="abc1234")
-        self.assertNotEqual(run.returncode, 0)
-        self.assertFalse((self.store / "ran").exists(), "the engine must not run")
+    def test_a_binary_other_than_the_receipts_is_refused_before_the_engine_runs(self) -> None:
+        store = self.tmp / "stores" / "shipped_explore_ts40"
+        self.binary.write_text(STUB + "# rebuilt from another tree\n")
+        run = self.run_arm("shipped_explore", store)
+        self.assertEqual(run.returncode, 2)
+        self.assertIn("not the binary that commit built", run.stderr)
+        self.assertFalse(store.exists(), "the engine must not run")
 
-    def test_a_reranker_other_than_the_locked_one_fails_the_cell(self) -> None:
-        run = self._run(model=b"a-different-model")
+    def test_a_commit_other_than_the_receipts_is_refused(self) -> None:
+        store = self.tmp / "stores" / "shipped_explore_ts40"
+        run = self.run_arm("shipped_explore", store, commit="d" * 40)
+        self.assertEqual(run.returncode, 2)
+        self.assertIn("receipt is for commit", run.stderr)
+
+    def test_a_reranker_other_than_the_locked_one_fails_the_cell_and_publishes_nothing(
+        self,
+    ) -> None:
+        store = self.tmp / "stores" / "shipped_explore_ts40"
+        run = self.run_arm("shipped_explore", store, model=b"a-different-model")
         self.assertNotEqual(run.returncode, 0)
-        self.assertTrue((self.store / "ran").exists(), "the engine ran; the stamp refused")
-        self.assertNotIn("reranker_rev:", self._manifest())
+        self.assertIn("locked", run.stderr)
+        self.assertTrue((store / "ran").exists(), "the engine ran; the stamp refused")
+        self.assertFalse((self.out / "shipped_explore_ts40.json").exists())
+        self.assertFalse((store / ".ttg-cell-complete.json").exists())
+
+    def test_the_non_ranking_arm_passes_without_an_install_and_fails_with_one(self) -> None:
+        store = self.tmp / "stores" / "native_floor_ts40"
+        run = self.run_arm("native_floor", store, install=False)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertIn("reranker_rev: none", run.stdout)
+        other = self.tmp / "stores2" / "native_floor_ts40"
+        run = self.run_arm("native_floor", other, install=True)
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("declaration is wrong", run.stderr)
+
+
+class RunMatrixTest(_Harness):
+    def _matrix(self, arms: str, *, model: bytes = MODEL,
+                **overrides: str) -> subprocess.CompletedProcess[str]:
+        args = {
+            "--arms": arms, "--corpora": "ts40", "--binary": str(self.binary),
+            "--corpus-dir": str(self.corpus_dir), "--store": str(self.tmp / "root"),
+            "--outdir": str(self.out), "--build-receipt": str(self.receipt),
+            "--build-commit": COMMIT, **overrides,
+        }
+        argv = [part for pair in args.items() for part in pair if pair[1] != ""]
+        return subprocess.run(
+            ["bash", str(self.pkg / "arms" / "run_matrix.sh"), *argv],
+            capture_output=True, text=True, env=self._env(model=model), check=False,
+        )
+
+    def test_each_fresh_cell_runs_in_its_own_store(self) -> None:
+        run = self._matrix("shipped_treatment,shipped_explore")
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        root = self.tmp / "root"
+        self.assertIn("--intent implement",
+                      (root / "shipped_treatment_ts40" / "ran").read_text())
+        self.assertIn("--intent explore", (root / "shipped_explore_ts40" / "ran").read_text())
+
+    def test_an_empty_store_root_is_refused(self) -> None:
+        run = self._matrix("shipped_explore", **{"--store": ""})
+        self.assertEqual(run.returncode, 2)
+        self.assertIn("--store is required", run.stderr)
+
+    def test_the_reuse_arm_needs_its_source_cell_to_have_completed(self) -> None:
+        # No source cell at all: the REUSE preflight refuses before the engine.
+        alone = self._matrix("levers_off_ablation")
+        self.assertNotEqual(alone.returncode, 0)
+        self.assertIn("has no completion marker", alone.stderr)
+        # A source cell that ran but failed its stamp leaves no marker: refused.
+        failed = self._matrix("shipped_treatment,levers_off_ablation", model=b"other")
+        self.assertNotEqual(failed.returncode, 0)
+        self.assertIn("has no completion marker", failed.stderr)
+
+    def test_a_completed_source_cell_is_reused(self) -> None:
+        run = self._matrix("shipped_treatment,levers_off_ablation")
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        manifest = (self.out / "levers_off_ablation_ts40.manifest.txt").read_text()
+        self.assertIn("reuse of shipped_treatment_ts40 (verified completion marker)", manifest)
 
 
 if __name__ == "__main__":

@@ -22,12 +22,12 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from arms.arm_matrix import (
-    ARMS,
     CORPORA,
     DEFAULT_ARMS,
     SWEEP_ARMS,
     ArmError,
     flags_for,
+    get_arm,
     store_name,
 )
 from ttg.acceptance import (
@@ -39,12 +39,12 @@ from ttg.acceptance import (
 )
 from ttg.cell_stamps import (
     StampError,
-    assert_store_mode,
-    parse_model_lock,
-    validated_build_commit,
-    verify_corpus,
-    verify_reranker_absent,
-    verify_reranker_install,
+    cell_postrun,
+    cell_preflight,
+    tree_digest,
+    tree_entries_from_git,
+    verify_engine_tree,
+    write_build_receipt,
 )
 from ttg.curve_recompute import curve_parity_findings
 from ttg.derive_checks import (
@@ -111,33 +111,49 @@ def cmd_store_name(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_cell_preflight(args: argparse.Namespace) -> int:
-    """Refuse a cell whose build, corpus or store cannot be vouched for, and
-    print the verified stamps as `key: value` manifest lines."""
-    arm = ARMS[args.arm]
-    commit = validated_build_commit(args.build_commit)
-    corpus_sha = verify_corpus(
-        Path(args.corpus_jsonl), args.corpus, PKG / "corpora" / "jsonl.SHA256SUMS"
+def cmd_engine_tree_digest(args: argparse.Namespace) -> int:
+    """Where the engine's history is: the identity of its tree at a commit."""
+    print(tree_digest(tree_entries_from_git(Path(args.repo), args.commit)))
+    return 0
+
+
+def cmd_verify_engine_tree(args: argparse.Namespace) -> int:
+    """On the build host, before the build: the synced tree IS the commit's."""
+    print(f"engine_tree: {verify_engine_tree(Path(args.src), args.expected_digest)} (verified)")
+    return 0
+
+
+def cmd_write_build_receipt(args: argparse.Namespace) -> int:
+    """Called only by arms/build_engine.sh, right after it built the binary."""
+    receipt = write_build_receipt(
+        src=Path(args.src), commit=args.commit,
+        expected_tree_digest=args.expected_digest, binary=Path(args.binary),
+        profile=args.profile, features=args.features, out=Path(args.out),
     )
-    assert_store_mode(Path(args.store), arm.store_mode)
-    print(f"build_commit: {commit}")
-    print(f"corpus_sha256:{corpus_sha} (pinned)")
-    print(f"store_mode:   {arm.store_mode.value} (verified)")
-    print(f"intent:       {arm.intent.value}")
+    print(f"build receipt: {args.out} (commit {receipt.commit}, binary {receipt.binary_sha256})")
+    return 0
+
+
+def cmd_cell_preflight(args: argparse.Namespace) -> int:
+    """Every pre-run refusal of a cell; prints the verified manifest lines."""
+    for line in cell_preflight(
+        arm=get_arm(args.arm), corpus=args.corpus, corpus_jsonl=Path(args.corpus_jsonl),
+        store=Path(args.store), binary=Path(args.binary),
+        receipt_path=Path(args.build_receipt), requested_commit=args.build_commit,
+        pins=PKG / "corpora" / "jsonl.SHA256SUMS",
+    ):
+        print(line)
     return 0
 
 
 def cmd_cell_stamp(args: argparse.Namespace) -> int:
-    """After the run: prove the reranker the cell ranked with is the locked one,
-    or — for an arm declared not to rank — that none was installed."""
-    lock = parse_model_lock(Path(args.model_lock).read_text())
-    store = Path(args.store)
-    if ARMS[args.arm].ranks_with_reranker:
-        revision = verify_reranker_install(store, lock)
-        print(f"reranker_rev: {revision} (installed files match model.lock)")
-    else:
-        verify_reranker_absent(store, lock)
-        print("reranker_rev: none (arm declared not to rank; no model installed)")
+    """After a successful engine run: prove the reranker, then publish the report."""
+    for line in cell_postrun(
+        arm=get_arm(args.arm), corpus=args.corpus, corpus_jsonl=Path(args.corpus_jsonl),
+        store=Path(args.store), receipt_path=Path(args.build_receipt),
+        report=Path(args.report), pins=PKG / "corpora" / "jsonl.SHA256SUMS",
+    ):
+        print(line)
     return 0
 
 
@@ -568,29 +584,54 @@ def main(argv: list[str] | None = None) -> int:
     p_store.add_argument("--corpus", required=True, choices=sorted(CORPORA))
     p_store.set_defaults(func=cmd_store_name)
 
+    p_etd = sub.add_parser(
+        "engine-tree-digest", help="the engine tree identity at a commit (git side)"
+    )
+    p_etd.add_argument("--repo", required=True, help="an engine checkout with history")
+    p_etd.add_argument("--commit", required=True)
+    p_etd.set_defaults(func=cmd_engine_tree_digest)
+
+    p_vet = sub.add_parser(
+        "verify-engine-tree", help="refuse unless a synced engine tree is the commit's"
+    )
+    p_vet.add_argument("--src", required=True)
+    p_vet.add_argument("--expected-digest", required=True)
+    p_vet.set_defaults(func=cmd_verify_engine_tree)
+
+    p_wbr = sub.add_parser(
+        "write-build-receipt",
+        help="(arms/build_engine.sh only) write the receipt for the binary it just built",
+    )
+    for flag in ("--src", "--commit", "--expected-digest", "--binary", "--profile",
+                 "--features", "--out"):
+        p_wbr.add_argument(flag, required=True)
+    p_wbr.set_defaults(func=cmd_write_build_receipt)
+
     p_cpf = sub.add_parser(
         "cell-preflight",
-        help="refuse a cell whose build commit, corpus bytes or store mode cannot "
-        "be vouched for; print the verified manifest stamps",
+        help="refuse a cell whose build, corpus or store cannot be vouched for; print "
+        "the verified manifest stamps",
     )
-    p_cpf.add_argument("--arm", required=True, choices=sorted(ARMS))
+    p_cpf.add_argument("--arm", required=True)
     p_cpf.add_argument("--corpus", required=True, choices=sorted(CORPORA))
     p_cpf.add_argument("--corpus-jsonl", required=True)
     p_cpf.add_argument("--store", required=True)
-    p_cpf.add_argument("--build-commit", required=True, help="40-hex engine commit")
+    p_cpf.add_argument("--binary", required=True)
+    p_cpf.add_argument("--build-receipt", required=True)
+    p_cpf.add_argument("--build-commit", required=True, help="the requested engine commit")
     p_cpf.set_defaults(func=cmd_cell_preflight)
 
     p_cst = sub.add_parser(
         "cell-stamp",
-        help="after a cell: verify the reranker installed in its store against "
-        "the engine's model.lock",
+        help="after a successful engine run: verify the reranker against the receipt's "
+        "model.lock, then publish the report and mark the store complete",
     )
-    p_cst.add_argument("--arm", required=True, choices=sorted(ARMS))
+    p_cst.add_argument("--arm", required=True)
+    p_cst.add_argument("--corpus", required=True, choices=sorted(CORPORA))
+    p_cst.add_argument("--corpus-jsonl", required=True)
     p_cst.add_argument("--store", required=True)
-    p_cst.add_argument(
-        "--model-lock", required=True,
-        help="the engine checkout's assets/models/reranker/model.lock",
-    )
+    p_cst.add_argument("--build-receipt", required=True)
+    p_cst.add_argument("--report", required=True, help="the final report path")
     p_cst.set_defaults(func=cmd_cell_stamp)
 
     p_verify = sub.add_parser("verify-gold", help="check frozen gold digests")

@@ -96,9 +96,46 @@ class Intent(Enum):
     EXPLORE = "explore"
 
 
-class StoreMode(Enum):
-    FRESH = "fresh"
-    REUSE = "reuse"
+class ArmError(ValueError):
+    """An unknown, unavailable, or malformed arm request."""
+
+
+class ArmRole(Enum):
+    """Which result sets an arm belongs to. The gate/report tuples below are
+    DERIVED from these, so an arm's role is a property of the arm, not of a
+    list someone must remember to edit."""
+
+    SWEEP = "sweep"
+    """The M23-P4 7-arm curation sweep (`--arms all`)."""
+    ACCEPTANCE = "acceptance"
+    """The measurer-V1 acceptance pair (reproduced to 4 dp)."""
+    SECTION5 = "section5"
+    """The public write-up's section-5 arms (replay/report grid)."""
+    REPORT_ONLY = "report-only"
+    """Measured and reported, never gated and never a control."""
+
+
+_GATE_ROLES: Final = frozenset({ArmRole.ACCEPTANCE, ArmRole.SECTION5})
+
+
+@dataclass(frozen=True)
+class FreshStore:
+    """The cell runs in its OWN absent-or-empty store (`<root>/<arm>_<corpus>`).
+
+    Fresh covers the store only: the engine's repo checkout cache
+    (`~/.cache/noodlbox-eval/repos`) is shared by every cell on a host."""
+
+
+@dataclass(frozen=True)
+class ReuseStore:
+    """The cell reuses the completed store of the FRESH arm `of` (same corpus),
+    and only after that source cell finished and was stamped (its completion
+    marker names the same build and corpus)."""
+
+    of: str
+
+
+StorePolicy = FreshStore | ReuseStore
 
 
 @dataclass(frozen=True)
@@ -113,7 +150,7 @@ class Arm:
     available: bool = True
     """False for an arm whose implementation has not landed yet (R5/B4)."""
     curation: Curation = Curation.EXPLICIT
-    store_mode: StoreMode = StoreMode.FRESH
+    store: StorePolicy = FreshStore()
     reindex: bool = False
     scored_only_corpus: bool = False
     """MUST-NOT #2: a REUSE run on a full corpus re-analyses the excluded
@@ -124,8 +161,7 @@ class Arm:
     the provenance says it rather than leaving a reader to infer it."""
     intent: Intent = Intent.IMPLEMENT
     """The task intent the arm measures (see LANE INVARIANTS)."""
-    reuses_store_of: str = ""
-    """For a REUSE arm: the arm whose FRESH store (same corpus) it reuses."""
+    roles: frozenset[ArmRole] = frozenset()
     ranks_with_reranker: bool = True
     """Whether the arm's retrieval runs the cross-encoder reranker. The engine
     installs the model lazily on first use, so the post-run provenance check
@@ -149,24 +185,28 @@ class Corpus:
     """Full corpus size, including zero-gold and errored instances."""
 
 
+_SWEEP: Final = frozenset({ArmRole.SWEEP})
+_ACCEPTANCE_AND_SECTION5: Final = frozenset({ArmRole.ACCEPTANCE, ArmRole.SECTION5})
+
 # --- the table (mirrors run_heldout_sweep.sh ARM_NAME/ARM_STRAT/ARM_FACTOR) ---
 ARMS: Final[dict[str, Arm]] = {
-    "a0_off": Arm("a0_off", "off", None, "off"),
-    "wf_b1": Arm("wf_b1", "waterfill", 1.0, "20k"),
-    "wf_b2": Arm("wf_b2", "waterfill", 0.9, "18k"),
-    "wf_b3": Arm("wf_b3", "waterfill", 0.8, "16k"),
-    "pfc_b1": Arm("pfc_b1", "perfilecaps", 1.0, "20k"),
-    "pfc_b2": Arm("pfc_b2", "perfilecaps", 0.9, "18k"),
-    "pfc_b3": Arm("pfc_b3", "perfilecaps", 0.8, "16k"),
+    "a0_off": Arm("a0_off", "off", None, "off", roles=_SWEEP),
+    "wf_b1": Arm("wf_b1", "waterfill", 1.0, "20k", roles=_SWEEP),
+    "wf_b2": Arm("wf_b2", "waterfill", 0.9, "18k", roles=_SWEEP),
+    "wf_b3": Arm("wf_b3", "waterfill", 0.8, "16k", roles=_SWEEP),
+    "pfc_b1": Arm("pfc_b1", "perfilecaps", 1.0, "20k", roles=_SWEEP),
+    "pfc_b2": Arm("pfc_b2", "perfilecaps", 0.9, "18k", roles=_SWEEP),
+    "pfc_b3": Arm("pfc_b3", "perfilecaps", 0.8, "16k", roles=_SWEEP),
     # --- the two ACCEPTANCE arms (measurer V1 reference fixture) ---
     # protocol_treatment: --graph-gold --raw-query --intent implement
     #                     --reindex --timeout 400 -f json  (FRESH store, NO --curation)
     "shipped_treatment": Arm(
         "shipped_treatment", "shipped-default", None, "shipped",
         curation=Curation.SHIPPED_DEFAULT,
-        store_mode=StoreMode.FRESH,
+        store=FreshStore(),
         reindex=True,
         shipped_equivalent="waterfill:65536",
+        roles=_ACCEPTANCE_AND_SECTION5,
     ),
     # protocol_ablation: same + --curation off --m22-levers-off,
     #                    REUSE store, NO --reindex, SCORED-ONLY corpora
@@ -181,10 +221,10 @@ ARMS: Final[dict[str, Arm]] = {
         "levers_off_ablation", "off", None, "levers-off base-config",
         extra_flags=("--m22-levers-off",),
         curation=Curation.EXPLICIT,
-        store_mode=StoreMode.REUSE,
+        store=ReuseStore(of="shipped_treatment"),
         reindex=False,
         scored_only_corpus=True,
-        reuses_store_of="shipped_treatment",
+        roles=_ACCEPTANCE_AND_SECTION5,
     ),
     # B4 (LANDED 2026-08-26): the R5 native-floor arm — the in-binary R5
     # Explorer (`--explorer`): deterministic graph-free rg/glob/span retrieval,
@@ -204,14 +244,17 @@ ARMS: Final[dict[str, Arm]] = {
     # box-reuse fall-through into failing re-analysis that DELETED catalog
     # rows from the reused store — see the incident note in the preservation
     # tree. REUSE silently depends on a warm checkout cache and a stable
-    # disk, neither of which this arm can guarantee; FRESH is self-contained.)
+    # disk, neither of which this arm can guarantee; a FRESH store removes the
+    # store dependency — the engine's checkout cache stays shared, see
+    # `FreshStore`.)
     "native_floor": Arm(
         "native_floor", "off", None, "native-floor",
         extra_flags=("--explorer",),
         curation=Curation.EXPLICIT,
-        store_mode=StoreMode.FRESH,
+        store=FreshStore(),
         reindex=True,
         scored_only_corpus=False,
+        roles=frozenset({ArmRole.SECTION5}),
         ranks_with_reranker=False,
     ),
     # REPORT-ONLY (lane 4F, 2026-09-23): the shipped EXPLORE default, same
@@ -224,28 +267,45 @@ ARMS: Final[dict[str, Arm]] = {
     "shipped_explore": Arm(
         "shipped_explore", "shipped-default", None, "shipped-explore",
         curation=Curation.SHIPPED_DEFAULT,
-        store_mode=StoreMode.FRESH,
+        store=FreshStore(),
         reindex=True,
         shipped_equivalent=(
             "for_intent(Explore): UNIFORM_DELIVERY (waterfill:65536 + file_index) "
             "from noodlbox-app #1347/53754c86b; baseline() before"
         ),
         intent=Intent.EXPLORE,
+        roles=frozenset({ArmRole.REPORT_ONLY}),
     ),
 }
 
+def _validate_table() -> None:
+    """Import-time check of the invariants a single `Arm` cannot see."""
+    for key, arm in ARMS.items():
+        if key != arm.name:
+            raise ArmError(f"arm table key {key!r} names arm {arm.name!r}")
+        if ArmRole.REPORT_ONLY in arm.roles and arm.roles & _GATE_ROLES:
+            raise ArmError(f"arm {key!r} is REPORT_ONLY and also in a gate set")
+        if isinstance(arm.store, ReuseStore):
+            source = ARMS.get(arm.store.of)
+            if source is None or not isinstance(source.store, FreshStore):
+                raise ArmError(
+                    f"REUSE arm {key!r} must reuse a known FRESH arm, got {arm.store.of!r}"
+                )
+
+
+def arms_with(role: ArmRole) -> tuple[str, ...]:
+    """The arms holding `role`, in table order."""
+    return tuple(name for name, arm in ARMS.items() if role in arm.roles)
+
+
 # The 7-arm sweep (`--arms all`), in the order the M23-P4 runner used.
-SWEEP_ARMS: Final[tuple[str, ...]] = (
-    "a0_off", "wf_b1", "wf_b2", "wf_b3", "pfc_b1", "pfc_b2", "pfc_b3",
-)
+SWEEP_ARMS: Final[tuple[str, ...]] = arms_with(ArmRole.SWEEP)
 # Q1 RULING: default to the two headline cells — treatment + A0. Reproducing
 # the CLAIM should be cheap; reproducing the SWEEP should be possible.
 TREATMENT_ARM: Final = "wf_b3"
 DEFAULT_ARMS: Final[tuple[str, ...]] = (TREATMENT_ARM, "a0_off")
 # Section 5 of the public write-up: treatment / levers-off / native-floor.
-SECTION5_ARMS: Final[tuple[str, ...]] = (
-    "shipped_treatment", "levers_off_ablation", "native_floor",
-)
+SECTION5_ARMS: Final[tuple[str, ...]] = arms_with(ArmRole.SECTION5)
 
 CORPORA: Final[dict[str, Corpus]] = {
     "ts40": Corpus("ts40", 90_320, scored_instances=37, corpus_instances=40),
@@ -259,13 +319,10 @@ CORPORA: Final[dict[str, Corpus]] = {
     "rust43": Corpus("rust43", None, scored_instances=40, corpus_instances=43),
 }
 
-ACCEPTANCE_ARMS: Final[tuple[str, ...]] = ("shipped_treatment", "levers_off_ablation")
+ACCEPTANCE_ARMS: Final[tuple[str, ...]] = arms_with(ArmRole.ACCEPTANCE)
 # Measured and reported, never gated (no certified reference exists).
-REPORT_ONLY_ARMS: Final[tuple[str, ...]] = ("shipped_explore",)
-
-
-class ArmError(ValueError):
-    """An unknown, unavailable, or malformed arm request."""
+REPORT_ONLY_ARMS: Final[tuple[str, ...]] = arms_with(ArmRole.REPORT_ONLY)
+_validate_table()
 
 
 def char_budget(arm_name: str, corpus_name: str) -> int | None:
@@ -274,7 +331,7 @@ def char_budget(arm_name: str, corpus_name: str) -> int | None:
     A budgeted arm on a corpus with no measured budget REFUSES rather than
     invents one -- the guard that keeps a waterfill/per-file-caps arm off the
     re-cert tiers (go34/rust43), which carry no base_20k."""
-    arm = _arm(arm_name)
+    arm = get_arm(arm_name)
     if arm.factor is None:
         return None
     budget = _corpus(corpus_name).char_budget_20k
@@ -287,7 +344,7 @@ def char_budget(arm_name: str, corpus_name: str) -> int | None:
     return int(budget * arm.factor)
 
 
-def _arm(name: str) -> Arm:
+def get_arm(name: str) -> Arm:
     try:
         arm = ARMS[name]
     except KeyError:
@@ -318,7 +375,7 @@ def curation_flag(arm_name: str, corpus_name: str) -> list[str]:
     RAISES rather than falling through to an omission — omission is the bug
     this module exists to prevent.
     """
-    arm = _arm(arm_name)
+    arm = get_arm(arm_name)
     if arm.curation is Curation.SHIPPED_DEFAULT:
         # DELIBERATE omission: this arm measures the shipped default
         # (= {equiv}). Passing a flag here would defeat the measurement.
@@ -347,7 +404,7 @@ def base_flags(arm: Arm) -> list[str]:
 
 def flags_for(arm_name: str, corpus_name: str) -> list[str]:
     """The COMPLETE flag list for one cell: invariants + curation + extras."""
-    arm = _arm(arm_name)
+    arm = get_arm(arm_name)
     flags = [*base_flags(arm), *curation_flag(arm_name, corpus_name), *arm.extra_flags]
     if arm.reindex:
         flags.append("--reindex")
@@ -360,13 +417,13 @@ def store_name(arm_name: str, corpus_name: str) -> str:
 
     A FRESH arm gets its own `<arm>_<corpus>` store — never one shared with
     another cell. A REUSE arm names the FRESH store of the arm it reuses."""
-    arm = _arm(arm_name)
+    arm = get_arm(arm_name)
     _corpus(corpus_name)
-    if arm.store_mode is StoreMode.FRESH:
-        return f"{arm_name}_{corpus_name}"
-    if not arm.reuses_store_of:
-        raise ArmError(f"REUSE arm {arm_name!r} does not name the store it reuses")
-    return f"{arm.reuses_store_of}_{corpus_name}"
+    match arm.store:
+        case FreshStore():
+            return f"{arm_name}_{corpus_name}"
+        case ReuseStore(of=source):
+            return f"{source}_{corpus_name}"
 
 
 def assert_corpus_matches_protocol(
@@ -378,7 +435,7 @@ def assert_corpus_matches_protocol(
     excluded instance through fall-through, which drifts the belt. A reuse
     arm therefore REFUSES any corpus that is not the scored subset.
     """
-    arm = _arm(arm_name)
+    arm = get_arm(arm_name)
     corpus = _corpus(corpus_name)
     if not arm.scored_only_corpus:
         return
