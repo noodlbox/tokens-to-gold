@@ -28,10 +28,10 @@ from dataclasses import dataclass
 
 from arms.arm_matrix import (
     ARMS,
-    INVARIANT_FLAGS,
     ArmError,
     Curation,
     assert_lane_invariants,
+    base_flags,
 )
 
 API = "https://api.github.com"
@@ -84,7 +84,7 @@ def own_repo_flags(arm_name: str) -> list[str]:
             f"{OWN_REPO_ARMS}; got {arm_name!r}"
         )
     curation = [] if arm.curation is Curation.SHIPPED_DEFAULT else ["--curation", "off"]
-    flags = [*INVARIANT_FLAGS, *curation, *arm.extra_flags]
+    flags = [*base_flags(arm), *curation, *arm.extra_flags]
     assert_lane_invariants(flags, arm)
     return flags
 

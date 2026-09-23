@@ -21,13 +21,31 @@ import sys
 from collections.abc import Mapping
 from pathlib import Path
 
-from arms.arm_matrix import CORPORA, DEFAULT_ARMS, SWEEP_ARMS, ArmError, flags_for
+from arms.arm_matrix import (
+    CORPORA,
+    DEFAULT_ARMS,
+    SWEEP_ARMS,
+    ArmError,
+    flags_for,
+    get_arm,
+    store_name,
+)
 from ttg.acceptance import (
     check_against_baseline,
     check_report_file,
     load_fixture,
     load_frozen_gold,
     render_checks,
+)
+from ttg.cell_stamps import (
+    StampError,
+    cell_postrun,
+    cell_preflight,
+    measure_engine_tree,
+    tree_digest,
+    tree_entries_from_git,
+    verify_receipt,
+    write_build_receipt,
 )
 from ttg.curve_recompute import curve_parity_findings
 from ttg.derive_checks import (
@@ -86,6 +104,69 @@ def _resolve_arms(spec: str) -> list[str]:
 
 def cmd_flags(args: argparse.Namespace) -> int:
     print(" ".join(flags_for(args.arm, args.corpus)))
+    return 0
+
+
+def cmd_store_name(args: argparse.Namespace) -> int:
+    print(store_name(args.arm, args.corpus))
+    return 0
+
+
+def cmd_engine_tree_digest(args: argparse.Namespace) -> int:
+    """Where the engine's history is: the identity of its tree at a commit."""
+    print(tree_digest(tree_entries_from_git(Path(args.repo), args.commit)))
+    return 0
+
+
+def cmd_measure_engine_tree(args: argparse.Namespace) -> int:
+    """On the build host: the identity of the synced tree as it is (no verdict)."""
+    print(measure_engine_tree(Path(args.src)))
+    return 0
+
+
+def cmd_write_build_receipt(args: argparse.Namespace) -> int:
+    """Called only by arms/build_engine.sh, right after it built the binary."""
+    receipt = write_build_receipt(
+        src=Path(args.src), commit=args.commit,
+        pre_build_tree_digest=args.pre_build_tree_digest, binary=Path(args.binary),
+        profile=args.profile, features=args.features, out=Path(args.out),
+    )
+    print(f"build receipt: {args.out} (commit {receipt.commit}, binary {receipt.binary_sha256})")
+    return 0
+
+
+def cmd_verify_receipt(args: argparse.Namespace) -> int:
+    """Where the engine's history is: check a receipt against git, write the verdict."""
+    verdict = verify_receipt(
+        engine_repo=Path(args.engine_repo), receipt_path=Path(args.receipt),
+        out=Path(args.out),
+    )
+    print(f"receipt verdict: {args.out} (commit {verdict.commit}, tree {verdict.tree_digest})")
+    return 0
+
+
+def cmd_cell_preflight(args: argparse.Namespace) -> int:
+    """Every pre-run refusal of a cell; prints the verified manifest lines."""
+    for line in cell_preflight(
+        arm=get_arm(args.arm), corpus=args.corpus, corpus_jsonl=Path(args.corpus_jsonl),
+        store=Path(args.store), binary=Path(args.binary),
+        receipt_path=Path(args.build_receipt), verdict_path=Path(args.receipt_verdict),
+        requested_commit=args.build_commit,
+        pins=PKG / "corpora" / "jsonl.SHA256SUMS",
+    ):
+        print(line)
+    return 0
+
+
+def cmd_cell_stamp(args: argparse.Namespace) -> int:
+    """After a successful engine run: prove the reranker, then publish the report."""
+    for line in cell_postrun(
+        arm=get_arm(args.arm), corpus=args.corpus, corpus_jsonl=Path(args.corpus_jsonl),
+        store=Path(args.store), binary=Path(args.binary),
+        receipt_path=Path(args.build_receipt), verdict_path=Path(args.receipt_verdict),
+        report=Path(args.report), pins=PKG / "corpora" / "jsonl.SHA256SUMS",
+    ):
+        print(line)
     return 0
 
 
@@ -509,6 +590,81 @@ def main(argv: list[str] | None = None) -> int:
     p_flags.add_argument("--corpus", required=True, choices=sorted(CORPORA))
     p_flags.set_defaults(func=cmd_flags)
 
+    p_store = sub.add_parser(
+        "store-name", help="the per-cell store directory name under a store root"
+    )
+    p_store.add_argument("--arm", required=True)
+    p_store.add_argument("--corpus", required=True, choices=sorted(CORPORA))
+    p_store.set_defaults(func=cmd_store_name)
+
+    p_etd = sub.add_parser(
+        "engine-tree-digest", help="the engine tree identity at a commit (git side)"
+    )
+    p_etd.add_argument("--repo", required=True, help="an engine checkout with history")
+    p_etd.add_argument("--commit", required=True)
+    p_etd.set_defaults(func=cmd_engine_tree_digest)
+
+    p_met = sub.add_parser(
+        "measure-engine-tree", help="(build host) the identity of a synced engine tree"
+    )
+    p_met.add_argument("--src", required=True)
+    p_met.set_defaults(func=cmd_measure_engine_tree)
+
+    p_wbr = sub.add_parser(
+        "write-build-receipt",
+        help="(arms/build_engine.sh only) write the receipt for the binary it just built",
+    )
+    for flag in ("--src", "--commit", "--pre-build-tree-digest", "--binary", "--profile",
+                 "--features", "--out"):
+        p_wbr.add_argument(flag, required=True)
+    p_wbr.set_defaults(func=cmd_write_build_receipt)
+
+    p_vrc = sub.add_parser(
+        "verify-receipt",
+        help="(where the engine's git history is) check a build receipt against git and "
+        "write the verdict every cell requires",
+    )
+    p_vrc.add_argument("--engine-repo", required=True)
+    p_vrc.add_argument("--receipt", required=True)
+    p_vrc.add_argument("--out", required=True)
+    p_vrc.set_defaults(func=cmd_verify_receipt)
+
+    p_cpf = sub.add_parser(
+        "cell-preflight",
+        help="refuse a cell whose build, corpus or store cannot be vouched for; print "
+        "the verified manifest stamps",
+    )
+    p_cpf.add_argument("--arm", required=True)
+    p_cpf.add_argument("--corpus", required=True, choices=sorted(CORPORA))
+    p_cpf.add_argument("--corpus-jsonl", required=True)
+    p_cpf.add_argument("--store", required=True)
+    p_cpf.add_argument("--binary", required=True)
+    p_cpf.add_argument("--build-receipt", required=True)
+    p_cpf.add_argument(
+        "--receipt-verdict", required=True, help="written by `verify-receipt`"
+    )
+    p_cpf.add_argument("--build-commit", required=True, help="the requested engine commit")
+    p_cpf.set_defaults(func=cmd_cell_preflight)
+
+    p_cst = sub.add_parser(
+        "cell-stamp",
+        help="after a successful engine run: verify the reranker against the receipt's "
+        "model.lock, then publish the report and mark the store complete",
+    )
+    p_cst.add_argument("--arm", required=True)
+    p_cst.add_argument("--corpus", required=True, choices=sorted(CORPORA))
+    p_cst.add_argument("--corpus-jsonl", required=True)
+    p_cst.add_argument("--store", required=True)
+    p_cst.add_argument("--binary", required=True)
+    p_cst.add_argument(
+        "--build-receipt", required=True, help="the cell's pre-run receipt copy"
+    )
+    p_cst.add_argument(
+        "--receipt-verdict", required=True, help="the cell's pre-run verdict copy"
+    )
+    p_cst.add_argument("--report", required=True, help="the final report path")
+    p_cst.set_defaults(func=cmd_cell_stamp)
+
     p_verify = sub.add_parser("verify-gold", help="check frozen gold digests")
     p_verify.set_defaults(func=cmd_verify_gold)
 
@@ -669,6 +825,7 @@ def main(argv: list[str] | None = None) -> int:
         ArmError,
         PinError,
         PreU1BinaryError,
+        StampError,
         MissingToolError,
         UnknownCorpusError,
         UnsafeCorpusInputError,
