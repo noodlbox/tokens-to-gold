@@ -19,6 +19,7 @@ from ttg.cell_stamps import (
     BuildReceipt,
     CompletionMarker,
     StampError,
+    host_cpu,
     assert_store_ready,
     load_build_receipt,
     parse_model_lock,
@@ -317,6 +318,12 @@ class RerankerTest(unittest.TestCase):
                 'hf_repo = "jinaai/jina-reranker-v1-turbo-en"', "hf_repo = 3")):
             with self.subTest(lock=bad[:20]), self.assertRaises(StampError):
                 parse_model_lock(bad.format(graph="1" * 64, tokenizer="2" * 64))
+
+
+class HostTest(unittest.TestCase):
+    def test_the_host_cpu_names_a_model_and_a_count(self) -> None:
+        cpu = host_cpu()
+        self.assertRegex(cpu, r".+ x\d+$")
 
 
 if __name__ == "__main__":

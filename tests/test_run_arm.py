@@ -123,7 +123,7 @@ class RunArmTest(_Harness):
         for stamp in (f"build_commit: {COMMIT} (build receipt; binary sha256 verified)",
                       "(pinned)", "store:        fresh (verified absent or empty)",
                       "(corpus language verified)", "model_lock:   jinaai/",
-                      "reranker_rev: rev1"):
+                      "reranker_rev: rev1", "host_cpu:     "):
             self.assertIn(stamp, manifest)
         self.assertTrue((self.out / "shipped_explore_ts40.build-receipt.json").is_file())
         self.assertTrue((store / ".ttg-cell-complete.json").is_file())

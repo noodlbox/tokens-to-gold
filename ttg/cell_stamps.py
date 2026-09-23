@@ -437,6 +437,31 @@ def assert_store_ready(
     return f"reuse of {source}_{corpus} (verified completion marker)"
 
 
+# --- host ---------------------------------------------------------------------
+
+
+def host_cpu() -> str:
+    """The machine class a cell ran on (model name + logical CPUs). Wall-clock
+    numbers are only comparable within one class, so every manifest names it."""
+    cpuinfo = Path("/proc/cpuinfo")
+    model = ""
+    if cpuinfo.is_file():
+        model = next(
+            (line.split(":", 1)[1].strip() for line in cpuinfo.read_text().splitlines()
+             if line.startswith("model name")),
+            "",
+        )
+    else:
+        proc = subprocess.run(
+            ["sysctl", "-n", "machdep.cpu.brand_string"], capture_output=True, text=True,
+            check=False,
+        )
+        model = proc.stdout.strip()
+    if not model:
+        raise StampError("cannot determine the host CPU model")
+    return f"{model} x{os.cpu_count()}"
+
+
 # --- the two cell checkpoints -----------------------------------------------
 
 
@@ -462,6 +487,7 @@ def cell_preflight(
         f"corpus_sha256:{corpus_sha} (pinned)",
         f"store:        {store_line}",
         f"intent:       {arm.intent.value} (declared)",
+        f"host_cpu:     {host_cpu()}",
     ]
 
 
