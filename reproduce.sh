@@ -50,7 +50,7 @@ fi
 
 ARMS="default"; CORPORA="ts40,py_nosphinx"; BINARY=""; CORPUS_DIR=""
 STORE=""; OUTDIR="./out"; REDERIVE=0; SCORE_ONLY=0; REPORT_DIR=""
-ARM="shipped_treatment"
+ARM="shipped_treatment"; BUILD_COMMIT=""; MODEL_LOCK=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --arms) ARMS="$2"; shift 2 ;;
@@ -64,6 +64,8 @@ while [ $# -gt 0 ]; do
     --score-only) SCORE_ONLY=1; shift ;;
     --arm) ARM="$2"; shift 2 ;;
     --report-dir) REPORT_DIR="$2"; shift 2 ;;
+    --build-commit) BUILD_COMMIT="$2"; shift 2 ;;
+    --model-lock) MODEL_LOCK="$2"; shift 2 ;;
     -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
     *) echo "reproduce: unknown argument '$1'" >&2; exit 2 ;;
   esac
@@ -87,8 +89,11 @@ if [ "$SCORE_ONLY" -eq 1 ]; then
   [ -n "$REPORT_DIR" ] || { echo "--score-only needs --report-dir" >&2; exit 2; }
   echo; echo "== stages 2-4 skipped (--score-only) =="
 else
-  [ -n "$BINARY" ] && [ -n "$CORPUS_DIR" ] && [ -n "$STORE" ] || {
-    echo "reproduce: --binary, --corpus-dir and --store are required" >&2; exit 2; }
+  [ -n "$BINARY" ] && [ -n "$CORPUS_DIR" ] && [ -n "$STORE" ] \
+    && [ -n "$BUILD_COMMIT" ] && [ -n "$MODEL_LOCK" ] || {
+    echo "reproduce: --binary, --corpus-dir, --store, --build-commit (the engine's" \
+      "40-hex commit) and --model-lock (its assets/models/reranker/model.lock) are" \
+      "required" >&2; exit 2; }
   if [ "$REDERIVE" -eq 1 ]; then
     echo; echo "== stage 2/5: re-derive gold (L1, slow) =="
     # U1 first: a derivation on a binary that cannot analyze the corpus is
@@ -108,7 +113,8 @@ else
 
   echo; echo "== stage 3/5: run arms (L3) =="
   arms/run_matrix.sh --arms "$ARMS" --corpora "$CORPORA" --binary "$BINARY" \
-    --corpus-dir "$CORPUS_DIR" --store "$STORE" --outdir "$OUTDIR/reports"
+    --corpus-dir "$CORPUS_DIR" --store "$STORE" --outdir "$OUTDIR/reports" \
+    --build-commit "$BUILD_COMMIT" --model-lock "$MODEL_LOCK"
   REPORT_DIR="$OUTDIR/reports"
 fi
 

@@ -5,6 +5,7 @@
 set -euo pipefail
 
 ARMS="default"; CORPORA="ts40,py_nosphinx"; BINARY=""; CORPUS_DIR=""; STORE=""; OUTDIR=""
+BUILD_COMMIT=""; MODEL_LOCK=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --arms) ARMS="$2"; shift 2 ;;
@@ -13,6 +14,8 @@ while [ $# -gt 0 ]; do
     --corpus-dir) CORPUS_DIR="$2"; shift 2 ;;
     --store) STORE="$2"; shift 2 ;;
     --outdir) OUTDIR="$2"; shift 2 ;;
+    --build-commit) BUILD_COMMIT="$2"; shift 2 ;;
+    --model-lock) MODEL_LOCK="$2"; shift 2 ;;
     *) echo "run_matrix: unknown argument '$1'" >&2; exit 2 ;;
   esac
 done
@@ -30,10 +33,14 @@ for corpus in $CORPUS_LIST; do
   for arm in $ARM_LIST; do
     TOTAL=$((TOTAL+1))
     echo "=== cell ${TOTAL}: ${arm} x ${corpus} ==="
-    if ! "$PKG/arms/run_arm.sh" \
+    # One store per cell (a REUSE arm names the store it reuses): `--store`
+    # is the ROOT that holds them, never a store shared across cells.
+    if ! cell_store="$STORE/$(cd "$PKG" && python3 -m ttg.cli store-name --arm "$arm" --corpus "$corpus")" \
+        || ! "$PKG/arms/run_arm.sh" \
         --arm "$arm" --corpus "$corpus" --binary "$BINARY" \
         --corpus-jsonl "$CORPUS_DIR/${corpus}.jsonl" \
-        --store "$STORE" --out "$OUTDIR/${arm}_${corpus}.json"; then
+        --store "$cell_store" --out "$OUTDIR/${arm}_${corpus}.json" \
+        --build-commit "$BUILD_COMMIT" --model-lock "$MODEL_LOCK"; then
       FAILED=$((FAILED+1))
       echo "  cell FAILED: ${arm} x ${corpus}"
     fi

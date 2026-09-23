@@ -21,13 +21,29 @@ import sys
 from collections.abc import Mapping
 from pathlib import Path
 
-from arms.arm_matrix import CORPORA, DEFAULT_ARMS, SWEEP_ARMS, ArmError, flags_for
+from arms.arm_matrix import (
+    ARMS,
+    CORPORA,
+    DEFAULT_ARMS,
+    SWEEP_ARMS,
+    ArmError,
+    flags_for,
+    store_name,
+)
 from ttg.acceptance import (
     check_against_baseline,
     check_report_file,
     load_fixture,
     load_frozen_gold,
     render_checks,
+)
+from ttg.cell_stamps import (
+    StampError,
+    assert_store_mode,
+    parse_model_lock,
+    validated_build_commit,
+    verify_corpus,
+    verify_reranker_install,
 )
 from ttg.curve_recompute import curve_parity_findings
 from ttg.derive_checks import (
@@ -86,6 +102,35 @@ def _resolve_arms(spec: str) -> list[str]:
 
 def cmd_flags(args: argparse.Namespace) -> int:
     print(" ".join(flags_for(args.arm, args.corpus)))
+    return 0
+
+
+def cmd_store_name(args: argparse.Namespace) -> int:
+    print(store_name(args.arm, args.corpus))
+    return 0
+
+
+def cmd_cell_preflight(args: argparse.Namespace) -> int:
+    """Refuse a cell whose build, corpus or store cannot be vouched for, and
+    print the verified stamps as `key: value` manifest lines."""
+    arm = ARMS[args.arm]
+    commit = validated_build_commit(args.build_commit)
+    corpus_sha = verify_corpus(
+        Path(args.corpus_jsonl), args.corpus, PKG / "corpora" / "jsonl.SHA256SUMS"
+    )
+    assert_store_mode(Path(args.store), arm.store_mode)
+    print(f"build_commit: {commit}")
+    print(f"corpus_sha256:{corpus_sha} (pinned)")
+    print(f"store_mode:   {arm.store_mode.value} (verified)")
+    print(f"intent:       {arm.intent.value}")
+    return 0
+
+
+def cmd_cell_stamp(args: argparse.Namespace) -> int:
+    """After the run: prove the reranker the cell ranked with is the locked one."""
+    lock = parse_model_lock(Path(args.model_lock).read_text())
+    revision = verify_reranker_install(Path(args.store), lock)
+    print(f"reranker_rev: {revision} (installed files match model.lock)")
     return 0
 
 
@@ -509,6 +554,37 @@ def main(argv: list[str] | None = None) -> int:
     p_flags.add_argument("--corpus", required=True, choices=sorted(CORPORA))
     p_flags.set_defaults(func=cmd_flags)
 
+    p_store = sub.add_parser(
+        "store-name", help="the per-cell store directory name under a store root"
+    )
+    p_store.add_argument("--arm", required=True)
+    p_store.add_argument("--corpus", required=True, choices=sorted(CORPORA))
+    p_store.set_defaults(func=cmd_store_name)
+
+    p_cpf = sub.add_parser(
+        "cell-preflight",
+        help="refuse a cell whose build commit, corpus bytes or store mode cannot "
+        "be vouched for; print the verified manifest stamps",
+    )
+    p_cpf.add_argument("--arm", required=True, choices=sorted(ARMS))
+    p_cpf.add_argument("--corpus", required=True, choices=sorted(CORPORA))
+    p_cpf.add_argument("--corpus-jsonl", required=True)
+    p_cpf.add_argument("--store", required=True)
+    p_cpf.add_argument("--build-commit", required=True, help="40-hex engine commit")
+    p_cpf.set_defaults(func=cmd_cell_preflight)
+
+    p_cst = sub.add_parser(
+        "cell-stamp",
+        help="after a cell: verify the reranker installed in its store against "
+        "the engine's model.lock",
+    )
+    p_cst.add_argument("--store", required=True)
+    p_cst.add_argument(
+        "--model-lock", required=True,
+        help="the engine checkout's assets/models/reranker/model.lock",
+    )
+    p_cst.set_defaults(func=cmd_cell_stamp)
+
     p_verify = sub.add_parser("verify-gold", help="check frozen gold digests")
     p_verify.set_defaults(func=cmd_verify_gold)
 
@@ -669,6 +745,7 @@ def main(argv: list[str] | None = None) -> int:
         ArmError,
         PinError,
         PreU1BinaryError,
+        StampError,
         MissingToolError,
         UnknownCorpusError,
         UnsafeCorpusInputError,

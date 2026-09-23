@@ -14,9 +14,9 @@ import unittest
 from pathlib import Path
 
 from arms.arm_matrix import (
-    ARMS, CORPORA, DEFAULT_ARMS, SECTION5_ARMS, SWEEP_ARMS, ArmError, Curation,
-    StoreMode, assert_corpus_matches_protocol, assert_lane_invariants, cells,
-    char_budget, flags_for,
+    ACCEPTANCE_ARMS, ARMS, CORPORA, DEFAULT_ARMS, REPORT_ONLY_ARMS, SECTION5_ARMS,
+    SWEEP_ARMS, ArmError, Curation, StoreMode, assert_corpus_matches_protocol,
+    assert_lane_invariants, cells, char_budget, flags_for, store_name,
 )
 from ttg.own_repo import (
     OWN_REPO_ARMS, OwnRepoError, build_instance, own_repo_flags,
@@ -117,6 +117,44 @@ class T3ArmFlags(unittest.TestCase):
         self.assertNotIn("--curation", flags)
         self.assertIs(ARMS["shipped_treatment"].curation, Curation.SHIPPED_DEFAULT)
         self.assertIn("--reindex", flags)
+
+    def test_shipped_explore_is_the_explore_shipped_default(self) -> None:
+        """Lane 4F: the report-only Explore arm measures the SHIPPED Explore
+        default — no --curation, FRESH store + --reindex, --intent explore."""
+        flags = flags_for("shipped_explore", "go34")
+        self.assertEqual(flags[flags.index("--intent") + 1], "explore")
+        self.assertEqual(flags.count("--intent"), 1)
+        self.assertNotIn("--curation", flags)
+        self.assertIn("--reindex", flags)
+        self.assertIs(ARMS["shipped_explore"].curation, Curation.SHIPPED_DEFAULT)
+        self.assertIn("shipped_explore", REPORT_ONLY_ARMS)
+        self.assertNotIn("shipped_explore", SECTION5_ARMS)
+        self.assertNotIn("shipped_explore", ACCEPTANCE_ARMS)
+
+    def test_every_other_arm_still_measures_implement(self) -> None:
+        for name, arm in ARMS.items():
+            if name in REPORT_ONLY_ARMS or not arm.available:
+                continue
+            with self.subTest(arm=name):
+                flags = flags_for(name, "ts40")
+                self.assertEqual(flags[flags.index("--intent") + 1], "implement")
+
+    def test_an_intent_other_than_the_arms_own_is_refused(self) -> None:
+        with self.assertRaises(ArmError):
+            assert_lane_invariants(
+                ["--graph-gold", "--raw-query", "--intent", "explore", "--reindex"],
+                ARMS["shipped_treatment"],
+            )
+        with self.assertRaises(ArmError):
+            assert_lane_invariants(
+                ["--intent", "implement", "--intent", "implement", "--curation", "off"]
+            )
+
+    def test_each_fresh_cell_gets_its_own_store(self) -> None:
+        self.assertEqual(store_name("shipped_treatment", "ts40"), "shipped_treatment_ts40")
+        self.assertEqual(store_name("shipped_explore", "ts40"), "shipped_explore_ts40")
+        # The REUSE arm names the FRESH store it reuses, same corpus.
+        self.assertEqual(store_name("levers_off_ablation", "go34"), "shipped_treatment_go34")
 
     def test_section5_baseline_is_levers_off_not_a0(self) -> None:
         """Q4: a0_off numbers must NEVER be labelled levers-off."""

@@ -38,12 +38,21 @@ kept separate here because collapsing them would silently attribute the M22
 levers' contribution to curation. Which one is the PUBLISHED section-5
 baseline is a design-owner question, flagged at stop 2.
 
-LANE INVARIANTS (S5-confirmed 2026-08-19)
------------------------------------------
-Every run passes `--intent implement` (file_index + m22-tier relocation ON)
-and must NOT pass `--use-packet` — the curation override reaches only the
-bare `search_with_context` arm, and `--use-packet` would route to the packet
-arm and bypass it entirely. `assert_lane_invariants()` enforces both.
+LANE INVARIANTS (S5-confirmed 2026-08-19; intent made per-arm 2026-09-23)
+------------------------------------------------------------------------
+Every run passes exactly one `--intent <arm.intent>` and must NOT pass
+`--use-packet` — the curation override reaches only the bare
+`search_with_context` arm, and `--use-packet` would route to the packet arm
+and bypass it entirely. `assert_lane_invariants()` enforces both.
+
+Every acceptance / section-5 / sweep arm is `Intent.IMPLEMENT` (file_index +
+m22-tier relocation ON) — the V1 gate measures Implement only. The one
+non-Implement arm is the REPORT-ONLY `shipped_explore` (lane 4F, 2026-09-23):
+it measures the shipped Explore default, which since noodlbox-app #1347
+(`53754c86b`) carries the uniform delivery base (Waterfill + the file_index
+recall lane) and before it was `baseline()`. It is never a control: the
+`noodl-eval --intent` help text still calls Explore a "byte-identical
+control", which has been false since #1347.
 """
 
 from __future__ import annotations
@@ -56,8 +65,6 @@ from typing import Final
 INVARIANT_FLAGS: Final[tuple[str, ...]] = (
     "--graph-gold",
     "--raw-query",
-    "--intent",
-    "implement",
 )
 FORBIDDEN_FLAGS: Final[frozenset[str]] = frozenset({"--use-packet"})
 
@@ -80,6 +87,13 @@ class Curation(Enum):
     """The arm passes `--curation ...`; omission would be a bug."""
     SHIPPED_DEFAULT = "shipped-default"
     """The arm passes NO `--curation`; a flag would defeat the measurement."""
+
+
+class Intent(Enum):
+    """The `--intent` an arm passes; the value is the `noodl-eval` spelling."""
+
+    IMPLEMENT = "implement"
+    EXPLORE = "explore"
 
 
 class StoreMode(Enum):
@@ -108,6 +122,10 @@ class Arm:
     shipped_equivalent: str = ""
     """For a SHIPPED_DEFAULT arm: what the default resolves to, recorded so
     the provenance says it rather than leaving a reader to infer it."""
+    intent: Intent = Intent.IMPLEMENT
+    """The task intent the arm measures (see LANE INVARIANTS)."""
+    reuses_store_of: str = ""
+    """For a REUSE arm: the arm whose FRESH store (same corpus) it reuses."""
 
 
 @dataclass(frozen=True)
@@ -161,6 +179,7 @@ ARMS: Final[dict[str, Arm]] = {
         store_mode=StoreMode.REUSE,
         reindex=False,
         scored_only_corpus=True,
+        reuses_store_of="shipped_treatment",
     ),
     # B4 (LANDED 2026-08-26): the R5 native-floor arm — the in-binary R5
     # Explorer (`--explorer`): deterministic graph-free rg/glob/span retrieval,
@@ -188,6 +207,24 @@ ARMS: Final[dict[str, Arm]] = {
         store_mode=StoreMode.FRESH,
         reindex=True,
         scored_only_corpus=False,
+    ),
+    # REPORT-ONLY (lane 4F, 2026-09-23): the shipped EXPLORE default, same
+    # protocol as shipped_treatment (FRESH store + --reindex, no --curation).
+    # It has no certified reference and no gate: its first paired run (current
+    # engine vs the certified engine, same lease) becomes its reference. What
+    # the default resolves to depends on the engine — the uniform delivery base
+    # (Waterfill 65536 + file_index) from noodlbox-app #1347 on, `baseline()`
+    # before — so the provenance names both rather than one false equivalence.
+    "shipped_explore": Arm(
+        "shipped_explore", "shipped-default", None, "shipped-explore",
+        curation=Curation.SHIPPED_DEFAULT,
+        store_mode=StoreMode.FRESH,
+        reindex=True,
+        shipped_equivalent=(
+            "for_intent(Explore): UNIFORM_DELIVERY (waterfill:65536 + file_index) "
+            "from noodlbox-app #1347/53754c86b; baseline() before"
+        ),
+        intent=Intent.EXPLORE,
     ),
 }
 
@@ -217,6 +254,8 @@ CORPORA: Final[dict[str, Corpus]] = {
 }
 
 ACCEPTANCE_ARMS: Final[tuple[str, ...]] = ("shipped_treatment", "levers_off_ablation")
+# Measured and reported, never gated (no certified reference exists).
+REPORT_ONLY_ARMS: Final[tuple[str, ...]] = ("shipped_explore",)
 
 
 class ArmError(ValueError):
@@ -293,14 +332,35 @@ def curation_flag(arm_name: str, corpus_name: str) -> list[str]:
     raise ArmError(f"arm {arm_name!r} has unknown policy {arm.policy!r}")
 
 
+def base_flags(arm: Arm) -> list[str]:
+    """The flags every run of `arm` carries before curation: the lane
+    invariants plus the arm's own `--intent`. The one place both are composed,
+    so no caller can emit the invariants without the intent."""
+    return [*INVARIANT_FLAGS, "--intent", arm.intent.value]
+
+
 def flags_for(arm_name: str, corpus_name: str) -> list[str]:
     """The COMPLETE flag list for one cell: invariants + curation + extras."""
     arm = _arm(arm_name)
-    flags = [*INVARIANT_FLAGS, *curation_flag(arm_name, corpus_name), *arm.extra_flags]
+    flags = [*base_flags(arm), *curation_flag(arm_name, corpus_name), *arm.extra_flags]
     if arm.reindex:
         flags.append("--reindex")
     assert_lane_invariants(flags, arm)
     return flags
+
+
+def store_name(arm_name: str, corpus_name: str) -> str:
+    """The per-cell store directory name under a run's store root.
+
+    A FRESH arm gets its own `<arm>_<corpus>` store — never one shared with
+    another cell. A REUSE arm names the FRESH store of the arm it reuses."""
+    arm = _arm(arm_name)
+    _corpus(corpus_name)
+    if arm.store_mode is StoreMode.FRESH:
+        return f"{arm_name}_{corpus_name}"
+    if not arm.reuses_store_of:
+        raise ArmError(f"REUSE arm {arm_name!r} does not name the store it reuses")
+    return f"{arm.reuses_store_of}_{corpus_name}"
 
 
 def assert_corpus_matches_protocol(
@@ -346,8 +406,17 @@ def assert_lane_invariants(flags: Sequence[str], arm: Arm | None = None) -> None
             f"lane invariant violated: {sorted(forbidden)} would route to the "
             "packet arm and bypass the curation override entirely"
         )
-    if "--intent" not in flags:
-        raise ArmError("lane invariant violated: --intent implement is required")
+    intents = [flags[i + 1] for i, flag in enumerate(flags[:-1]) if flag == "--intent"]
+    if len(intents) != 1 or intents[0] not in {intent.value for intent in Intent}:
+        raise ArmError(
+            "lane invariant violated: exactly one --intent with a known value is "
+            f"required, got {intents!r}"
+        )
+    if arm is not None and intents[0] != arm.intent.value:
+        raise ArmError(
+            f"arm {arm.name!r} measures --intent {arm.intent.value}, but the flags "
+            f"pass --intent {intents[0]}"
+        )
 
 
 def cells(

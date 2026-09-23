@@ -17,10 +17,21 @@ Two curves are measured per instance:
 
 ```sh
 ./reproduce.sh --score-only --report-dir <dir-of-reports>          # score existing reports
-./reproduce.sh --binary <noodl-eval> --corpus-dir <dir> --store <dir>   # run + score
+./reproduce.sh --binary <noodl-eval> --corpus-dir <dir> --store <root> \
+  --build-commit <engine 40-hex sha> --model-lock <engine>/assets/models/reranker/model.lock
 ./reproduce.sh ... --arms all          # the full 7-arm sweep (14 cells)
 ./reproduce.sh ... --rederive-gold     # also re-derive the frozen gold (slow)
 ```
+
+A run records what the eval report cannot: every cell's manifest carries the
+engine commit, the binary's own `capabilities`, the corpus JSONL sha256
+(refused unless it matches `corpora/jsonl.SHA256SUMS`), the store mode (each
+FRESH cell gets its own `<root>/<arm>_<corpus>` store, refused if populated)
+and, after the run, the reranker revision proven by digest against the
+engine's `model.lock`. A cell that fails any of these fails.
+
+`shipped_explore` is a REPORT-ONLY arm (the shipped Explore default); it has no
+certified reference and is never a gate or a control.
 
 **The `--binary` lines need an engine this project does not supply.** The
 re-certification engine is an internal tool and is not published, so the
