@@ -18,23 +18,27 @@ Two curves are measured per instance:
 ```sh
 ./reproduce.sh --score-only --report-dir <dir-of-reports>          # score existing reports
 ./reproduce.sh --binary <out>/noodl-eval --corpus-dir <dir> --store <root> \
-  --build-commit <engine 40-hex sha> --build-receipt <out>/build-receipt.json
+  --build-commit <engine 40-hex sha> --build-receipt <out>/build-receipt.json \
+  --receipt-verdict <out>/receipt-verdict.json
 ./reproduce.sh ... --arms all          # the full 7-arm sweep (14 cells)
 ./reproduce.sh ... --rederive-gold     # also re-derive the frozen gold (slow)
 ```
 
-The engine binary is built by `arms/build_engine.sh --src <engine tree> --commit
-<sha> --expected-tree-digest <d> --out-dir <out>`, where `<d>` is `python3 -m
-ttg.cli engine-tree-digest --repo <engine checkout> --commit <sha>` computed where
-the engine's history is. `noodl-eval` embeds no commit, so that one step proves
-it instead: it refuses unless the source tree is exactly the commit's (git blob
-ids; any drifted, extra or missing file), builds from it, and writes a receipt
+`noodl-eval` embeds no commit, so the engine is built by `arms/build_engine.sh
+--src <engine tree> --commit <sha> --out-dir <out>`, which measures the source
+tree's identity (git blob ids), builds from it, re-measures, and writes a receipt
 (commit, tree identity, binary sha256, cargo profile + features, toolchain,
-capabilities, and the engine's reranker `model.lock`).
+capabilities, and the engine's reranker `model.lock`). The receipt is then
+checked where the engine's history is — `python3 -m ttg.cli verify-receipt
+--engine-repo <checkout> --receipt <out>/build-receipt.json --out
+<out>/receipt-verdict.json` derives the commit's tree from `git ls-tree -r` and
+its lock and toolchain from `git show`, and refuses any mismatch. Every cell
+requires that verdict.
 
 Every cell's manifest then carries verified stamps (`ttg/cell_stamps.py` owns
-them all): the binary must hash to its receipt and the receipt must name the
-requested commit; the corpus JSONL must match `corpora/jsonl.SHA256SUMS` and its
+them all): the binary must hash to its receipt, the receipt must carry its
+git-history verdict and name the requested commit, and the binary's live
+capabilities must equal the receipt's; the corpus JSONL must match `corpora/jsonl.SHA256SUMS` and its
 language the binary's capabilities; a FRESH cell needs its own absent or empty
 `<root>/<arm>_<corpus>` store, a REUSE cell its source cell's completion marker
 from the same build and corpus; after the run, a ranking arm must have installed

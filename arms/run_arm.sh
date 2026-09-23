@@ -9,17 +9,17 @@
 #
 # PROVENANCE, LAYER 4 (lane 4F): every stamp lives in `ttg/cell_stamps.py`; this
 # script only calls it. Before the engine runs, `ttg.cli cell-preflight` refuses
-# a cell whose binary is not the one its build receipt names (commit -> verified
-# engine tree -> binary sha256), whose corpus JSONL differs from its pin, whose
+# a cell whose binary is not the one its build receipt names, or whose receipt
+# lacks the verdict `verify-receipt` issued against the engine's git history, whose corpus JSONL differs from its pin, whose
 # corpus language the binary cannot analyze, or whose store breaks the arm's
 # FRESH/REUSE policy. The engine writes its report to `<out>.partial`; only
 # after `ttg.cli cell-stamp` proves the reranker is the report moved into place
-# (and a FRESH store marked complete). The build receipt is copied beside the
-# manifest.
+# (and a FRESH store marked complete, or a REUSE store's marker given back). The
+# receipt and its verdict are copied beside the manifest.
 set -euo pipefail
 
 ARM=""; CORPUS=""; BINARY=""; JSONL=""; STORE=""; OUT=""; TIMEOUT="900"
-BUILD_RECEIPT=""; BUILD_COMMIT=""
+BUILD_RECEIPT=""; RECEIPT_VERDICT=""; BUILD_COMMIT=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --arm) ARM="$2"; shift 2 ;;
@@ -30,11 +30,12 @@ while [ $# -gt 0 ]; do
     --out) OUT="$2"; shift 2 ;;
     --timeout) TIMEOUT="$2"; shift 2 ;;
     --build-receipt) BUILD_RECEIPT="$2"; shift 2 ;;
+    --receipt-verdict) RECEIPT_VERDICT="$2"; shift 2 ;;
     --build-commit) BUILD_COMMIT="$2"; shift 2 ;;
     *) echo "run_arm: unknown argument '$1'" >&2; exit 2 ;;
   esac
 done
-for required in ARM CORPUS BINARY JSONL STORE OUT BUILD_RECEIPT BUILD_COMMIT; do
+for required in ARM CORPUS BINARY JSONL STORE OUT BUILD_RECEIPT RECEIPT_VERDICT BUILD_COMMIT; do
   if [ -z "${!required}" ]; then
     echo "run_arm: --$(echo "$required" | tr 'A-Z_' 'a-z-') is required" >&2; exit 2
   fi
@@ -49,7 +50,8 @@ FLAGS="$(python3 -m ttg.cli flags --arm "$ARM" --corpus "$CORPUS")"
 # Refuse before any work; on success these are the verified manifest lines.
 STAMPS="$(python3 -m ttg.cli cell-preflight --arm "$ARM" --corpus "$CORPUS" \
   --corpus-jsonl "$JSONL" --store "$STORE" --binary "$BINARY" \
-  --build-receipt "$BUILD_RECEIPT" --build-commit "$BUILD_COMMIT")"
+  --build-receipt "$BUILD_RECEIPT" --receipt-verdict "$RECEIPT_VERDICT" \
+  --build-commit "$BUILD_COMMIT")"
 
 MAN="${OUT%.json}.manifest.txt"
 LOG="${OUT%.json}.log"
@@ -57,6 +59,7 @@ PARTIAL="${OUT}.partial"
 mkdir -p "$(dirname "$OUT")"
 rm -f "$OUT" "$PARTIAL"
 cp "$BUILD_RECEIPT" "${OUT%.json}.build-receipt.json"
+cp "$RECEIPT_VERDICT" "${OUT%.json}.receipt-verdict.json"
 {
   echo "# cell manifest — ${ARM} x ${CORPUS}"
   echo "arm:          $ARM"

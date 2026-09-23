@@ -6,38 +6,44 @@ ran in. Each of those has moved a TtG number before (engine drift, R22; a reused
 store inflating a cell by +19.23 pp; a disk collapse deleting catalog rows from
 a reused store). This module owns every stamp; the shell runners only call it.
 
-THE ENGINE BUILD RECEIPT (lane 4F, ruling C-F1 (A))
----------------------------------------------------
+THE ENGINE BUILD RECEIPT AND ITS VERDICT (lane 4F, ruling C-F1 (A) + round 2)
+-----------------------------------------------------------------------------
 `noodl-eval` embeds no commit (only `nbx` bakes `NOODLBOX_GIT_SHA`), so the
-commit cannot be read back from the binary. It is proven instead by a receipt
-written by the SAME step that builds (`arms/build_engine.sh`):
+commit cannot be read back from the binary. It is proven in two halves:
 
-1. the synced engine source tree is re-identified on the build host — the git
-   blob id of every file, as a sorted (kind, blob, path) list digest — and must
-   equal the digest of `git ls-tree -r <commit>` computed where the history is
-   (any drifted, extra or missing file refuses; the sync-excluded paths are
-   excluded on both sides);
-2. the engine is built from that tree and the tree is re-identified after the
-   build (a build that writes into its own sources refuses);
-3. the receipt records {commit, tree digest, binary sha256, cargo profile and
-   features, the toolchain file and `rustc -V`, the binary's own
-   `capabilities`, and the engine's `model.lock` text + sha256}.
+1. THE BUILD (`arms/build_engine.sh`, on the build host, which has no `.git`)
+   MEASURES the synced tree's identity — the git blob id of every file, as a
+   sorted (kind, blob, path) digest — builds the engine from it, re-measures
+   (a build that wrote into its own sources refuses), and writes a receipt:
+   {commit, the measured tree digest, binary sha256, cargo profile + features,
+   `rust-toolchain.toml` text, `rustc -V`, the binary's capabilities, and the
+   engine's `model.lock` text + sha256}. It compares the tree to nothing —
+   there is no expected digest to pass in, so none can be copied from a
+   refusal and passed back.
+2. THE VERDICT (`verify_receipt`, run where the engine's git history is) DERIVES
+   what the commit's tree is: the receipt's tree digest must equal
+   `git ls-tree -r <commit>`'s, and its `model.lock` and toolchain text must
+   equal `git show <commit>:<path>`. It writes a verdict bound to the receipt's
+   bytes (sha256).
 
-A cell then refuses unless the binary it is about to run hashes to the
-receipt's `binary_sha256` and the receipt's commit is the requested one. The
-reranker lock comes from the receipt — i.e. from the verified engine tree — so
-it is bound to the commit by construction, never supplied by an operator.
+A cell then refuses unless the verdict matches its receipt, the binary it is
+about to run hashes to the receipt's `binary_sha256`, the receipt's commit is
+the requested one, and the binary's LIVE capabilities equal the receipt's. The
+reranker lock is the receipt's — the verified engine tree's — so it is bound to
+the commit, never supplied by an operator. What remains trusted is only the
+tree -> binary link inside the build step, which the ruling accepts.
 
 CELL STAMPS
 -----------
-Before the engine runs (`cell_preflight`): the receipt/binary binding; the
-corpus JSONL against `corpora/jsonl.SHA256SUMS`; the corpus language against
-the binary's capabilities; the store policy — a FRESH cell's own absent-or-empty
-store, or a REUSE cell's source store carrying a completion marker from the SAME
-build and corpus. After it (`cell_postrun`): a ranking arm must have installed
-exactly the locked reranker; a non-ranking arm must have installed no reranker
-of ANY revision. Only then is the report moved from its `.partial` name into
-place and the store's completion marker written.
+Before the engine runs (`cell_preflight`): the verdict/receipt/binary binding;
+live capabilities; the corpus JSONL against `corpora/jsonl.SHA256SUMS`; the
+store policy — a FRESH cell's own absent-or-empty store, or a REUSE cell's
+source store carrying a completion marker from the SAME build and corpus, which
+the REUSE preflight CONSUMES (renames) so a REUSE run that dies can never leave
+a damaged store marked complete. After it (`cell_postrun`): a ranking arm must
+have installed exactly the locked reranker, a non-ranking arm no reranker of
+ANY revision; only then is the report moved from `.partial` into place, and
+then the store marked complete (FRESH) or its marker restored (REUSE).
 """
 
 from __future__ import annotations
@@ -47,6 +53,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import tomllib
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -55,10 +62,12 @@ from typing import Final
 from arms.arm_matrix import Arm, FreshStore
 from ttg.preflight import analysis_languages, require_corpus_support
 
-RECEIPT_SCHEMA: Final = 1
+RECEIPT_SCHEMA: Final = 2
+VERDICT_SCHEMA: Final = 1
 MODEL_LOCK_PATH: Final = "assets/models/reranker/model.lock"
 TOOLCHAIN_PATH: Final = "rust-toolchain.toml"
 COMPLETION_MARKER: Final = ".ttg-cell-complete.json"
+CONSUMED_MARKER_SUFFIX: Final = ".in-use"
 PARTIAL_SUFFIX: Final = ".partial"
 ENGINE_TREE_EXCLUDES: Final = frozenset(
     {"target", ".git", ".workspace-state", ".p93-evidence", ".nbx", "node_modules"}
@@ -102,11 +111,35 @@ def _git_blob_id(data: bytes) -> str:
     return hashlib.sha1(b"blob %d\0" % len(data) + data, usedforsecurity=False).hexdigest()
 
 
+def _read_bytes(path: Path) -> bytes:
+    try:
+        return path.read_bytes()
+    except OSError as exc:
+        raise StampError(f"cannot read {path}: {exc}") from None
+
+
 def _read_text(path: Path, what: str) -> str:
     try:
         return path.read_text()
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         raise StampError(f"cannot read the {what} {path}: {exc}") from None
+
+
+def _run(argv: list[str], what: str, cwd: Path | None = None) -> bytes:
+    try:
+        proc = subprocess.run(argv, cwd=cwd, capture_output=True, check=False)
+    except OSError as exc:
+        raise StampError(f"cannot run {what} ({argv[0]}): {exc}") from None
+    if proc.returncode != 0:
+        raise StampError(f"{what} failed: {proc.stderr.decode(errors='replace').strip()}")
+    return proc.stdout
+
+
+def _decode(data: bytes, what: str) -> str:
+    try:
+        return data.decode()
+    except UnicodeDecodeError as exc:
+        raise StampError(f"{what} is not UTF-8: {exc}") from None
 
 
 # --- engine tree identity ---------------------------------------------------
@@ -133,16 +166,14 @@ def tree_digest(entries: list[TreeEntry]) -> str:
 
 def tree_entries_from_git(repo: Path, commit: str) -> list[TreeEntry]:
     """The engine tree as git records it at `commit`, minus excluded paths."""
-    proc = subprocess.run(
+    out = _run(
         ["git", "-C", str(repo), "ls-tree", "-r", "-z", "--full-tree",
          validated_commit(commit)],
-        capture_output=True, check=False,
+        f"git ls-tree {commit}",
     )
-    if proc.returncode != 0:
-        raise StampError(f"git ls-tree {commit} failed: {proc.stderr.decode().strip()}")
     entries = []
-    for record in filter(None, proc.stdout.split(b"\0")):
-        meta, path = record.decode().split("\t", 1)
+    for record in filter(None, out.split(b"\0")):
+        meta, path = _decode(record, "a git ls-tree record").split("\t", 1)
         mode, kind, blob = meta.split()
         if kind != "blob":
             raise StampError(f"engine tree entry {path!r} is a {kind}, not a file")
@@ -174,18 +205,20 @@ def tree_entries_from_disk(root: Path) -> list[TreeEntry]:
             if path.is_symlink():
                 entries.append(TreeEntry(rel, "l", _git_blob_id(os.readlink(path).encode())))
             else:
-                entries.append(TreeEntry(rel, "f", _git_blob_id(path.read_bytes())))
+                entries.append(TreeEntry(rel, "f", _git_blob_id(_read_bytes(path))))
     return entries
 
 
-def verify_engine_tree(root: Path, expected_digest: str) -> str:
-    got = tree_digest(tree_entries_from_disk(root))
-    if got != expected_digest:
-        raise StampError(
-            f"engine source tree at {root} has identity {got}, the commit's is "
-            f"{expected_digest}: a file drifted, was added, or is missing"
-        )
-    return got
+def measure_engine_tree(root: Path) -> str:
+    return tree_digest(tree_entries_from_disk(root))
+
+
+def git_show(repo: Path, commit: str, path: str) -> str:
+    return _decode(
+        _run(["git", "-C", str(repo), "show", f"{validated_commit(commit)}:{path}"],
+             f"git show {commit}:{path}"),
+        f"{commit}:{path}",
+    )
 
 
 # --- the build receipt ------------------------------------------------------
@@ -196,6 +229,7 @@ class BuildReceipt:
     schema: int
     commit: str
     tree_digest: str
+    """MEASURED on the build host; `verify_receipt` compares it to git."""
     binary_sha256: str
     cargo_profile: str
     cargo_features: str
@@ -207,17 +241,17 @@ class BuildReceipt:
 
 
 def write_build_receipt(
-    *, src: Path, commit: str, expected_tree_digest: str, binary: Path,
+    *, src: Path, commit: str, pre_build_tree_digest: str, binary: Path,
     profile: str, features: str, out: Path,
 ) -> BuildReceipt:
-    """Called by the build step, AFTER it built `binary` from `src`: the tree is
-    re-identified (a build must not have written into its own sources)."""
-    tree = verify_engine_tree(src, expected_tree_digest)
-    rustc = subprocess.run(
-        ["rustc", "-V"], cwd=src, capture_output=True, text=True, check=False
-    )
-    if rustc.returncode != 0:
-        raise StampError(f"`rustc -V` failed in {src}: {rustc.stderr.strip()}")
+    """Called by the build step AFTER it built `binary` from `src`. The tree is
+    re-measured and must equal what it measured before the build."""
+    tree = measure_engine_tree(src)
+    if tree != pre_build_tree_digest:
+        raise StampError(
+            f"the engine tree at {src} changed during the build: the build wrote into "
+            "its own sources"
+        )
     lock_text = _read_text(src / MODEL_LOCK_PATH, "engine model.lock")
     parse_model_lock(lock_text)
     receipt = BuildReceipt(
@@ -228,7 +262,7 @@ def write_build_receipt(
         cargo_profile=profile,
         cargo_features=features,
         rust_toolchain_toml=_read_text(src / TOOLCHAIN_PATH, "toolchain file"),
-        rustc_version=rustc.stdout.strip(),
+        rustc_version=_decode(_run(["rustc", "-V"], "rustc -V", cwd=src), "rustc -V").strip(),
         analysis_languages=tuple(sorted(analysis_languages(str(binary)))),
         model_lock_text=lock_text,
         model_lock_sha256=hashlib.sha256(lock_text.encode()).hexdigest(),
@@ -256,6 +290,63 @@ def load_build_receipt(path: Path) -> BuildReceipt:
     return receipt
 
 
+# --- the receipt verdict (git side) -----------------------------------------
+
+
+@dataclass(frozen=True)
+class ReceiptVerdict:
+    """Written only by `verify_receipt`: the receipt's claims checked against
+    the engine's git history, bound to the exact receipt bytes."""
+
+    schema: int
+    receipt_sha256: str
+    commit: str
+    tree_digest: str
+    model_lock_sha256: str
+    checked: str
+
+
+def verify_receipt(*, engine_repo: Path, receipt_path: Path, out: Path) -> ReceiptVerdict:
+    """The commit's tree identity, lock and toolchain are DERIVED from git
+    history here — never an input — and must equal the receipt's."""
+    receipt = load_build_receipt(receipt_path)
+    derived = tree_digest(tree_entries_from_git(engine_repo, receipt.commit))
+    if receipt.tree_digest != derived:
+        raise StampError(
+            f"the receipt's tree is not commit {receipt.commit}'s tree: the build host's "
+            "sources drifted from the commit"
+        )
+    if receipt.model_lock_text != git_show(engine_repo, receipt.commit, MODEL_LOCK_PATH):
+        raise StampError(f"the receipt's model.lock is not commit {receipt.commit}'s")
+    if receipt.rust_toolchain_toml != git_show(engine_repo, receipt.commit, TOOLCHAIN_PATH):
+        raise StampError(f"the receipt's rust-toolchain.toml is not commit {receipt.commit}'s")
+    verdict = ReceiptVerdict(
+        schema=VERDICT_SCHEMA,
+        receipt_sha256=file_sha256(receipt_path),
+        commit=receipt.commit,
+        tree_digest=derived,
+        model_lock_sha256=receipt.model_lock_sha256,
+        checked="tree digest vs git ls-tree -r; model.lock + rust-toolchain.toml vs git show",
+    )
+    out.write_text(json.dumps(asdict(verdict), indent=2, sort_keys=True) + "\n")
+    return verdict
+
+
+def load_receipt_verdict(path: Path, receipt_path: Path) -> ReceiptVerdict:
+    try:
+        verdict = ReceiptVerdict(**json.loads(_read_text(path, "receipt verdict")))
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise StampError(f"receipt verdict {path} is malformed: {exc}") from None
+    if verdict.schema != VERDICT_SCHEMA:
+        raise StampError(f"receipt verdict {path} has schema {verdict.schema}")
+    if verdict.receipt_sha256 != file_sha256(receipt_path):
+        raise StampError(
+            f"receipt verdict {path} was not issued for {receipt_path}: run "
+            "`ttg.cli verify-receipt` against the engine's git history"
+        )
+    return verdict
+
+
 def verify_binary_against_receipt(binary: Path, receipt: BuildReceipt, requested_commit: str) -> None:
     if receipt.commit != validated_commit(requested_commit):
         raise StampError(
@@ -268,6 +359,16 @@ def verify_binary_against_receipt(binary: Path, receipt: BuildReceipt, requested
             f"binary {binary} has sha256 {got}, the build receipt's binary is "
             f"{receipt.binary_sha256}: this is not the binary that commit built"
         )
+
+
+def verify_live_capabilities(binary: Path, receipt: BuildReceipt) -> tuple[str, ...]:
+    live = tuple(sorted(analysis_languages(str(binary))))
+    if live != receipt.analysis_languages:
+        raise StampError(
+            f"binary {binary} reports capabilities {list(live)}, the build receipt "
+            f"claims {list(receipt.analysis_languages)}"
+        )
+    return live
 
 
 # --- the reranker lock ------------------------------------------------------
@@ -403,7 +504,12 @@ def _populated(store: Path) -> bool:
     return store.is_dir() and any(store.iterdir())
 
 
-def assert_store_ready(
+def consumed_marker(store: Path, arm: Arm) -> Path:
+    """Where a REUSE cell holds its source store's marker while it runs."""
+    return store / f"{COMPLETION_MARKER}{CONSUMED_MARKER_SUFFIX}.{arm.name}"
+
+
+def check_store(
     store: Path, arm: Arm, corpus: str, receipt: BuildReceipt, corpus_sha: str
 ) -> str:
     if isinstance(arm.store, FreshStore):
@@ -420,10 +526,11 @@ def assert_store_ready(
     if not marker_path.is_file():
         raise StampError(
             f"REUSE arm {arm.name!r}: {store} has no completion marker — its source "
-            f"cell {source!r} did not finish and stamp"
+            f"cell {source!r} did not finish and stamp, or an earlier REUSE run on it "
+            "did not complete"
         )
     try:
-        marker = CompletionMarker(**json.loads(marker_path.read_text()))
+        marker = CompletionMarker(**json.loads(_read_text(marker_path, "completion marker")))
     except (json.JSONDecodeError, TypeError) as exc:
         raise StampError(f"completion marker {marker_path} is malformed: {exc}") from None
     expected = (source, corpus, receipt.commit, receipt.binary_sha256, corpus_sha)
@@ -434,32 +541,55 @@ def assert_store_ready(
             f"REUSE arm {arm.name!r}: {store} was completed by {got}, this cell "
             f"needs {expected}"
         )
-    return f"reuse of {source}_{corpus} (verified completion marker)"
+    return f"reuse of {source}_{corpus} (verified completion marker, now held by this run)"
 
 
-# --- host ---------------------------------------------------------------------
+# --- host -------------------------------------------------------------------
+
+
+def cpu_model_from_cpuinfo(text: str) -> str:
+    """The `model name` of a Linux `/proc/cpuinfo`; refuses when there is none."""
+    for line in text.splitlines():
+        key, sep, value = line.partition(":")
+        if sep and key.strip() == "model name" and value.strip():
+            return value.strip()
+    raise StampError("/proc/cpuinfo names no CPU model")
+
+
+def cpu_model_from_brand_string(text: str) -> str:
+    """The macOS `machdep.cpu.brand_string`; refuses when it is empty."""
+    model = text.strip()
+    if not model:
+        raise StampError("machdep.cpu.brand_string is empty")
+    return model
+
+
+def format_host_cpu(model: str, usable_cpus: int | None) -> str:
+    if usable_cpus is None or usable_cpus < 1:
+        raise StampError(f"cannot determine the CPUs this process may use ({usable_cpus!r})")
+    return f"{model} x{usable_cpus}"
+
+
+def usable_cpu_count() -> int | None:
+    """The CPUs this process may run on — its affinity mask where the platform
+    has one (`os.process_cpu_count` semantics), else the host count."""
+    if sys.platform == "linux":
+        return len(os.sched_getaffinity(0))
+    return os.cpu_count()
 
 
 def host_cpu() -> str:
-    """The machine class a cell ran on (model name + logical CPUs). Wall-clock
-    numbers are only comparable within one class, so every manifest names it."""
+    """The machine class a cell ran on. Wall-clock numbers are only comparable
+    within one class, so every manifest names it — or the cell refuses."""
     cpuinfo = Path("/proc/cpuinfo")
-    model = ""
     if cpuinfo.is_file():
-        model = next(
-            (line.split(":", 1)[1].strip() for line in cpuinfo.read_text().splitlines()
-             if line.startswith("model name")),
-            "",
-        )
+        model = cpu_model_from_cpuinfo(_read_text(cpuinfo, "cpuinfo"))
     else:
-        proc = subprocess.run(
-            ["sysctl", "-n", "machdep.cpu.brand_string"], capture_output=True, text=True,
-            check=False,
-        )
-        model = proc.stdout.strip()
-    if not model:
-        raise StampError("cannot determine the host CPU model")
-    return f"{model} x{os.cpu_count()}"
+        model = cpu_model_from_brand_string(_decode(
+            _run(["sysctl", "-n", "machdep.cpu.brand_string"], "sysctl brand string"),
+            "sysctl output",
+        ))
+    return format_host_cpu(model, usable_cpu_count())
 
 
 # --- the two cell checkpoints -----------------------------------------------
@@ -467,27 +597,36 @@ def host_cpu() -> str:
 
 def cell_preflight(
     *, arm: Arm, corpus: str, corpus_jsonl: Path, store: Path, binary: Path,
-    receipt_path: Path, requested_commit: str, pins: Path,
+    receipt_path: Path, verdict_path: Path, requested_commit: str, pins: Path,
 ) -> list[str]:
-    """Every pre-run refusal; returns the verified manifest lines."""
+    """Every pre-run refusal; returns the verified manifest lines. The one side
+    effect — a REUSE cell taking its source store's completion marker — happens
+    only after every check passed."""
     receipt = load_build_receipt(receipt_path)
+    verdict = load_receipt_verdict(verdict_path, receipt_path)
     verify_binary_against_receipt(binary, receipt, requested_commit)
+    live = verify_live_capabilities(binary, receipt)
     lock = parse_model_lock(receipt.model_lock_text)
     require_corpus_support(str(binary), corpus)
     corpus_sha = verify_corpus(corpus_jsonl, corpus, pins)
-    store_line = assert_store_ready(store, arm, corpus, receipt, corpus_sha)
+    store_line = check_store(store, arm, corpus, receipt, corpus_sha)
+    cpu = host_cpu()
+    if not isinstance(arm.store, FreshStore):
+        (store / COMPLETION_MARKER).replace(consumed_marker(store, arm))
     return [
-        f"build_commit: {receipt.commit} (build receipt; binary sha256 verified)",
-        f"engine_tree:  {receipt.tree_digest} (recomputed at build)",
+        f"build_commit: {receipt.commit} (receipt verified against git history; "
+        "binary sha256 verified)",
+        f"engine_tree:  {verdict.tree_digest} (= git ls-tree -r {receipt.commit})",
         f"binary_sha256:{receipt.binary_sha256} (verified)",
         f"cargo:        profile={receipt.cargo_profile} features={receipt.cargo_features}",
         f"rustc:        {receipt.rustc_version}",
-        f"capabilities: {','.join(receipt.analysis_languages)} (corpus language verified)",
-        f"model_lock:   {lock.hf_repo}@{lock.revision} sha256={receipt.model_lock_sha256}",
+        f"capabilities: {','.join(live)} (live; equals the receipt; corpus language verified)",
+        f"model_lock:   {lock.hf_repo}@{lock.revision} sha256={receipt.model_lock_sha256} "
+        "(= git show)",
         f"corpus_sha256:{corpus_sha} (pinned)",
         f"store:        {store_line}",
         f"intent:       {arm.intent.value} (declared)",
-        f"host_cpu:     {host_cpu()}",
+        f"host_cpu:     {cpu}",
     ]
 
 
@@ -495,8 +634,9 @@ def cell_postrun(
     *, arm: Arm, corpus: str, corpus_jsonl: Path, store: Path, receipt_path: Path,
     report: Path, pins: Path,
 ) -> list[str]:
-    """After a successful engine run: prove the reranker, then publish the report
-    and (FRESH) mark the store complete. Nothing is published on a refusal."""
+    """After a successful engine run: prove the reranker, publish the report,
+    then (FRESH) mark the store complete or (REUSE) give its marker back.
+    Nothing is published or marked on a refusal."""
     receipt = load_build_receipt(receipt_path)
     lock = parse_model_lock(receipt.model_lock_text)
     if arm.ranks_with_reranker:
@@ -509,6 +649,7 @@ def cell_postrun(
     partial = report.with_name(report.name + PARTIAL_SUFFIX)
     if not partial.is_file():
         raise StampError(f"engine report {partial} is missing")
+    partial.replace(report)
     if isinstance(arm.store, FreshStore):
         marker = CompletionMarker(
             arm=arm.name, corpus=corpus, commit=receipt.commit,
@@ -516,5 +657,6 @@ def cell_postrun(
             corpus_sha256=verify_corpus(corpus_jsonl, corpus, pins), reranker=reranker,
         )
         (store / COMPLETION_MARKER).write_text(json.dumps(asdict(marker), sort_keys=True))
-    partial.replace(report)
+    else:
+        consumed_marker(store, arm).replace(store / COMPLETION_MARKER)
     return [line, f"report:       {report} (published after every stamp passed)"]

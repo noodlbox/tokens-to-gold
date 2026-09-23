@@ -19,8 +19,15 @@ from ttg.cell_stamps import (
     BuildReceipt,
     CompletionMarker,
     StampError,
-    host_cpu,
-    assert_store_ready,
+    check_store,
+    consumed_marker,
+    cpu_model_from_brand_string,
+    cpu_model_from_cpuinfo,
+    format_host_cpu,
+    load_receipt_verdict,
+    measure_engine_tree,
+    verify_live_capabilities,
+    verify_receipt,
     load_build_receipt,
     parse_model_lock,
     pinned_sha256,
@@ -30,7 +37,6 @@ from ttg.cell_stamps import (
     validated_commit,
     verify_binary_against_receipt,
     verify_corpus,
-    verify_engine_tree,
     verify_no_reranker_install,
     verify_reranker_install,
     write_build_receipt,
@@ -62,7 +68,7 @@ def _sha(data: bytes) -> str:
 def _receipt(binary_sha: str, commit: str = COMMIT) -> BuildReceipt:
     lock = LOCK.format(graph=_sha(b"model"), tokenizer=_sha(b"{}"))
     return BuildReceipt(
-        schema=1, commit=commit, tree_digest="a" * 64, binary_sha256=binary_sha,
+        schema=2, commit=commit, tree_digest="a" * 64, binary_sha256=binary_sha,
         cargo_profile="release", cargo_features="default",
         rust_toolchain_toml='[toolchain]\nchannel = "1.95"\n', rustc_version="rustc 1.95.0",
         analysis_languages=("go", "python", "typescript"), model_lock_text=lock,
@@ -107,32 +113,29 @@ class EngineTreeTest(unittest.TestCase):
         shutil.copytree(self.repo, self.synced, symlinks=True,
                         ignore=shutil.ignore_patterns(".git"))
 
-    def test_the_synced_tree_matches_the_commit(self) -> None:
+    def test_the_synced_tree_measures_as_the_commit(self) -> None:
         self.assertEqual(
             tree_digest(tree_entries_from_disk(self.synced)), self.expected
         )
-        verify_engine_tree(self.synced, self.expected)
+        self.assertEqual(measure_engine_tree(self.synced), self.expected)
 
-    def test_a_one_byte_source_drift_refuses(self) -> None:
+    def test_a_one_byte_source_drift_changes_the_identity(self) -> None:
         source = self.synced / "src" / "lib.rs"
         source.write_bytes(source.read_bytes().replace(b"f()", b"g()"))
-        with self.assertRaisesRegex(StampError, "drifted, was added, or is missing"):
-            verify_engine_tree(self.synced, self.expected)
+        self.assertNotEqual(measure_engine_tree(self.synced), self.expected)
 
-    def test_an_untracked_file_refuses(self) -> None:
+    def test_an_untracked_file_changes_the_identity(self) -> None:
         (self.synced / "src" / "extra.rs").write_text("")
-        with self.assertRaisesRegex(StampError, "drifted, was added, or is missing"):
-            verify_engine_tree(self.synced, self.expected)
+        self.assertNotEqual(measure_engine_tree(self.synced), self.expected)
 
-    def test_a_missing_file_refuses(self) -> None:
+    def test_a_missing_file_changes_the_identity(self) -> None:
         (self.synced / "Cargo.toml").unlink()
-        with self.assertRaisesRegex(StampError, "drifted, was added, or is missing"):
-            verify_engine_tree(self.synced, self.expected)
+        self.assertNotEqual(measure_engine_tree(self.synced), self.expected)
 
     def test_sync_excluded_paths_are_outside_the_identity(self) -> None:
         (self.synced / "target" / "release").mkdir(parents=True)
         (self.synced / "target" / "release" / "noodl-eval").write_bytes(b"bin")
-        verify_engine_tree(self.synced, self.expected)
+        self.assertEqual(measure_engine_tree(self.synced), self.expected)
 
 
 class WriteBuildReceiptTest(EngineTreeTest):
@@ -161,14 +164,19 @@ class WriteBuildReceiptTest(EngineTreeTest):
         )
         self.binary.chmod(0o755)
 
-    def test_the_receipt_binds_commit_tree_binary_toolchain_and_lock(self) -> None:
-        if shutil.which("rustc") is None:
-            self.skipTest("rustc is not on PATH")
+    def _write(self) -> tuple[Path, BuildReceipt]:
         out = self.synced.parent / "build-receipt.json"
         receipt = write_build_receipt(
-            src=self.synced, commit=self.commit, expected_tree_digest=self.expected,
-            binary=self.binary, profile="release", features="default", out=out,
+            src=self.synced, commit=self.commit,
+            pre_build_tree_digest=measure_engine_tree(self.synced), binary=self.binary,
+            profile="release", features="default", out=out,
         )
+        return out, receipt
+
+    def test_the_receipt_records_tree_binary_toolchain_and_lock(self) -> None:
+        if shutil.which("rustc") is None:
+            self.skipTest("rustc is not on PATH")
+        out, receipt = self._write()
         self.assertEqual(load_build_receipt(out), receipt)
         self.assertEqual(receipt.tree_digest, self.expected)
         self.assertEqual(receipt.binary_sha256, _sha(self.binary.read_bytes()))
@@ -178,15 +186,55 @@ class WriteBuildReceiptTest(EngineTreeTest):
         self.assertEqual(parse_model_lock(receipt.model_lock_text).revision,
                          "b8c14f4e723d9e0aab4732a7b7b93741eeeb77c2")
 
-    def test_no_receipt_is_written_for_a_drifted_tree(self) -> None:
-        (self.synced / "src" / "lib.rs").write_text("pub fn g() {}\n")
+    def test_a_build_that_touches_its_sources_gets_no_receipt(self) -> None:
         out = self.synced.parent / "build-receipt.json"
-        with self.assertRaisesRegex(StampError, "drifted, was added, or is missing"):
+        before = measure_engine_tree(self.synced)
+        (self.synced / "src" / "generated.rs").write_text("// written by build.rs\n")
+        with self.assertRaisesRegex(StampError, "changed during the build"):
             write_build_receipt(
-                src=self.synced, commit=self.commit, expected_tree_digest=self.expected,
+                src=self.synced, commit=self.commit, pre_build_tree_digest=before,
                 binary=self.binary, profile="release", features="default", out=out,
             )
         self.assertFalse(out.exists())
+
+    def test_the_verdict_is_derived_from_git_and_binds_the_receipt(self) -> None:
+        if shutil.which("rustc") is None:
+            self.skipTest("rustc is not on PATH")
+        out, receipt = self._write()
+        verdict_path = self.synced.parent / "receipt-verdict.json"
+        verdict = verify_receipt(engine_repo=self.repo, receipt_path=out, out=verdict_path)
+        self.assertEqual(verdict.tree_digest, self.expected)
+        self.assertEqual(load_receipt_verdict(verdict_path, out), verdict)
+        # The verdict is bound to the receipt's bytes: any other receipt is refused.
+        out.write_text(out.read_text() + " ")
+        with self.assertRaisesRegex(StampError, "was not issued for"):
+            load_receipt_verdict(verdict_path, out)
+
+    def test_a_drifted_build_host_tree_gets_no_verdict(self) -> None:
+        if shutil.which("rustc") is None:
+            self.skipTest("rustc is not on PATH")
+        source = self.synced / "src" / "lib.rs"
+        source.write_bytes(source.read_bytes().replace(b"f()", b"g()"))
+        out, _ = self._write()
+        verdict_path = self.synced.parent / "receipt-verdict.json"
+        with self.assertRaisesRegex(StampError, "drifted from the commit"):
+            verify_receipt(engine_repo=self.repo, receipt_path=out, out=verdict_path)
+        self.assertFalse(verdict_path.exists())
+
+    def test_a_receipt_with_another_lock_or_toolchain_gets_no_verdict(self) -> None:
+        if shutil.which("rustc") is None:
+            self.skipTest("rustc is not on PATH")
+        out, receipt = self._write()
+        verdict_path = self.synced.parent / "receipt-verdict.json"
+        for field, value in (("model_lock_text", receipt.model_lock_text + "# edit\n"),
+                             ("rust_toolchain_toml", '[toolchain]\nchannel = "nightly"\n')):
+            with self.subTest(field=field):
+                forged = replace(receipt, **{field: value})
+                if field == "model_lock_text":
+                    forged = replace(forged, model_lock_sha256=_sha(value.encode()))
+                out.write_text(json.dumps(asdict(forged)))
+                with self.assertRaisesRegex(StampError, "is not commit"):
+                    verify_receipt(engine_repo=self.repo, receipt_path=out, out=verdict_path)
 
 
 class BuildReceiptTest(unittest.TestCase):
@@ -256,28 +304,28 @@ class StorePolicyTest(unittest.TestCase):
 
     def test_fresh_accepts_absent_or_empty_and_refuses_populated(self) -> None:
         arm = ARMS["shipped_treatment"]
-        assert_store_ready(self.store, arm, "ts40", self.receipt, "e" * 64)
+        check_store(self.store, arm, "ts40", self.receipt, "e" * 64)
         self.store.mkdir()
-        assert_store_ready(self.store, arm, "ts40", self.receipt, "e" * 64)
+        check_store(self.store, arm, "ts40", self.receipt, "e" * 64)
         (self.store / "catalog.db").write_bytes(b"x")
         with self.assertRaisesRegex(StampError, "given a populated store"):
-            assert_store_ready(self.store, arm, "ts40", self.receipt, "e" * 64)
+            check_store(self.store, arm, "ts40", self.receipt, "e" * 64)
 
     def test_reuse_requires_the_source_cells_matching_completion_marker(self) -> None:
         arm = ARMS["levers_off_ablation"]
         self.store.mkdir()
         (self.store / ".partial-leftover").mkdir()
         with self.assertRaisesRegex(StampError, "has no completion marker"):
-            assert_store_ready(self.store, arm, "ts40", self.receipt, "e" * 64)
+            check_store(self.store, arm, "ts40", self.receipt, "e" * 64)
         marker = CompletionMarker(
             arm="shipped_treatment", corpus="ts40", commit=COMMIT,
             binary_sha256="b" * 64, corpus_sha256="e" * 64, reranker="rev",
         )
         (self.store / COMPLETION_MARKER).write_text(json.dumps(asdict(marker)))
-        assert_store_ready(self.store, arm, "ts40", self.receipt, "e" * 64)
+        check_store(self.store, arm, "ts40", self.receipt, "e" * 64)
         other_build = _receipt("f" * 64)
         with self.assertRaisesRegex(StampError, "was completed by"):
-            assert_store_ready(self.store, arm, "ts40", other_build, "e" * 64)
+            check_store(self.store, arm, "ts40", other_build, "e" * 64)
 
 
 class RerankerTest(unittest.TestCase):
@@ -320,10 +368,61 @@ class RerankerTest(unittest.TestCase):
                 parse_model_lock(bad.format(graph="1" * 64, tokenizer="2" * 64))
 
 
-class HostTest(unittest.TestCase):
-    def test_the_host_cpu_names_a_model_and_a_count(self) -> None:
-        cpu = host_cpu()
-        self.assertRegex(cpu, r".+ x\d+$")
+class LiveCapabilitiesTest(unittest.TestCase):
+    def test_the_receipts_languages_must_equal_the_binarys_live_output(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            binary = Path(tmp) / "noodl-eval"
+            binary.write_text(
+                "#!/bin/sh\necho '{\"analysis_languages\": [\"python\", \"go\"]}'\n"
+            )
+            binary.chmod(0o755)
+            receipt = replace(_receipt("b" * 64), analysis_languages=("go", "python"))
+            self.assertEqual(verify_live_capabilities(binary, receipt), ("go", "python"))
+            forged = replace(receipt, analysis_languages=("go",))
+            with self.assertRaisesRegex(StampError, r"reports capabilities \['go', 'python'\]"):
+                verify_live_capabilities(binary, forged)
+
+
+class HostCpuTest(unittest.TestCase):
+    CPUINFO = (
+        "processor\t: 0\nvendor_id\t: GenuineIntel\n"
+        "model name\t: Intel(R) Xeon(R) CPU @ 2.80GHz\nflags\t\t: fpu\n"
+    )
+
+    def test_linux_cpuinfo_parses_to_the_model(self) -> None:
+        self.assertEqual(
+            format_host_cpu(cpu_model_from_cpuinfo(self.CPUINFO), 32),
+            "Intel(R) Xeon(R) CPU @ 2.80GHz x32",
+        )
+
+    def test_a_cpuinfo_without_a_model_refuses(self) -> None:
+        for text in ("processor\t: 0\n", "model name\t:   \n", ""):
+            with self.subTest(text=text), self.assertRaisesRegex(StampError, "no CPU model"):
+                cpu_model_from_cpuinfo(text)
+
+    def test_the_macos_brand_string_parses_to_the_model(self) -> None:
+        self.assertEqual(
+            format_host_cpu(cpu_model_from_brand_string("Apple M4 Pro\n"), 12),
+            "Apple M4 Pro x12",
+        )
+
+    def test_an_empty_brand_string_refuses(self) -> None:
+        with self.assertRaisesRegex(StampError, "brand_string is empty"):
+            cpu_model_from_brand_string(" \n")
+
+    def test_an_undeterminable_cpu_count_refuses(self) -> None:
+        for count in (None, 0):
+            with self.subTest(count=count), self.assertRaisesRegex(StampError, "CPUs"):
+                format_host_cpu("Apple M4 Pro", count)
+
+
+class ReuseMarkerTest(unittest.TestCase):
+    def test_the_consumed_marker_name_is_per_arm_and_off_the_live_name(self) -> None:
+        store = Path("/s")
+        held = consumed_marker(store, ARMS["levers_off_ablation"])
+        self.assertEqual(held.parent, store)
+        self.assertNotEqual(held.name, COMPLETION_MARKER)
+        self.assertIn("levers_off_ablation", held.name)
 
 
 if __name__ == "__main__":

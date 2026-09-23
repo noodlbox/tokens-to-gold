@@ -41,9 +41,10 @@ from ttg.cell_stamps import (
     StampError,
     cell_postrun,
     cell_preflight,
+    measure_engine_tree,
     tree_digest,
     tree_entries_from_git,
-    verify_engine_tree,
+    verify_receipt,
     write_build_receipt,
 )
 from ttg.curve_recompute import curve_parity_findings
@@ -117,9 +118,9 @@ def cmd_engine_tree_digest(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_verify_engine_tree(args: argparse.Namespace) -> int:
-    """On the build host, before the build: the synced tree IS the commit's."""
-    print(f"engine_tree: {verify_engine_tree(Path(args.src), args.expected_digest)} (verified)")
+def cmd_measure_engine_tree(args: argparse.Namespace) -> int:
+    """On the build host: the identity of the synced tree as it is (no verdict)."""
+    print(measure_engine_tree(Path(args.src)))
     return 0
 
 
@@ -127,10 +128,20 @@ def cmd_write_build_receipt(args: argparse.Namespace) -> int:
     """Called only by arms/build_engine.sh, right after it built the binary."""
     receipt = write_build_receipt(
         src=Path(args.src), commit=args.commit,
-        expected_tree_digest=args.expected_digest, binary=Path(args.binary),
+        pre_build_tree_digest=args.pre_build_tree_digest, binary=Path(args.binary),
         profile=args.profile, features=args.features, out=Path(args.out),
     )
     print(f"build receipt: {args.out} (commit {receipt.commit}, binary {receipt.binary_sha256})")
+    return 0
+
+
+def cmd_verify_receipt(args: argparse.Namespace) -> int:
+    """Where the engine's history is: check a receipt against git, write the verdict."""
+    verdict = verify_receipt(
+        engine_repo=Path(args.engine_repo), receipt_path=Path(args.receipt),
+        out=Path(args.out),
+    )
+    print(f"receipt verdict: {args.out} (commit {verdict.commit}, tree {verdict.tree_digest})")
     return 0
 
 
@@ -139,7 +150,8 @@ def cmd_cell_preflight(args: argparse.Namespace) -> int:
     for line in cell_preflight(
         arm=get_arm(args.arm), corpus=args.corpus, corpus_jsonl=Path(args.corpus_jsonl),
         store=Path(args.store), binary=Path(args.binary),
-        receipt_path=Path(args.build_receipt), requested_commit=args.build_commit,
+        receipt_path=Path(args.build_receipt), verdict_path=Path(args.receipt_verdict),
+        requested_commit=args.build_commit,
         pins=PKG / "corpora" / "jsonl.SHA256SUMS",
     ):
         print(line)
@@ -591,21 +603,30 @@ def main(argv: list[str] | None = None) -> int:
     p_etd.add_argument("--commit", required=True)
     p_etd.set_defaults(func=cmd_engine_tree_digest)
 
-    p_vet = sub.add_parser(
-        "verify-engine-tree", help="refuse unless a synced engine tree is the commit's"
+    p_met = sub.add_parser(
+        "measure-engine-tree", help="(build host) the identity of a synced engine tree"
     )
-    p_vet.add_argument("--src", required=True)
-    p_vet.add_argument("--expected-digest", required=True)
-    p_vet.set_defaults(func=cmd_verify_engine_tree)
+    p_met.add_argument("--src", required=True)
+    p_met.set_defaults(func=cmd_measure_engine_tree)
 
     p_wbr = sub.add_parser(
         "write-build-receipt",
         help="(arms/build_engine.sh only) write the receipt for the binary it just built",
     )
-    for flag in ("--src", "--commit", "--expected-digest", "--binary", "--profile",
+    for flag in ("--src", "--commit", "--pre-build-tree-digest", "--binary", "--profile",
                  "--features", "--out"):
         p_wbr.add_argument(flag, required=True)
     p_wbr.set_defaults(func=cmd_write_build_receipt)
+
+    p_vrc = sub.add_parser(
+        "verify-receipt",
+        help="(where the engine's git history is) check a build receipt against git and "
+        "write the verdict every cell requires",
+    )
+    p_vrc.add_argument("--engine-repo", required=True)
+    p_vrc.add_argument("--receipt", required=True)
+    p_vrc.add_argument("--out", required=True)
+    p_vrc.set_defaults(func=cmd_verify_receipt)
 
     p_cpf = sub.add_parser(
         "cell-preflight",
@@ -618,6 +639,9 @@ def main(argv: list[str] | None = None) -> int:
     p_cpf.add_argument("--store", required=True)
     p_cpf.add_argument("--binary", required=True)
     p_cpf.add_argument("--build-receipt", required=True)
+    p_cpf.add_argument(
+        "--receipt-verdict", required=True, help="written by `verify-receipt`"
+    )
     p_cpf.add_argument("--build-commit", required=True, help="the requested engine commit")
     p_cpf.set_defaults(func=cmd_cell_preflight)
 

@@ -22,7 +22,7 @@ import unittest
 from dataclasses import asdict
 from pathlib import Path
 
-from ttg.cell_stamps import BuildReceipt
+from ttg.cell_stamps import BuildReceipt, ReceiptVerdict
 
 PKG = Path(__file__).resolve().parent.parent
 COMMIT = "c" * 40
@@ -56,6 +56,7 @@ if os.environ.get("STUB_INSTALL", "1") == "1":
     (root / "onnx" / "model.onnx").write_bytes(os.environ["STUB_MODEL"].encode())
     (root / "tokenizer.json").write_bytes(b"{}")
 print("{}")
+sys.exit(int(os.environ.get("STUB_EXIT", "0")))
 """
 
 
@@ -79,34 +80,49 @@ class _Harness(unittest.TestCase):
         self.binary.write_text(STUB)
         self.binary.chmod(self.binary.stat().st_mode | stat.S_IXUSR)
         self.receipt = self.tmp / "build-receipt.json"
+        self.write_receipt(("go", "python", "rust", "typescript"))
+        self.out = self.tmp / "out"
+
+    def write_receipt(self, languages: tuple[str, ...], lock: str = LOCK) -> None:
+        """A receipt for the stub's bytes and the verdict `verify-receipt` would
+        issue for it (the git side is covered by test_cell_stamps)."""
         self.receipt.write_text(json.dumps(asdict(BuildReceipt(
-            schema=1, commit=COMMIT, tree_digest="a" * 64,
+            schema=2, commit=COMMIT, tree_digest="a" * 64,
             binary_sha256=hashlib.sha256(self.binary.read_bytes()).hexdigest(),
             cargo_profile="release", cargo_features="default",
             rust_toolchain_toml="[toolchain]\n", rustc_version="rustc 1.95.0",
-            analysis_languages=("go", "python", "rust", "typescript"),
-            model_lock_text=LOCK,
-            model_lock_sha256=hashlib.sha256(LOCK.encode()).hexdigest(),
+            analysis_languages=languages,
+            model_lock_text=lock,
+            model_lock_sha256=hashlib.sha256(lock.encode()).hexdigest(),
         ))))
-        self.out = self.tmp / "out"
+        self.verdict = self.tmp / "receipt-verdict.json"
+        self.verdict.write_text(json.dumps(asdict(ReceiptVerdict(
+            schema=1, receipt_sha256=hashlib.sha256(self.receipt.read_bytes()).hexdigest(),
+            commit=COMMIT, tree_digest="a" * 64,
+            model_lock_sha256=hashlib.sha256(LOCK.encode()).hexdigest(),
+            checked="test",
+        ))))
 
-    def _env(self, install: bool = True, model: bytes = MODEL) -> dict[str, str]:
+    def _env(self, install: bool = True, model: bytes = MODEL,
+             exit_code: int = 0) -> dict[str, str]:
         return {
             **os.environ, "STUB_CACHE_DIR": CACHE_DIR, "STUB_MODEL": model.decode(),
-            "STUB_INSTALL": "1" if install else "0",
+            "STUB_INSTALL": "1" if install else "0", "STUB_EXIT": str(exit_code),
         }
 
-    def run_arm(self, arm: str, store: Path, *, commit: str = COMMIT,
-                install: bool = True, model: bytes = MODEL) -> subprocess.CompletedProcess[str]:
+    def run_arm(self, arm: str, store: Path, *, commit: str = COMMIT, install: bool = True,
+                model: bytes = MODEL, exit_code: int = 0) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [
                 "bash", str(self.pkg / "arms" / "run_arm.sh"),
                 "--arm", arm, "--corpus", "ts40", "--binary", str(self.binary),
                 "--corpus-jsonl", str(self.jsonl), "--store", str(store),
                 "--out", str(self.out / f"{arm}_ts40.json"),
-                "--build-receipt", str(self.receipt), "--build-commit", commit,
+                "--build-receipt", str(self.receipt), "--receipt-verdict", str(self.verdict),
+                "--build-commit", commit,
             ],
-            capture_output=True, text=True, env=self._env(install, model), check=False,
+            capture_output=True, text=True, env=self._env(install, model, exit_code),
+            check=False,
         )
 
 
@@ -120,11 +136,13 @@ class RunArmTest(_Harness):
         self.assertEqual(json.loads(report.read_text()), {})
         self.assertFalse(report.with_name(report.name + ".partial").exists())
         manifest = (self.out / "shipped_explore_ts40.manifest.txt").read_text()
-        for stamp in (f"build_commit: {COMMIT} (build receipt; binary sha256 verified)",
+        for stamp in (f"build_commit: {COMMIT} (receipt verified against git history",
                       "(pinned)", "store:        fresh (verified absent or empty)",
-                      "(corpus language verified)", "model_lock:   jinaai/",
-                      "reranker_rev: rev1", "host_cpu:     "):
+                      "capabilities: go,python,rust,typescript (live; equals the receipt",
+                      "model_lock:   jinaai/", "reranker_rev: rev1"):
             self.assertIn(stamp, manifest)
+        self.assertRegex(manifest, r"host_cpu:     \S.* x[1-9]\d*\n")
+        self.assertTrue((self.out / "shipped_explore_ts40.receipt-verdict.json").is_file())
         self.assertTrue((self.out / "shipped_explore_ts40.build-receipt.json").is_file())
         self.assertTrue((store / ".ttg-cell-complete.json").is_file())
 
@@ -159,6 +177,37 @@ class RunArmTest(_Harness):
         self.assertEqual(run.returncode, 2)
         self.assertIn("receipt is for commit", run.stderr)
 
+    def test_a_receipt_without_its_verdict_is_refused_before_the_engine_runs(self) -> None:
+        store = self.tmp / "stores" / "shipped_explore_ts40"
+        self.receipt.write_text(self.receipt.read_text() + " ")
+        run = self.run_arm("shipped_explore", store)
+        self.assertEqual(run.returncode, 2)
+        self.assertIn("was not issued for", run.stderr)
+        self.assertFalse(store.exists(), "the engine must not run")
+
+    def test_a_receipt_claiming_other_capabilities_is_refused(self) -> None:
+        store = self.tmp / "stores" / "shipped_explore_ts40"
+        self.write_receipt(("go",))
+        run = self.run_arm("shipped_explore", store)
+        self.assertEqual(run.returncode, 2)
+        self.assertIn("reports capabilities", run.stderr)
+        self.assertFalse(store.exists(), "the engine must not run")
+
+    def test_a_receipt_with_an_unparsable_lock_is_refused_before_the_engine_runs(self) -> None:
+        store = self.tmp / "stores" / "shipped_explore_ts40"
+        self.write_receipt(("go", "python", "rust", "typescript"), lock="not = [toml")
+        run = self.run_arm("shipped_explore", store)
+        self.assertEqual(run.returncode, 2)
+        self.assertIn("model.lock is not valid TOML", run.stderr)
+        self.assertFalse(store.exists(), "the engine must not run")
+
+    def test_a_failed_engine_run_publishes_nothing_and_marks_nothing(self) -> None:
+        store = self.tmp / "stores" / "shipped_explore_ts40"
+        run = self.run_arm("shipped_explore", store, exit_code=3)
+        self.assertEqual(run.returncode, 3)
+        self.assertFalse((self.out / "shipped_explore_ts40.json").exists())
+        self.assertFalse((store / ".ttg-cell-complete.json").exists())
+
     def test_a_reranker_other_than_the_locked_one_fails_the_cell_and_publishes_nothing(
         self,
     ) -> None:
@@ -188,7 +237,7 @@ class RunMatrixTest(_Harness):
             "--arms": arms, "--corpora": "ts40", "--binary": str(self.binary),
             "--corpus-dir": str(self.corpus_dir), "--store": str(self.tmp / "root"),
             "--outdir": str(self.out), "--build-receipt": str(self.receipt),
-            "--build-commit": COMMIT, **overrides,
+            "--receipt-verdict": str(self.verdict), "--build-commit": COMMIT, **overrides,
         }
         argv = [part for pair in args.items() for part in pair if pair[1] != ""]
         return subprocess.run(
@@ -219,11 +268,25 @@ class RunMatrixTest(_Harness):
         self.assertNotEqual(failed.returncode, 0)
         self.assertIn("has no completion marker", failed.stderr)
 
-    def test_a_completed_source_cell_is_reused(self) -> None:
+    def test_a_completed_source_cell_is_reused_and_its_marker_given_back(self) -> None:
         run = self._matrix("shipped_treatment,levers_off_ablation")
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
         manifest = (self.out / "levers_off_ablation_ts40.manifest.txt").read_text()
-        self.assertIn("reuse of shipped_treatment_ts40 (verified completion marker)", manifest)
+        self.assertIn("reuse of shipped_treatment_ts40 (verified completion marker", manifest)
+        store = self.tmp / "root" / "shipped_treatment_ts40"
+        self.assertTrue((store / ".ttg-cell-complete.json").is_file())
+        self.assertEqual(list(store.glob(".ttg-cell-complete.json.in-use.*")), [])
+
+    def test_a_reuse_run_that_dies_leaves_its_store_unmarked(self) -> None:
+        source = self._matrix("shipped_treatment")
+        self.assertEqual(source.returncode, 0, source.stdout + source.stderr)
+        store = self.tmp / "root" / "shipped_treatment_ts40"
+        died = self.run_arm("levers_off_ablation", store, exit_code=3)
+        self.assertEqual(died.returncode, 3)
+        self.assertFalse((store / ".ttg-cell-complete.json").exists())
+        again = self.run_arm("levers_off_ablation", store)
+        self.assertEqual(again.returncode, 2)
+        self.assertIn("has no completion marker", again.stderr)
 
 
 if __name__ == "__main__":
