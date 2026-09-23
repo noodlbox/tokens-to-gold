@@ -649,13 +649,16 @@ def cell_preflight(
 
 
 def cell_postrun(
-    *, arm: Arm, corpus: str, corpus_jsonl: Path, store: Path, receipt_path: Path,
-    report: Path, pins: Path,
+    *, arm: Arm, corpus: str, corpus_jsonl: Path, store: Path, binary: Path,
+    receipt_path: Path, verdict_path: Path, report: Path, pins: Path,
 ) -> list[str]:
-    """After a successful engine run: prove the reranker, publish the report,
-    then (FRESH) mark the store complete or (REUSE) give its marker back.
-    Nothing is published or marked on a refusal."""
+    """After a successful engine run: re-check the cell's pre-run receipt copy
+    (against its verdict and the binary), prove the reranker, publish the
+    report, then (FRESH) mark the store complete or (REUSE) give its marker
+    back. Nothing is published or marked on a refusal."""
     receipt = load_build_receipt(receipt_path)
+    load_receipt_verdict(verdict_path, receipt_path, receipt)
+    verify_binary_against_receipt(binary, receipt, receipt.commit)
     lock = parse_model_lock(receipt.model_lock_text)
     if arm.ranks_with_reranker:
         reranker = verify_reranker_install(store, lock)

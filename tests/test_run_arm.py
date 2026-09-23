@@ -50,6 +50,9 @@ if sys.argv[1] == "capabilities":
 store = pathlib.Path(os.environ["NOODLBOX_DATA_DIR"])
 store.mkdir(parents=True, exist_ok=True)
 (store / "ran").write_text(" ".join(sys.argv[1:]))
+if os.environ.get("STUB_CLOBBER"):
+    pathlib.Path(os.environ["STUB_CLOBBER"]).write_text(
+        os.environ.get("STUB_CLOBBER_WITH") or "{overwritten mid-cell")
 if os.environ.get("STUB_INSTALL", "1") == "1":
     root = store / os.environ["STUB_CACHE_DIR"]
     (root / "onnx").mkdir(parents=True, exist_ok=True)
@@ -104,15 +107,17 @@ class _Harness(unittest.TestCase):
             checked="test",
         ))))
 
-    def _env(self, install: bool = True, model: bytes = MODEL,
-             exit_code: int = 0) -> dict[str, str]:
+    def _env(self, install: bool = True, model: bytes = MODEL, exit_code: int = 0,
+             clobber: str = "", clobber_with: str = "") -> dict[str, str]:
         return {
             **os.environ, "STUB_CACHE_DIR": CACHE_DIR, "STUB_MODEL": model.decode(),
             "STUB_INSTALL": "1" if install else "0", "STUB_EXIT": str(exit_code),
+            "STUB_CLOBBER": clobber, "STUB_CLOBBER_WITH": clobber_with,
         }
 
     def run_arm(self, arm: str, store: Path, *, commit: str = COMMIT, install: bool = True,
-                model: bytes = MODEL, exit_code: int = 0) -> subprocess.CompletedProcess[str]:
+                model: bytes = MODEL, exit_code: int = 0, clobber: str = "",
+                clobber_with: str = "") -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [
                 "bash", str(self.pkg / "arms" / "run_arm.sh"),
@@ -122,8 +127,8 @@ class _Harness(unittest.TestCase):
                 "--build-receipt", str(self.receipt), "--receipt-verdict", str(self.verdict),
                 "--build-commit", commit,
             ],
-            capture_output=True, text=True, env=self._env(install, model, exit_code),
-            check=False,
+            capture_output=True, text=True,
+            env=self._env(install, model, exit_code, clobber, clobber_with), check=False,
         )
 
 
@@ -146,6 +151,35 @@ class RunArmTest(_Harness):
         self.assertTrue((self.out / "shipped_explore_ts40.receipt-verdict.json").is_file())
         self.assertTrue((self.out / "shipped_explore_ts40.build-receipt.json").is_file())
         self.assertTrue((store / ".ttg-cell-complete.json").is_file())
+
+    def test_overwriting_the_live_receipt_mid_cell_does_not_change_the_stamp(self) -> None:
+        """Postrun reads the cell's pre-run receipt copy, never the live path."""
+        store = self.tmp / "stores" / "shipped_explore_ts40"
+        run = self.run_arm("shipped_explore", store, clobber=str(self.receipt))
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(self.receipt.read_text(), "{overwritten mid-cell")
+        self.assertIn("reranker_rev: rev1", run.stdout)
+        copy = json.loads((self.out / "shipped_explore_ts40.build-receipt.json").read_text())
+        self.assertEqual(copy["commit"], COMMIT)
+        self.assertTrue((self.out / "shipped_explore_ts40.json").is_file())
+
+    def test_a_receipt_copy_tampered_mid_cell_refuses_at_postrun(self) -> None:
+        store = self.tmp / "stores" / "shipped_explore_ts40"
+        copy = self.out / "shipped_explore_ts40.build-receipt.json"
+        tampered = {**json.loads(self.receipt.read_text()), "rustc_version": "rustc 0.0.0"}
+        run = self.run_arm("shipped_explore", store, clobber=str(copy),
+                           clobber_with=json.dumps(tampered))
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("was not issued for", run.stderr)
+        self.assertFalse((self.out / "shipped_explore_ts40.json").exists())
+
+    def test_a_binary_swapped_mid_cell_refuses_at_postrun(self) -> None:
+        store = self.tmp / "stores" / "shipped_explore_ts40"
+        run = self.run_arm("shipped_explore", store, clobber=str(self.binary),
+                           clobber_with=STUB + "# swapped mid-cell\n")
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("not the binary that commit built", run.stderr)
+        self.assertFalse((self.out / "shipped_explore_ts40.json").exists())
 
     def test_a_populated_fresh_store_is_refused_before_the_engine_runs(self) -> None:
         store = self.tmp / "stores" / "shipped_explore_ts40"

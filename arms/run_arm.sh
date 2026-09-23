@@ -47,19 +47,24 @@ cd "$PKG"
 # Single source of truth. If this fails (unknown/unavailable arm, or a policy
 # with no budget), the cell does NOT run.
 FLAGS="$(python3 -m ttg.cli flags --arm "$ARM" --corpus "$CORPUS")"
-# Refuse before any work; on success these are the verified manifest lines.
-STAMPS="$(python3 -m ttg.cli cell-preflight --arm "$ARM" --corpus "$CORPUS" \
-  --corpus-jsonl "$JSONL" --store "$STORE" --binary "$BINARY" \
-  --build-receipt "$BUILD_RECEIPT" --receipt-verdict "$RECEIPT_VERDICT" \
-  --build-commit "$BUILD_COMMIT")"
-
 MAN="${OUT%.json}.manifest.txt"
 LOG="${OUT%.json}.log"
 PARTIAL="${OUT}.partial"
+# The cell's own copies of the receipt and its verdict, taken BEFORE any check:
+# preflight verifies these bytes and postrun re-reads exactly them, so nothing
+# done to the --build-receipt / --receipt-verdict paths mid-cell can change what
+# the cell is stamped as.
+RECEIPT_COPY="${OUT%.json}.build-receipt.json"
+VERDICT_COPY="${OUT%.json}.receipt-verdict.json"
 mkdir -p "$(dirname "$OUT")"
 rm -f "$OUT" "$PARTIAL"
-cp "$BUILD_RECEIPT" "${OUT%.json}.build-receipt.json"
-cp "$RECEIPT_VERDICT" "${OUT%.json}.receipt-verdict.json"
+cp "$BUILD_RECEIPT" "$RECEIPT_COPY"
+cp "$RECEIPT_VERDICT" "$VERDICT_COPY"
+# Refuse before any work; on success these are the verified manifest lines.
+STAMPS="$(python3 -m ttg.cli cell-preflight --arm "$ARM" --corpus "$CORPUS" \
+  --corpus-jsonl "$JSONL" --store "$STORE" --binary "$BINARY" \
+  --build-receipt "$RECEIPT_COPY" --receipt-verdict "$VERDICT_COPY" \
+  --build-commit "$BUILD_COMMIT")"
 {
   echo "# cell manifest — ${ARM} x ${CORPUS}"
   echo "arm:          $ARM"
@@ -87,4 +92,5 @@ set -e
 [ "$RC" -eq 0 ] || exit "$RC"
 # Publishes $OUT only if every post-run stamp passes; otherwise $OUT stays absent.
 python3 -m ttg.cli cell-stamp --arm "$ARM" --corpus "$CORPUS" --corpus-jsonl "$JSONL" \
-  --store "$STORE" --build-receipt "$BUILD_RECEIPT" --report "$OUT" | tee -a "$MAN"
+  --store "$STORE" --binary "$BINARY" --build-receipt "$RECEIPT_COPY" \
+  --receipt-verdict "$VERDICT_COPY" --report "$OUT" | tee -a "$MAN"

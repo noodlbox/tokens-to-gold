@@ -162,7 +162,8 @@ def cmd_cell_stamp(args: argparse.Namespace) -> int:
     """After a successful engine run: prove the reranker, then publish the report."""
     for line in cell_postrun(
         arm=get_arm(args.arm), corpus=args.corpus, corpus_jsonl=Path(args.corpus_jsonl),
-        store=Path(args.store), receipt_path=Path(args.build_receipt),
+        store=Path(args.store), binary=Path(args.binary),
+        receipt_path=Path(args.build_receipt), verdict_path=Path(args.receipt_verdict),
         report=Path(args.report), pins=PKG / "corpora" / "jsonl.SHA256SUMS",
     ):
         print(line)
@@ -654,7 +655,13 @@ def main(argv: list[str] | None = None) -> int:
     p_cst.add_argument("--corpus", required=True, choices=sorted(CORPORA))
     p_cst.add_argument("--corpus-jsonl", required=True)
     p_cst.add_argument("--store", required=True)
-    p_cst.add_argument("--build-receipt", required=True)
+    p_cst.add_argument("--binary", required=True)
+    p_cst.add_argument(
+        "--build-receipt", required=True, help="the cell's pre-run receipt copy"
+    )
+    p_cst.add_argument(
+        "--receipt-verdict", required=True, help="the cell's pre-run verdict copy"
+    )
     p_cst.add_argument("--report", required=True, help="the final report path")
     p_cst.set_defaults(func=cmd_cell_stamp)
 
