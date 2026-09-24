@@ -3,8 +3,8 @@
 #
 #   arms/build_engine.sh --src <synced engine tree> --commit <40-hex> --out-dir <dir>
 #
-# `noodl-eval` embeds no commit, so this step writes the receipt that stands for
-# it — never by hand:
+# The build is handed `--commit` as NOODLBOX_GIT_SHA (engines from noodlbox-app
+# #1414 embed and report it); this step also writes the receipt — never by hand:
 #   1. MEASURES the synced tree's identity (git blob ids; nothing is compared
 #      here — the build host has no history);
 #   2. builds the certification binary (`--release`, default features — the
@@ -37,7 +37,11 @@ SRC="$(cd "$SRC" && pwd)"
 mkdir -p "$OUT_DIR"; OUT_DIR="$(cd "$OUT_DIR" && pwd)"
 
 PRE_BUILD="$(cd "$PKG" && python3 -m ttg.cli measure-engine-tree --src "$SRC")"
-(cd "$SRC" && cargo build --profile "$PROFILE" -p noodlbox-eval)
+# The engine's build script bakes the commit into the binary (noodlbox-app #1414;
+# `noodl-eval capabilities` reports it as `build_commit`). A synced lease tree has
+# no `.git` to resolve it from, and a release build refuses to be unattributable,
+# so hand it exactly the commit this receipt will claim. Older engines ignore it.
+(cd "$SRC" && NOODLBOX_GIT_SHA="$COMMIT" cargo build --profile "$PROFILE" -p noodlbox-eval)
 TARGET_DIR="${CARGO_TARGET_DIR:-$SRC/target}"
 cp "$TARGET_DIR/$PROFILE/noodl-eval" "$OUT_DIR/noodl-eval"
 (cd "$PKG" && python3 -m ttg.cli write-build-receipt --src "$SRC" --commit "$COMMIT" \
