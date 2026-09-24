@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -187,6 +188,39 @@ class WriteBuildReceiptTest(EngineTreeTest):
         self.assertTrue(receipt.rustc_version.startswith("rustc "))
         self.assertEqual(parse_model_lock(receipt.model_lock_text).revision,
                          "b8c14f4e723d9e0aab4732a7b7b93741eeeb77c2")
+
+    def test_build_engine_hands_the_commit_to_the_build(self) -> None:
+        """The engine's build script bakes `NOODLBOX_GIT_SHA` into the binary
+        (noodlbox-app #1414), and a lease tree has no `.git` to resolve it from:
+        `build_engine.sh` must pass exactly its `--commit`. A stub `cargo` records
+        the value and stands the fixture binary in as the build output."""
+        if shutil.which("rustc") is None:
+            self.skipTest("rustc is not on PATH")
+        tools = self.synced.parent / "tools"
+        tools.mkdir()
+        seen = self.synced.parent / "seen-sha"
+        target = self.synced.parent / "cargo-target"
+        cargo = tools / "cargo"
+        cargo.write_text(
+            "#!/bin/sh\n"
+            f'printf %s "${{NOODLBOX_GIT_SHA-UNSET}}" > "{seen}"\n'
+            f'mkdir -p "{target}/release" && cp "{self.binary}" "{target}/release/noodl-eval"\n'
+        )
+        cargo.chmod(0o755)
+        out_dir = self.synced.parent / "engine"
+        env = {
+            **os.environ,
+            "PATH": f"{tools}{os.pathsep}{os.environ['PATH']}",
+            "CARGO_TARGET_DIR": str(target),
+        }
+        env.pop("NOODLBOX_GIT_SHA", None)
+        subprocess.run(
+            ["bash", str(Path(__file__).resolve().parents[1] / "arms" / "build_engine.sh"),
+             "--src", str(self.synced), "--commit", self.commit, "--out-dir", str(out_dir)],
+            check=True, capture_output=True, env=env,
+        )
+        self.assertEqual(seen.read_text(), self.commit)
+        self.assertEqual(load_build_receipt(out_dir / "build-receipt.json").commit, self.commit)
 
     def test_a_build_that_touches_its_sources_gets_no_receipt(self) -> None:
         out = self.synced.parent / "build-receipt.json"
