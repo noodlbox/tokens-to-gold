@@ -70,12 +70,28 @@ COMPLETION_MARKER: Final = ".ttg-cell-complete.json"
 CONSUMED_MARKER_SUFFIX: Final = ".in-use"
 PARTIAL_SUFFIX: Final = ".partial"
 ENGINE_TREE_EXCLUDES: Final = frozenset(
-    {"target", ".git", ".workspace-state", ".p93-evidence", ".nbx", "node_modules"}
+    {
+        "target",
+        ".git",
+        ".workspace-state",
+        ".p93-evidence",
+        ".nbx",
+        "node_modules",
+        ".crabbox",
+    }
 )
-"""Path components never part of the engine tree identity. Mirrors the
-noodlbox-app `.crabbox.yaml` `sync.exclude` list (rsync semantics: the name
-matches at any depth), so the git side and the synced side leave out the same
-paths."""
+"""Path components never part of the engine tree identity (the name matches
+at any depth). Two sources:
+
+- the noodlbox-app `.crabbox.yaml` `sync.exclude` list (rsync semantics), so
+  the git side and the synced side leave out the same paths;
+- `.crabbox`, the lease-side run-state directory crabbox itself writes into
+  the synced root (run history, logs). It is never synced from the Mac and no
+  engine commit tracks a `.crabbox` path, so it is bookkeeping, not source.
+  Without it every build on a used lease measured a drifted tree.
+
+Any other file that is on disk but not in the commit still changes the
+identity."""
 
 _SHA256: Final = re.compile(r"\A[0-9a-f]{64}\Z")
 _COMMIT: Final = re.compile(r"\A[0-9a-f]{40}\Z")

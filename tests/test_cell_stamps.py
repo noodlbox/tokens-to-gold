@@ -139,6 +139,30 @@ class EngineTreeTest(unittest.TestCase):
         (self.synced / "target" / "release" / "noodl-eval").write_bytes(b"bin")
         self.assertEqual(measure_engine_tree(self.synced), self.expected)
 
+    def test_the_lease_crabbox_state_dir_is_outside_the_identity(self) -> None:
+        runs = self.synced / ".crabbox" / "runs" / "run_0123"
+        runs.mkdir(parents=True)
+        (runs / "stdout.log").write_text("lease bookkeeping\n")
+        (self.synced / ".crabbox" / "owner.json").write_text("{}\n")
+        self.assertEqual(measure_engine_tree(self.synced), self.expected)
+
+    def test_other_extra_files_beside_the_crabbox_state_still_change_the_identity(
+        self,
+    ) -> None:
+        (self.synced / ".crabbox" / "runs").mkdir(parents=True)
+        (self.synced / ".crabbox" / "runs" / "log").write_text("x\n")
+        (self.synced / ".crabbox.json").write_text("{}\n")
+        self.assertNotEqual(
+            measure_engine_tree(self.synced), self.expected,
+            "only the `.crabbox` directory component is excluded; a sibling file "
+            "whose name merely starts with `.crabbox` is an extra file",
+        )
+
+    def test_a_crabbox_dir_name_is_matched_whole_not_as_a_prefix(self) -> None:
+        (self.synced / "src" / ".crabboxes").mkdir()
+        (self.synced / "src" / ".crabboxes" / "x.rs").write_text("")
+        self.assertNotEqual(measure_engine_tree(self.synced), self.expected)
+
 
 class WriteBuildReceiptTest(EngineTreeTest):
     """The build step's receipt: written only for a verified tree, and it records
