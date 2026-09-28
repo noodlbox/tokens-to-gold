@@ -290,3 +290,106 @@ the next re-freeze. Binding stays on the frozen basis (scoring against
 re-derived gold is the own-gold inflation the protocol forbids); the drift is
 asserted to be EXACTLY these two (T1 `test_difference_is_exactly_the_known_addendum_drift`;
 source: harness commit 47d29d7 + the drift sidecar).
+
+### Addendum — the product arm: price what `nbx search` delivers, 2026-09-29 (before any number)
+
+> Founder GO 2026-09-29, coordinator brief `COORD_TO_L18_TTG_BENCHMARK_FIX_2026-09-29.md`, LEDGER B64.
+> Written before any product-arm number exists, and before the builds it measures exist.
+> Append-only: every section above stays as recorded. This addendum changes which quantity is the headline and adds one arm. It does not change a corpus, the frozen gold, the matcher or the scoring basis.
+
+**Why.** LEDGER B62: the published Gold@8k (ts40 78.9 %, py 83.3 %) prices `name file` lines of the engine's **untrimmed ranked list**, at about 10 tokens per row, with no JSON envelope and no packer. It does not price what an agent receives from `nbx search`. On the same builds and instances, ts40 Gold@8k is .820 on the ranked list and .352 / .519 on the product path (#1485 / #1514). The README describes `ttg_wire` as "what the response actually carried", and the engine quantity does not meet that description. This addendum makes the harness measure the delivered response.
+
+#### 1. The product arm (`delivered`)
+
+The harness invokes the shipped `nbx` CLI the way an agent does. There is no engine-side reconstruction.
+
+| Row | Command | Budgets B |
+|---|---|---|
+| `delivered.grep` | `nbx search --intent implement --max-tokens B -- <task text>` (stdout is the default grep surface) | 4000, 8000, 32000 |
+| `delivered.json` | `nbx search --intent implement --format json --max-tokens B -- <task text>` | 4000, 8000, 32000 |
+| `delivered.default` | `nbx search -- <task text>`: no flags, so Explore intent, grep surface and the default compact budget | the CLI default, recorded from the build |
+
+- `<task text>` is the instance's `problem_statement`, verbatim, as the query. This is the harness's existing raw-query convention.
+- **Headline.** The public headline is `delivered.grep` at 8k and 32k: the default output shape an agent receives. `delivered.json` and `delivered.default` are reported next to it, each as its own row. Rows are never merged.
+- **Cells.** One fresh cell per gold-bearing instance:
+  - a fresh checkout at `base_commit`, with the `._*` files stripped;
+  - a fresh `NOODLBOX_DATA_DIR`, telemetry off;
+  - identical checkout directory naming across cells (LEDGER B37);
+  - one `nbx analyze .`, then every search row of that instance against that one store.
+- **Order and execution.** Cells run **sequentially** (EVAL-CLONE-RACE). Within a cell the row order is fixed and recorded.
+- **Failures.** A failed analyze or search (rc ≠ 0) is a **failed cell**. It scores 0.0, is listed by instance, and counts against the corpus: with more than 2 failed cells, that corpus row is not publishable. An empty stdout with rc 0 is a legitimate "no hits" result and scores 0.0.
+
+#### 2. Pricing: `ttg_wire` is the delivered bytes
+
+- **`ttg_wire`.** The o200k_base token count of the cell's **stdout bytes, exactly as emitted**. The tokenizer is the engine's `TokenCounter` (`crates/noodlbox-eval/src/token_cost.rs`, `TOKENIZER_ENCODING = "o200k_base"`), invoked through one engine entry point, so the harness and the engine share one tokenizer authority.
+- **No reconstruction.** Nothing is re-rendered, re-priced per row or estimated.
+- **stderr.** It is priced the same way and reported separately as `ttg_stderr`. It is not added to `ttg_wire`: stderr carries the freshness receipt and the meta footer, which an agent harness may or may not show the model.
+- **Reported per row and budget:** median, p90 and max `ttg_wire`, plus the count of cells whose `ttg_wire` exceeds B. That count is reported, never corrected: the product budgets by an estimator, not by o200k.
+
+#### 3. Identity and matching
+
+The matcher is unchanged: `ttg.matcher.match_gold` against the pinned frozen gold, with the two-arm rule and first-rank claiming. Only the list of delivered identities is new.
+
+- **`delivered.json`.** The identities are the `symbols[]` rows with a non-empty `location.file_path` (`file_path:name`), then the `file_index[].rows[]` (`group.file_path:row.name`), in wire order. This is B52's `payload_items`. Nothing else in the payload is an identity. In particular, a name that appears only in a count or a `more_members` total is **not** delivered.
+- **`delivered.grep` and `delivered.default`.** A grep line is `path:line:content` and carries no structured name. Its identity comes from an **identity oracle**: one extra `--format json --intent <same intent> --max-tokens 1000000` search in the same cell.
+  - The oracle is never priced or scored. It only resolves names.
+  - The join key is `(path, 1-based line)`: the oracle's `location.start_line + 1`, or `file_index` `row.line + 1`. Both fields are 0-based on the wire, and the grep renderer adds 1.
+  - **Fail-closed.** A grep hit whose key matches no oracle row makes the cell a **failed cell** (§1). An identity is never guessed from the content text.
+  - **Ambiguity.** When several oracle names share one key, the hit credits **all** of them. The headline uses that credit. Every row also reports its count of ambiguous hits and a **lower bound** that credits none. If the two differ by more than 0.5 pp on any corpus, the row carries a visible flag.
+- **Metrics per row and budget:**
+  - Gold@B_delivered: frozen-gold recall over the delivered identities, on the binding basis (gold-bearing instances only);
+  - reach@80(B): the fraction of instances with Gold@B_delivered ≥ 0.8;
+  - the `ttg_wire` statistics of §2.
+  N is carried on every row, and every number is labelled with its bound. Paired comparisons use the existing `ttg.regression.compare_reports` (paired by `instance_id`, bootstrap 95 % CI, exact sign test).
+
+#### 4. Carried over unchanged
+
+- **Corpora:** ts40, py_nosphinx, go34 and rust43, with pinned IDs and digests.
+- **Gold:** the frozen gold at the harness pin. It is never re-derived for this arm.
+- **Scoring basis:** binding.
+- **Cells:** fresh and sequential.
+- **Builds:** release-profile `nbx` with default features (the shipped configuration), with `NOODLBOX_GIT_SHA` set to the 40-hex commit. Each binary's sha256 goes into a build receipt that the harness verifies against git history before any cell runs (the `verify-receipt` discipline, extended to `nbx`).
+- **Lease:** one class, n2-standard-32. The reranker `model.lock` revision is stamped per cell. Wall times are never compared across leases.
+
+#### 5. The old arm is renamed `ranked_list_ceiling`
+
+- The existing noodl-eval arms (`shipped_treatment` and the rest) are reported as **`ranked_list_ceiling`**, labelled "retrieval ceiling, not delivered": the untrimmed ranked list priced as `name file` lines.
+- It stays because it measures retrieval, and the G3 head-only floors are defined on it (CURRENT_GATE §1).
+- Every report carries `publishable_as_delivered = false` for it. The harness refuses to render it as a headline or as a "delivered" number.
+- It is **never** the public headline again.
+
+#### 6. One definition, one name, in the engine
+
+The engine quantity currently named `ttg_wire` (noodl-eval `evaluator.rs`: `carried_string` / `price_wire` over `flatten_context_results`) prices a reconstruction of the ranked list, not delivered bytes.
+- It is **renamed** `ttg_ranked_list` in noodl-eval, and its doc comment states what it prices.
+- The name `ttg_wire` then means only the §2 quantity.
+- There is no alias and no second definition.
+
+#### 7. Must-reds, before any measured number
+
+1. **Byte sensitivity.** A delivered payload whose stdout bytes change must change `ttg_wire`. The red is a fixture where the scorer is fed a fixed per-row price (the B62 defect shape) and the test catches it.
+2. **Ceiling is not publishable as delivered.** Rendering a `ranked_list_ceiling` report as a headline or delivered row must fail. The red shows the renderer accepting it without the guard.
+3. **Grep fail-closed.** A grep hit with no oracle row must fail the cell, not score it.
+
+#### 8. What is measured, and when
+
+The builds are fixed by events, and their shas are recorded when each event happens:
+- **M:** the first `origin/main` commit containing #1514's merge.
+- **P:** #1485's merge commit.
+
+Both builds run all four corpora, every row above. The existing `ranked_list_ceiling` runs on the same builds for the reconciliation table (ceiling vs delivered, per corpus).
+
+#### 9. Publication
+
+- **Package.** New numbers, a methodology diff against V1, and page copy in the locked claims language (`S7_CLAIMS_LANGUAGE_MEMO_LOCKED_2026-08-19`) go to the founder as a package.
+- **Publishing** to noodlbox.io is the founder's action. Nothing in this addendum publishes.
+- **Wording.** The published numbers describe `nbx search` as delivered. The V1 numbers stay in history, labelled as ranked-list ceiling numbers.
+
+#### 10. What needs a new ruling
+
+Any change to one of the following requires a dated amendment before the affected number:
+- the headline row or budget;
+- the identity rule (§3), including the oracle budget, if the CLI rejects `--max-tokens 1000000`;
+- the failed-cell rule;
+- the tokenizer;
+- the corpora or the frozen gold.
