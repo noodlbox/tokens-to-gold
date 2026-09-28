@@ -393,3 +393,33 @@ Any change to one of the following requires a dated amendment before the affecte
 - the failed-cell rule;
 - the tokenizer;
 - the corpora or the frozen gold.
+
+### Addendum 2: coordinator ACK amendments to the product arm, 2026-09-29 (before any number)
+
+> Source: `COORD_TO_L18_B64_PREREG_ACK_2026-09-29.md`. It amends the addendum above, commit 7249466, before any product-arm number exists. Everything in that addendum not named here stands as ACKed.
+
+**A. The grep headline uses the lower bound.** This amends §3.
+
+- On `delivered.grep` and `delivered.default`, a hit whose `(path, line)` key resolves to **exactly one** oracle name credits that name.
+- A key that resolves to more than one name credits **nothing** in the headline.
+- The all-names credit is reported beside it as the **upper bound**, with the ambiguous-hit count.
+- The 0.5 pp flag of §3 stays as a visible note on the upper/lower gap. It no longer selects the headline.
+- Public claims are conservative by construction; this is the locked claims language.
+- Unjoinable hits still fail the cell.
+
+**B. `ttg_wire` prices stdout + stderr.** This amends §2.
+
+- A shell tool (Claude Code's Bash, Codex exec) puts both streams into the agent's context. So for every CLI row the headline `ttg_wire` is the o200k_base count of **stdout bytes + stderr bytes**, exactly as emitted, counted as one concatenation in the order stdout then stderr.
+- Reported columns: `ttg_wire` (stdout + stderr), `ttg_stdout` (stdout only) and `ttg_stderr` (stderr only).
+- The cells whose `ttg_wire` exceeds B are counted on the headline `ttg_wire`.
+- The tokenizer authority is unchanged: the engine's `TokenCounter`.
+
+**C. An MCP row.** This amends §1.
+
+- **`delivered.mcp`.** The `nbx_search` tool response, which is what an MCP-connected agent receives.
+- **How it is driven.** The harness starts `nbx mcp` (stdio) in the same cell, with the same store. It runs `initialize`, then one `tools/call` of `nbx_search` with `{"query": <task text>}` and no other argument.
+  - The tool fixes its intent (Explore) and its budget (the compact default). It has no budget argument, so this row has no B.
+- **Pricing.** o200k_base over the tool result's **content text**: the concatenated `result.content[].text`, the body the client places in context. The JSON-RPC framing is not priced.
+- **Identity.** The `delivered.json` rule (§3) applied to that content text. A tool error result (`isError: true`) is a failed cell.
+- **Byte-identity check.** When the content text is byte-identical to stdout of `nbx search --format json -- <task text>` in the same cell (Explore, the default budget, the same defaults), the report states "byte-identical to CLI JSON" instead of a separate row of numbers. That comparison invocation is recorded but not otherwise scored.
+- **Publication role.** The MCP row is reported, never the headline.
