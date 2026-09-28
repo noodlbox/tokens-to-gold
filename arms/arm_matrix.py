@@ -234,7 +234,7 @@ ARMS: Final[dict[str, Arm]] = {
     # `evaluate_explorer`): first covering span per gold, same file + line
     # overlap; a RANGE-LESS gold identity is uncoverable and STAYS in the
     # denominator (pre-registered denominator rule — dropping it would flatter
-    # the comparator). Wire == read by design (spans ARE read content), priced
+    # the comparator). Ranked-list price == read by design (spans ARE read content), priced
     # by the same walk as every other arm. `--curation off` is EXPLICIT and
     # inert on the explorer path — it satisfies the lane invariant; omission
     # would silently mean the Waterfill treatment on the other paths.

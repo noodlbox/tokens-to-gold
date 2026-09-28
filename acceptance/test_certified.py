@@ -19,18 +19,19 @@ from ttg.acceptance import (
     LOCKED_METRICS,
     REPLAY_TOL,
     check_report_file,
+    fixture_arms,
     load_fixture,
     load_frozen_gold,
     score_arm,
 )
 from ttg.curve_recompute import curve_parity_findings
 from ttg.matcher import match_gold_spans
-from ttg.report import _run_wire_stats
+from ttg.report import _run_cost_stats
 from ttg.report_io import (
     gold_bearing_rows,
     load_report,
     result_rows,
-    wire_curve,
+    binding_curve,
 )
 from ttg.rollup import Basis, rollup
 
@@ -178,13 +179,13 @@ class FloorRegressionWitness(unittest.TestCase):
                     )
 
 
-class WireCurvePathGuard(unittest.TestCase):
+class BindingCurvePathGuard(unittest.TestCase):
     def test_levers_off_through_rollup(self) -> None:
         report = load_report(_require(self, "levers_off_ablation", "py_nosphinx"))
         roll = rollup(report, frozen_instance_ids=list(load_frozen_gold("py_nosphinx")))
         self.assertGreaterEqual(roll.binding.gold_at_budget[8000], 0.0)
 
-    def test_ablation_within_32k_wire_curve_path(self) -> None:
+    def test_ablation_within_32k_binding_curve_path(self) -> None:
         m = score_arm(
             load_report(_require(self, "levers_off_ablation", "py_nosphinx")), "py_nosphinx"
         )
@@ -196,9 +197,9 @@ class T1InstanceBasis(unittest.TestCase):
     the engine-vs-frozen drift is EXACTLY the pre-registered addendum."""
 
     def _measurer(self, corpus: str) -> dict:
-        arms = load_fixture()["arms"][corpus]["shipped_treatment"]
+        arms = fixture_arms(load_fixture())[corpus]["shipped_treatment"]
         return {
-            "gold_at_8k": arms["gold_at_8k_wire"],
+            "gold_at_8k": arms["gold_at_8k_ranked_list"],
             "reach_at_80_whole_list": arms["reach_at_80_whole_list"],
             "n": arms["n"],
         }
@@ -244,7 +245,7 @@ class T1InstanceBasis(unittest.TestCase):
                 )
                 rows = {r.get("instance_id"): r for r in result_rows(report)}
                 drift_contrib = sum(
-                    float((wire_curve(rows[i]).get("by_budget") or {}).get("8000", 0.0) or 0.0)
+                    float((binding_curve(rows[i]).get("by_budget") or {}).get("8000", 0.0) or 0.0)
                     for i in drift
                 )
                 delta = (
@@ -267,11 +268,11 @@ class T1InstanceBasis(unittest.TestCase):
         self.assertIn("EXPECTED, not a discrepancy", text)
 
 
-class NativeFloorRunWireMedian(unittest.TestCase):
-    """MUST-RED: the native_floor run-wire MEDIAN (the typical-instance floor
+class NativeFloorRunCostMedian(unittest.TestCase):
+    """MUST-RED: the native_floor run-cost MEDIAN (the typical-instance floor
     cost) replays the pinned B5 §5 reference EXACTLY — ts40 <- L167 = 123,044,
     py_nosphinx <- L169 = 446,932; go34/rust43 are re-cert additions pinned in
-    the fixture. This exercises the SAME `_run_wire_stats` the gauge renders, so
+    the fixture. This exercises the SAME `_run_cost_stats` the gauge renders, so
     a break in the median path (or a report that moved) reddens here."""
 
     def test_medians_replay_the_pinned_reference_exactly(self) -> None:
@@ -282,10 +283,10 @@ class NativeFloorRunWireMedian(unittest.TestCase):
         for corpus in ("ts40", "py_nosphinx", "go34", "rust43"):
             with self.subTest(corpus=corpus):
                 report = load_report(_require(self, "native_floor", corpus))
-                _mean, median, _max = _run_wire_stats(report, corpus)
+                _mean, median, _max = _run_cost_stats(report, corpus)
                 self.assertEqual(
                     median, pinned[corpus],
-                    f"{corpus}: native_floor run-wire median {median:,} != pinned "
+                    f"{corpus}: native_floor run-cost median {median:,} != pinned "
                     f"{pinned[corpus]:,} (B5 §5 reference)",
                 )
 

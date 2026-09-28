@@ -8,9 +8,9 @@ gold cell scorer, MUST-NOT #1 safe), `rollup` (cost-to-coverage), and
 cell; the split is a lease-budget device, invisible in the numbers.
 
 Locked-language discipline (S7 memo, enforced here):
-  * external metrics are coverage@budget (Gold@B_wire), head-only@k, and
+  * external metrics are coverage@budget (Gold@B_ranked_list), head-only@k, and
     cost-to-coverage (median TtG@80) -- per-LANGUAGE, never blended, bound-
-    labelled `ttg_wire`, always with N (the gold-bearing denominator);
+    labelled `ttg_ranked_list`, always with N (the gold-bearing denominator);
   * whole-list recall is INTERNAL -- carried on the cell but NEVER rendered;
   * py head-only@10 is annotated NOT superiority-claimable (p=0.125);
   * no proven / 0-FP / moat / cost-hero; no bare "recall".
@@ -41,7 +41,7 @@ from ttg.acceptance import (
 )
 from ttg.pins import is_pending, load_pins, released_binary_sha
 from ttg.regression import DEFAULT_METRICS, compare_reports, render_table
-from ttg.report_io import load_report, result_rows, wire_curve
+from ttg.report_io import load_report, result_rows, binding_curve
 from ttg.rollup import rollup
 
 PKG = Path(__file__).resolve().parent.parent
@@ -59,7 +59,7 @@ ARMS: Final[tuple[str, ...]] = (
     "levers_off_ablation",
     NATIVE_FLOOR,
 )
-BOUND: Final = "ttg_wire"
+BOUND: Final = "ttg_ranked_list"
 
 # The certified lease trees whose per-lease provenance headers must AGREE on the
 # one binary sha (K + the cross-lease "one binary" assertion).
@@ -226,12 +226,13 @@ class CellScore:
     """One (corpus, arm) cell in the locked language. whole_list_internal is
     carried for completeness but is INTERNAL and never rendered.
 
-    Every arm prices retrieval by wire. shipped/levers deliver a curated wire
-    index (`token_coverage_wire`); the native_floor (rg) comparator delivers
-    spans — read content whose wire price IS its source-text token count under
-    the same shared tokenizer (wire == read for spans, B5 §5) — carried as
-    `token_coverage`. `rollup` treats both as the binding wire curve, so
-    coverage@budget and cost-to-coverage are genuine wire-priced values for the
+    Every arm here is a RANKED-LIST CEILING arm, priced in the engine, never
+    the delivered response (that is `ttg.delivered`). shipped/levers price a
+    curated ranked-list index (`token_coverage_ranked_list`); the native_floor (rg) comparator delivers
+    spans — read content whose ranked-list price IS its source-text token count under
+    the same shared tokenizer (ranked-list price == read for spans, B5 §5) — carried as
+    `token_coverage`. `rollup` treats both as the binding ranked-list curve, so
+    coverage@budget and cost-to-coverage are genuine ranked-list-priced values for the
     floor, never a measured-looking 0.0000. Its head-only@k is NOT rendered: a
     span head and a symbol head are not comparable in one head-only row."""
 
@@ -244,11 +245,11 @@ class CellScore:
     head_at_25: float
     reach_at_80_whole_list: float
     reach_at_80_within_32k: float
-    ttg80_median_wire: int | None
+    ttg80_median_ranked_list: int | None
     whole_list_internal: float
-    mean_run_wire: int
-    median_run_wire: int
-    max_run_wire: int
+    mean_run_cost: int
+    median_run_cost: int
+    max_run_cost: int
 
 
 @dataclass(frozen=True)
@@ -269,17 +270,17 @@ def _gold_available(corpus: str, gold_dir: Path) -> bool:
     return (gold_dir / f"frozen_gold_{corpus}.json").is_file()
 
 
-def _run_wire_stats(report: Mapping[str, object], corpus: str) -> tuple[int, int, int]:
-    """(mean, median, max) delivered run wire per instance, over the FROZEN
-    basis, from each row's binding wire curve
-    (`token_coverage[_wire].delivered_tokens`). The adverse cost gauge — how much
-    wire the arm burned, uncapped (B5 §5). The MEDIAN is the typical-instance
+def _run_cost_stats(report: Mapping[str, object], corpus: str) -> tuple[int, int, int]:
+    """(mean, median, max) priced run cost per instance, over the FROZEN
+    basis, from each row's binding ranked-list curve
+    (`token_coverage[_ranked_list].delivered_tokens`). The adverse cost gauge — how much
+    ranked-list price the arm burned, uncapped (B5 §5). The MEDIAN is the typical-instance
     cost, robust to the long-tail hunt the max reports."""
     rows = {r.get("instance_id"): r for r in result_rows(report)}
     delivered = [
         int(dt)
         for iid in load_frozen_gold(corpus)
-        if isinstance(dt := wire_curve(rows.get(iid, {})).get("delivered_tokens"), (int, float))
+        if isinstance(dt := binding_curve(rows.get(iid, {})).get("delivered_tokens"), (int, float))
     ]
     if not delivered:
         return (0, 0, 0)
@@ -295,22 +296,22 @@ def score_cell(report: Mapping[str, object], corpus: str, arm: str) -> CellScore
     `score_arm`; cost-to-coverage (median TtG@80) from the binding rollup."""
     metrics = score_arm(report, corpus)
     roll = rollup(report, frozen_instance_ids=list(load_frozen_gold(corpus)))
-    mean_run, median_run, max_run = _run_wire_stats(report, corpus)
+    mean_run, median_run, max_run = _run_cost_stats(report, corpus)
     return CellScore(
         corpus=corpus,
         arm=arm,
         n=metrics.n,
-        gold_at_8k=metrics.gold_at_8k_wire,
-        gold_at_32k=metrics.gold_at_32k_wire,
+        gold_at_8k=metrics.gold_at_8k_ranked_list,
+        gold_at_32k=metrics.gold_at_32k_ranked_list,
         head_at_10=metrics.head_only_at_10,
         head_at_25=metrics.head_only_at_25,
         reach_at_80_whole_list=metrics.reach_at_80_whole_list,
         reach_at_80_within_32k=metrics.reach_at_80_within_32k,
-        ttg80_median_wire=roll.binding.median_ttg_at_coverage[80],
+        ttg80_median_ranked_list=roll.binding.median_ttg_at_coverage[80],
         whole_list_internal=metrics.whole_list_INTERNAL,
-        mean_run_wire=mean_run,
-        median_run_wire=median_run,
-        max_run_wire=max_run,
+        mean_run_cost=mean_run,
+        median_run_cost=median_run,
+        max_run_cost=max_run,
     )
 
 
@@ -340,7 +341,7 @@ def _f(value: float) -> str:
 
 
 def _ttg(value: int | None) -> str:
-    return f"{value:,} wire" if value is not None else "not reached"
+    return f"{value:,} tok" if value is not None else "not reached"
 
 
 def _cell_by(cells: Sequence[Cell], corpus: str, arm: str) -> Cell:
@@ -384,7 +385,7 @@ def render_language_table(cells: Sequence[Cell], gold_dir: Path) -> str:
         out.append(f"### {language}  (corpus `{corpus}`, N={_corpus_n(corpus, cells, gold_dir)})")
         out.append("")
         out.append(
-            "| Arm | Gold@8k_wire | Gold@32k_wire | head-only@10 | head-only@25 "
+            "| Arm | Gold@8k_ranked_list | Gold@32k_ranked_list | head-only@10 | head-only@25 "
             "| reach@80 (whole-list) | reach@80 (within-32k) "
             "| cost-to-coverage (median TtG@80) |"
         )
@@ -397,9 +398,9 @@ def render_language_table(cells: Sequence[Cell], gold_dir: Path) -> str:
             s = cell.score
             g8 = _f(s.gold_at_8k)
             g32 = _f(s.gold_at_32k)
-            ttg = _ttg(s.ttg80_median_wire)
+            ttg = _ttg(s.ttg80_median_ranked_list)
             if arm == NATIVE_FLOOR:
-                # The span comparator IS wire-priced (coverage@budget + TtG), but
+                # The span comparator IS ranked-list-priced (coverage@budget + TtG), but
                 # its head-only@k is not comparable to a symbol arm's, so it is
                 # omitted. Both reach fields are shown: whole-list is the
                 # UNBOUNDED reach (footnote ²), within-32k the capped reach.
@@ -428,10 +429,10 @@ def render_language_table(cells: Sequence[Cell], gold_dir: Path) -> str:
     if any(cell.arm == NATIVE_FLOOR and cell.score is not None for cell in cells):
         out.append(
             "² native_floor (rg + targeted reads) delivers SPANS, not symbols. A "
-            "span is read content, so its wire price is its source-text token "
-            "count under the SAME shared tokenizer as the curated wire path "
-            "(wire == read for spans, B5 §5); coverage@budget and cost-to-"
-            "coverage are therefore genuine wire-priced floor values, never a "
+            "span is read content, so its ranked-list price is its source-text token "
+            "count under the SAME shared tokenizer as the curated ranked-list path "
+            "(ranked-list price == read for spans, B5 §5); coverage@budget and cost-to-"
+            "coverage are therefore genuine ranked-list-priced floor values, never a "
             "measured zero. head-only@k is omitted because a span head and a "
             "symbol head are not comparable in one head-only row; the reach@80 "
             "shown for the floor is the UNBOUNDED whole-list reach."
@@ -631,16 +632,16 @@ def render_disclosures() -> str:
     )
 
 
-def render_run_wire_gauge(cells: Sequence[Cell]) -> str:
+def render_run_cost_gauge(cells: Sequence[Cell]) -> str:
     """Adverse cost gauge (ADDITIVE — not a coverage cell): mean / median / max
-    delivered RUN WIRE per instance, per arm per language, over the gold-bearing
+    delivered RUN COST per instance, per arm per language, over the gold-bearing
     basis. Uncapped, so for native_floor this is the full hunt (B5 §5, max ~1.72M
     on ts40); the median is the typical-instance cost, robust to that long tail.
     Shares the report's provenance (one binary, frozen denominators)."""
     out: list[str] = [
-        "## Run-wire cost gauge (mean / median / max delivered wire per instance)",
+        "## Run cost gauge, ranked list (mean / median / max priced tokens per instance)",
         "",
-        "The wire each arm actually delivers per instance (`token_coverage` "
+        "The ranked-list price each arm's whole list costs per instance (`token_coverage` "
         "delivered_tokens), over the gold-bearing basis — the adverse cost gauge, "
         "additive to the coverage table above and under the same provenance. "
         "Uncapped: for native_floor this is the whole hunt (B5 §5); the median is "
@@ -650,7 +651,7 @@ def render_run_wire_gauge(cells: Sequence[Cell]) -> str:
     for corpus, language in CORPUS_LANG.items():
         out.append(f"### {language}  (corpus `{corpus}`)")
         out.append("")
-        out.append("| Arm | mean run wire | median run wire | max run wire |")
+        out.append("| Arm | mean run cost | median run cost | max run cost |")
         out.append("|---|---|---|---|")
         for arm in ARMS:
             cell = _cell_by(cells, corpus, arm)
@@ -659,8 +660,8 @@ def render_run_wire_gauge(cells: Sequence[Cell]) -> str:
                 continue
             s = cell.score
             out.append(
-                f"| {arm} | {s.mean_run_wire:,} wire | {s.median_run_wire:,} wire "
-                f"| {s.max_run_wire:,} wire |"
+                f"| {arm} | {s.mean_run_cost:,} tok | {s.median_run_cost:,} tok "
+                f"| {s.max_run_cost:,} tok |"
             )
         out.append("")
     return "\n".join(out)
@@ -692,7 +693,7 @@ def build_report_doc(
         [
             header,
             render_language_table(cells, gold),
-            render_run_wire_gauge(cells),
+            render_run_cost_gauge(cells),
             render_gold_distribution(gold),
             render_regression_witness(reports),
             render_lever_effect(reports),

@@ -10,7 +10,7 @@ The sign test and the bootstrap mirror, formula for formula and index for index,
 `_bootstrap_mean_ci`) so a number here and a number there mean the same thing.
 They are re-stated rather than imported: harbor's are private helpers typed to
 SWE-bench *solve-rate trial records* (binary per-instance outcomes), while the
-gate's per-instance metric (`Gold@budget_wire`) is continuous in [0, 1]. On
+gate's per-instance metric (`Gold@budget_ranked_list`) is continuous in [0, 1]. On
 binary input the two agree exactly — McNemar's exact test IS the sign test on
 the discordant pairs.
 """

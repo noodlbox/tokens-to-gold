@@ -1,20 +1,20 @@
-"""Recompute the TtG wire curve OFFLINE, from primitives (gate G2).
+"""Recompute the TtG ranked-list curve OFFLINE, from primitives (gate G2).
 
 Without this module a third party can only re-aggregate the engine's own
 pre-baked 3-point grid — they must TRUST the per-instance curve. Removing
 that trust is exactly what G2 is for.
 
-From `(gold_symbols, retrieved_symbols, retrieved_wire_positions)` alone,
+From `(gold_symbols, retrieved_symbols, retrieved_ranked_list_positions)` alone,
 for ARBITRARY budget `B` and threshold `c%`:
 
-    Gold@B_wire     = |{g : g claimed at rank r, wire_pos[r] <= B}| / |gold|
-    TokensToGold@c% = min{ wire_pos[r] : coverage-through-r >= c% }, else None
+    Gold@B_ranked_list     = |{g : g claimed at rank r, rl_pos[r] <= B}| / |gold|
+    TokensToGold@c% = min{ rl_pos[r] : coverage-through-r >= c% }, else None
 
-`retrieved_wire_positions[r]` is the engine's OWN cumulative wire through
-ranks `0..=r` under its section-aware `price_wire` rule (a section's cost is
-relocated, so wire is charged per SECTION, not per symbol). We never
+`retrieved_ranked_list_positions[r]` is the engine's OWN cumulative ranked-list price through
+ranks `0..=r` under its section-aware `price_ranked_list` rule (a section's cost is
+relocated, so the price is charged per SECTION, not per symbol). We never
 re-implement that pricing — we consume the number the engine already emitted
-and prove fidelity by parity against its in-binary `token_coverage_wire`.
+and prove fidelity by parity against its in-binary `token_coverage_ranked_list`.
 
 SEMANTIC LOCK: the binary is the oracle. If a systematic offset ever appears
 (an off-by-one in "paid at rank r vs r+1", a section-boundary attribution),
@@ -37,8 +37,8 @@ class CurveInputError(ValueError):
 
 
 @dataclass(frozen=True)
-class WireCurve:
-    """One instance's offline-recomputed wire curve."""
+class RankedListCurve:
+    """One instance's offline-recomputed ranked-list curve."""
 
     gold_count: int
     delivered_tokens: int
@@ -46,26 +46,26 @@ class WireCurve:
     tokens_to_coverage: dict[int, int | None]
 
 
-def recompute_wire_curve(
+def recompute_ranked_list_curve(
     gold_symbols: Sequence[str],
     retrieved_symbols: Sequence[str],
-    retrieved_wire_positions: Sequence[int],
+    retrieved_ranked_list_positions: Sequence[int],
     budgets: Sequence[int],
     thresholds: Sequence[int],
-) -> WireCurve:
-    """The whole wire TtG curve for one instance, from primitives."""
-    if len(retrieved_wire_positions) != len(retrieved_symbols):
+) -> RankedListCurve:
+    """The whole ranked-list TtG curve for one instance, from primitives."""
+    if len(retrieved_ranked_list_positions) != len(retrieved_symbols):
         raise CurveInputError(
-            f"retrieved_wire_positions has {len(retrieved_wire_positions)} entries "
+            f"retrieved_ranked_list_positions has {len(retrieved_ranked_list_positions)} entries "
             f"but retrieved_symbols has {len(retrieved_symbols)} — the alignment "
             "guarantee is broken, so no rank can be priced"
         )
     gold_count = len(gold_symbols)
-    delivered = retrieved_wire_positions[-1] if retrieved_wire_positions else 0
+    delivered = retrieved_ranked_list_positions[-1] if retrieved_ranked_list_positions else 0
 
     result = match_gold(gold_symbols, retrieved_symbols)
-    # Wire position at which each claimed gold was paid for, in rank order.
-    paid_at = [retrieved_wire_positions[rank - 1] for rank in result.match_ranks]
+    # Ranked-list position at which each claimed gold was paid for, in rank order.
+    paid_at = [retrieved_ranked_list_positions[rank - 1] for rank in result.match_ranks]
 
     by_budget = {
         budget: (sum(1 for w in paid_at if w <= budget) / gold_count if gold_count else 0.0)
@@ -79,12 +79,12 @@ def recompute_wire_curve(
             continue
         needed = math.ceil(threshold * gold_count / 100)
         # `paid_at` is non-decreasing (match_ranks is), so the k-th entry is
-        # the first wire position at which coverage reaches k.
+        # the first ranked-list position at which coverage reaches k.
         tokens_to_coverage[threshold] = (
             paid_at[needed - 1] if 0 < needed <= len(paid_at) else None
         )
 
-    return WireCurve(
+    return RankedListCurve(
         gold_count=gold_count,
         delivered_tokens=delivered,
         by_budget=by_budget,
@@ -124,17 +124,17 @@ def curve_parity_findings(
             continue
         iid = row.get("instance_id")
         retrieved = _require_list(row, "retrieved_symbols")
-        positions = _require_list(row, "retrieved_wire_positions")
-        offline = recompute_wire_curve(
+        positions = _require_list(row, "retrieved_ranked_list_positions")
+        offline = recompute_ranked_list_curve(
             [str(g) for g in gold],
             [str(r) for r in retrieved],
             [int(p) for p in positions],  # type: ignore[arg-type]
             budgets,
             thresholds,
         )
-        in_binary = row.get("token_coverage_wire")
+        in_binary = row.get("token_coverage_ranked_list")
         if not isinstance(in_binary, Mapping):
-            findings.append(f"{iid}: no token_coverage_wire to compare against")
+            findings.append(f"{iid}: no token_coverage_ranked_list to compare against")
             continue
 
         delivered = in_binary.get("delivered_tokens")

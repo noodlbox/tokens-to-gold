@@ -78,7 +78,7 @@ class GoldDistributionTest(unittest.TestCase):
 class SyntheticRenderTest(unittest.TestCase):
     """Runs EVERYWHERE (no run artifact, no skipUnless): a synthetic ts40
     fixture built from the committed frozen gold exercises the SCORED symbol
-    path (shipped/levers, `token_coverage_wire`), the SCORED span path
+    path (shipped/levers, `token_coverage_ranked_list`), the SCORED span path
     (native_floor, span-form retrieval + `token_coverage`), and the PENDING path
     (go34/rust43 absent). Asserts SHAPE, never pinned values -- the real numbers
     are A4 evidence, not a unit-test constant."""
@@ -86,7 +86,7 @@ class SyntheticRenderTest(unittest.TestCase):
     @staticmethod
     def _symbol_rows(gold: dict[str, list[str]]) -> list[dict]:
         """One symbol-arm row per frozen-gold instance. retrieved == gold so
-        scoring produces real (non-pinned) numbers; the wire block is populated
+        scoring produces real (non-pinned) numbers; the ranked-list block is populated
         so shipped/levers render numeric coverage@budget."""
         rows: list[dict] = []
         for iid, symbols in gold.items():
@@ -95,7 +95,7 @@ class SyntheticRenderTest(unittest.TestCase):
                     "instance_id": iid,
                     "gold_symbols": list(symbols),
                     "retrieved_symbols": list(symbols),
-                    "token_coverage_wire": {
+                    "token_coverage_ranked_list": {
                         "delivered_tokens": 9000,
                         "by_budget": {"2000": 1.0, "8000": 1.0, "32000": 1.0},
                         "tokens_to_coverage": {"50": 500, "80": 800, "100": 1000},
@@ -108,7 +108,7 @@ class SyntheticRenderTest(unittest.TestCase):
     def _floor_rows(gold: dict[str, list[str]]) -> list[dict]:
         """One span-arm (native_floor) row per instance: each gold symbol gets a
         distinct range and a covering `file:span:a-b`, and the arm carries only
-        `token_coverage` (spans are read content; wire == read). Every gold is
+        `token_coverage` (spans are read content; ranked-list price == read). Every gold is
         covered, so the floor scores real non-zero coverage@budget and reach."""
         rows: list[dict] = []
         for iid, symbols in gold.items():
@@ -161,13 +161,13 @@ class SyntheticRenderTest(unittest.TestCase):
         # 3 ts40 cells present + scored; the other 9 are PENDING.
         self.assertIn("3 of 12 cells scored", doc)
 
-        # SCORED symbol path: ts40 shipped renders numeric wire coverage, not
-        # PENDING (retrieved == gold -> Gold@8k_wire = 1.0000).
+        # SCORED symbol path: ts40 shipped renders numeric ranked-list coverage, not
+        # PENDING (retrieved == gold -> Gold@8k_ranked_list = 1.0000).
         shipped = self._row_line(doc, "shipped_treatment")
         self.assertNotIn("PENDING", shipped)
         self.assertIn("1.0000", shipped)
 
-        # SCORED span path: native_floor is wire-priced via token_coverage, so it
+        # SCORED span path: native_floor is ranked-list-priced via token_coverage, so it
         # renders numeric coverage@budget (Gold@8k = 1.0000 here), NEVER "n/a"
         # and never a PENDING. Its head-only@k is omitted (rendered as "—") and
         # its reach carries the unbounded-reach footnote marker.
@@ -177,7 +177,7 @@ class SyntheticRenderTest(unittest.TestCase):
         self.assertIn("1.0000", floor)
         self.assertIn("—", floor)
         # The reworded footnote states the pricing basis, not an "n/a" excuse.
-        self.assertIn("wire == read for spans", doc)
+        self.assertIn("ranked-list price == read for spans", doc)
         self.assertNotIn("does not price retrieval by", doc)
 
         # PENDING path: go34/rust43 have no arm report.
@@ -193,13 +193,13 @@ class SyntheticRenderTest(unittest.TestCase):
         self.assertIn("Gold-symbol distribution (thin-keys caveat)", doc)
         self.assertIn("| TypeScript | `ts40` |", doc)
 
-        # The run-wire cost gauge renders (additive), values tracing to the rows'
+        # The run-cost cost gauge renders (additive), values tracing to the rows'
         # delivered_tokens: 9,000 (symbol arms) and 80,000 (the span floor). The
         # gauge now carries a median column (mean / median / max).
-        self.assertIn("Run-wire cost gauge", doc)
-        self.assertIn("median run wire", doc)
-        self.assertIn("9,000 wire", doc)
-        self.assertIn("80,000 wire", doc)
+        self.assertIn("Run cost gauge, ranked list", doc)
+        self.assertIn("median run cost", doc)
+        self.assertIn("9,000 tok", doc)
+        self.assertIn("80,000 tok", doc)
 
 
 class ProvenanceGateTest(unittest.TestCase):
@@ -301,11 +301,11 @@ def _cellscore(n: int) -> CellScore:
         head_at_25=0.0,
         reach_at_80_whole_list=0.0,
         reach_at_80_within_32k=0.0,
-        ttg80_median_wire=None,
+        ttg80_median_ranked_list=None,
         whole_list_internal=0.0,
-        mean_run_wire=0,
-        median_run_wire=0,
-        max_run_wire=0,
+        mean_run_cost=0,
+        median_run_cost=0,
+        max_run_cost=0,
     )
 
 
