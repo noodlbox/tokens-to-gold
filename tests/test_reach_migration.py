@@ -50,10 +50,12 @@ class GC3NonVacuity(unittest.TestCase):
 
 class GC4NoBareReachAt80(unittest.TestCase):
     """No bare reach_at_80 survives anywhere (every use is _whole_list or
-    _within_32k qualified). Excludes THIS file, which names the bare token."""
+    _within_32k qualified on the ranked-list arms, or _within_budget on the
+    delivered arm, where reach is bounded by the row's requested budget B).
+    Excludes THIS file, which names the bare token."""
 
     def test_zero_bare_reach_at_80(self) -> None:
-        pat = re.compile("reach_at_80(?!_whole_list|_within_32k)")
+        pat = re.compile("reach_at_80(?!_whole_list|_within_32k|_within_budget)")
         offenders = []
         for base in ("ttg", "tests", "arms", "acceptance"):
             for f in (PKG / base).rglob("*"):
