@@ -279,6 +279,12 @@ def run_cell(nbx: str, root: Path, instance: Instance) -> Path:
     return manifest
 
 
-def run_corpus(nbx: str, root: Path, corpus: str, jsonl: Path) -> list[Path]:
-    """Every gold-bearing instance of one corpus, one cell at a time."""
-    return [run_cell(nbx, root, instance) for instance in gold_bearing_instances(corpus, jsonl)]
+def run_corpus(nbx: str, root: Path, corpus: str, jsonl: Path, only: frozenset[str] | None = None) -> list[Path]:
+    """Every gold-bearing instance of one corpus (or the `only` subset), one
+    cell at a time. A subset run is never publishable: every instance it skips
+    scores as a failed cell (`ttg.delivered_report`)."""
+    return [
+        run_cell(nbx, root, instance)
+        for instance in gold_bearing_instances(corpus, jsonl)
+        if only is None or instance.instance_id in only
+    ]

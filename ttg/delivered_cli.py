@@ -54,7 +54,8 @@ def cmd_delivered_run(args: argparse.Namespace) -> int:
     stamp = root / "out" / args.corpus / "build.json"
     stamp.parent.mkdir(parents=True, exist_ok=True)
     stamp.write_text(json.dumps({**build, "corpus_sha256": corpus_sha}, indent=1), encoding="utf-8")
-    cells = run_corpus(str(Path(args.build_dir) / "nbx"), root, args.corpus, jsonl)
+    only = frozenset(args.only) if args.only else None
+    cells = run_corpus(str(Path(args.build_dir) / "nbx"), root, args.corpus, jsonl, only)
     print(f"delivered-run {args.corpus}: {len(cells)} cells under {root / 'out' / args.corpus}")
     return 0
 
@@ -83,6 +84,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     run = sub.add_parser("delivered-run", help="run the delivered arm's cells for one corpus (sequential)")
     for flag in ("--build-dir", "--commit", "--corpus", "--corpus-jsonl", "--root"):
         run.add_argument(flag, required=True)
+    run.add_argument("--only", nargs="+", help="run only these instance ids (a smoke; never publishable)")
     run.set_defaults(func=cmd_delivered_run)
 
     score = sub.add_parser("delivered-score", help="score recorded delivered cells into a report")
