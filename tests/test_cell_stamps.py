@@ -70,8 +70,8 @@ def _sha(data: bytes) -> str:
 def _receipt(binary_sha: str, commit: str = COMMIT) -> BuildReceipt:
     lock = LOCK.format(graph=_sha(b"model"), tokenizer=_sha(b"{}"))
     return BuildReceipt(
-        schema=2, commit=commit, tree_digest="a" * 64, binary_sha256=binary_sha,
-        cargo_profile="release", cargo_features="default",
+        schema=3, commit=commit, tree_digest="a" * 64, binary_sha256=binary_sha,
+        nbx_sha256="c" * 64, cargo_profile="release", cargo_features="default",
         rust_toolchain_toml='[toolchain]\nchannel = "1.95"\n', rustc_version="rustc 1.95.0",
         analysis_languages=("go", "python", "typescript"), model_lock_text=lock,
         model_lock_sha256=_sha(lock.encode()),
@@ -189,13 +189,15 @@ class WriteBuildReceiptTest(EngineTreeTest):
             "#!/bin/sh\necho '{\"analysis_languages\": [\"go\", \"python\"]}'\n"
         )
         self.binary.chmod(0o755)
+        self.nbx = self.synced.parent / "nbx"
+        self.nbx.write_text("#!/bin/sh\necho nbx\n")
 
     def _write(self) -> tuple[Path, BuildReceipt]:
         out = self.synced.parent / "build-receipt.json"
         receipt = write_build_receipt(
             src=self.synced, commit=self.commit,
             pre_build_tree_digest=measure_engine_tree(self.synced), binary=self.binary,
-            profile="release", features="default", out=out,
+            nbx=self.nbx, profile="release", features="default", out=out,
         )
         return out, receipt
 
@@ -206,6 +208,7 @@ class WriteBuildReceiptTest(EngineTreeTest):
         self.assertEqual(load_build_receipt(out), receipt)
         self.assertEqual(receipt.tree_digest, self.expected)
         self.assertEqual(receipt.binary_sha256, _sha(self.binary.read_bytes()))
+        self.assertEqual(receipt.nbx_sha256, _sha(self.nbx.read_bytes()))
         self.assertEqual(receipt.analysis_languages, ("go", "python"))
         self.assertIn("stable", receipt.rust_toolchain_toml)
         self.assertTrue(receipt.rustc_version.startswith("rustc "))
@@ -219,7 +222,7 @@ class WriteBuildReceiptTest(EngineTreeTest):
         with self.assertRaisesRegex(StampError, "changed during the build"):
             write_build_receipt(
                 src=self.synced, commit=self.commit, pre_build_tree_digest=before,
-                binary=self.binary, profile="release", features="default", out=out,
+                binary=self.binary, nbx=self.nbx, profile="release", features="default", out=out,
             )
         self.assertFalse(out.exists())
 

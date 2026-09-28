@@ -41,6 +41,7 @@ from ttg.acceptance import (
 )
 from ttg.pins import is_pending, load_pins, released_binary_sha
 from ttg.regression import DEFAULT_METRICS, compare_reports, render_table
+from ttg.publication import CEILING_LABEL, ArmKind
 from ttg.report_io import load_report, result_rows, binding_curve
 from ttg.rollup import rollup
 
@@ -373,7 +374,7 @@ def render_language_table(cells: Sequence[Cell], gold_dir: Path) -> str:
     """The 4-language coverage table, one block per LANGUAGE (never blended),
     bound-labelled, with N. Whole-list recall is not printed (INTERNAL)."""
     out: list[str] = [
-        f"## Coverage by language (bound: {BOUND}; N = gold-bearing basis)",
+        f"## Retrieval ceiling by language ({CEILING_LABEL}; bound: {BOUND}; N = gold-bearing basis)",
         "",
         "All numbers are one binary scored offline against each corpus's FROZEN "
         "gold. Whole-list recall is an internal diagnostic and is not reported "
@@ -683,6 +684,10 @@ def build_report_doc(
     header = "\n".join(
         [
             "# TokensToGold — 2.3.18 re-certification (4-language)",
+            "",
+            f"_Every table on this page is a {ArmKind.RANKED_LIST_CEILING.value}: "
+            f"the engine's untrimmed ranked list, a {CEILING_LABEL}. What `nbx search` "
+            "delivers is reported by the delivered arm (`ttg.delivered_page`)._",
             "",
             f"_Locked claims language (S7). {scored} of {len(cells)} cells "
             "scored; the rest are PENDING their lease._",

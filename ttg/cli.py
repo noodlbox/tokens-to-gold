@@ -48,6 +48,10 @@ from ttg.cell_stamps import (
     write_build_receipt,
 )
 from ttg.curve_recompute import curve_parity_findings
+from ttg.delivered_cli import register as register_delivered
+from ttg.delivered import DeliveredScoringError
+from ttg.publication import CeilingNotPublishable
+from ttg.token_count import TokenCountError
 from ttg.derive_checks import (
     Disposition,
     drift_report,
@@ -129,7 +133,7 @@ def cmd_write_build_receipt(args: argparse.Namespace) -> int:
     receipt = write_build_receipt(
         src=Path(args.src), commit=args.commit,
         pre_build_tree_digest=args.pre_build_tree_digest, binary=Path(args.binary),
-        profile=args.profile, features=args.features, out=Path(args.out),
+        nbx=Path(args.nbx), profile=args.profile, features=args.features, out=Path(args.out),
     )
     print(f"build receipt: {args.out} (commit {receipt.commit}, binary {receipt.binary_sha256})")
     return 0
@@ -614,8 +618,8 @@ def main(argv: list[str] | None = None) -> int:
         "write-build-receipt",
         help="(arms/build_engine.sh only) write the receipt for the binary it just built",
     )
-    for flag in ("--src", "--commit", "--pre-build-tree-digest", "--binary", "--profile",
-                 "--features", "--out"):
+    for flag in ("--src", "--commit", "--pre-build-tree-digest", "--binary", "--nbx",
+                 "--profile", "--features", "--out"):
         p_wbr.add_argument(flag, required=True)
     p_wbr.set_defaults(func=cmd_write_build_receipt)
 
@@ -818,6 +822,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_report.set_defaults(func=cmd_report)
 
+    register_delivered(sub)
+
     args = parser.parse_args(argv)
     try:
         return int(args.func(args))
@@ -830,6 +836,9 @@ def main(argv: list[str] | None = None) -> int:
         UnknownCorpusError,
         UnsafeCorpusInputError,
         UnsupportedLanguageError,
+        DeliveredScoringError,
+        CeilingNotPublishable,
+        TokenCountError,
     ) as exc:
         # A refusal is an operator-facing message, not a traceback: these are
         # all "you asked for something this binary/pin cannot honour" errors.

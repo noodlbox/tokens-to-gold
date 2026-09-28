@@ -90,8 +90,9 @@ class _Harness(unittest.TestCase):
         """A receipt for the stub's bytes and the verdict `verify-receipt` would
         issue for it (the git side is covered by test_cell_stamps)."""
         self.receipt.write_text(json.dumps(asdict(BuildReceipt(
-            schema=2, commit=COMMIT, tree_digest="a" * 64,
+            schema=3, commit=COMMIT, tree_digest="a" * 64,
             binary_sha256=hashlib.sha256(self.binary.read_bytes()).hexdigest(),
+            nbx_sha256="c" * 64,
             cargo_profile="release", cargo_features="default",
             rust_toolchain_toml="[toolchain]\n", rustc_version="rustc 1.95.0",
             analysis_languages=languages,

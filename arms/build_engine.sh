@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Build ONE engine (`noodl-eval`) and write its build receipt — in one step.
+# Build the engine (`noodl-eval`) and the shipped CLI (`nbx`) from ONE tree, and
+# write the one build receipt that vouches for both.
 #
 #   arms/build_engine.sh --src <synced engine tree> --commit <40-hex> --out-dir <dir>
 #
@@ -38,8 +39,14 @@ mkdir -p "$OUT_DIR"; OUT_DIR="$(cd "$OUT_DIR" && pwd)"
 
 PRE_BUILD="$(cd "$PKG" && python3 -m ttg.cli measure-engine-tree --src "$SRC")"
 (cd "$SRC" && cargo build --profile "$PROFILE" -p noodlbox-eval)
+# A SEPARATE invocation: one `cargo build -p a -p b` unifies both packages'
+# features, which would change the certified `noodl-eval` binary. `nbx` embeds
+# its commit (build.rs refuses a release build without one), so the requested
+# commit is passed explicitly: the synced tree has no `.git`.
+(cd "$SRC" && NOODLBOX_GIT_SHA="$COMMIT" cargo build --profile "$PROFILE" -p nbx)
 TARGET_DIR="${CARGO_TARGET_DIR:-$SRC/target}"
 cp "$TARGET_DIR/$PROFILE/noodl-eval" "$OUT_DIR/noodl-eval"
+cp "$TARGET_DIR/$PROFILE/nbx" "$OUT_DIR/nbx"
 (cd "$PKG" && python3 -m ttg.cli write-build-receipt --src "$SRC" --commit "$COMMIT" \
-  --pre-build-tree-digest "$PRE_BUILD" --binary "$OUT_DIR/noodl-eval" \
+  --pre-build-tree-digest "$PRE_BUILD" --binary "$OUT_DIR/noodl-eval" --nbx "$OUT_DIR/nbx" \
   --profile "$PROFILE" --features "$FEATURES" --out "$OUT_DIR/build-receipt.json")

@@ -36,7 +36,7 @@ binary scanners) were removed with this change; nothing references them.
 | 6 | **Task definition** | FILLED | `corpora/*.instances.tsv` (instance lists + digests); gold = the frozen per-instance symbol sets in `gold/`; the validator is the deterministic offline scorer (`ttg/`); failure rule: non-reachers stay in the denominator (intent-to-treat) |
 | 7 | **Raw trajectory** | EXPLAINED-ABSENT | No agent loop exists → there are no messages or tool calls to record. The deterministic analogue IS published: per-ranked-symbol wire positions in every report (`retrieved_wire_positions`), from which the full curve recomputes offline (`ttg/curve_recompute.py`). Boundary: tool-response ≠ whole-agent |
 | 8 | **Output** | EXPLAINED-ABSENT | No agent action is produced → no final answer, patch, or abstention exists. The scored coverage verdict is the output; the offline scorer's report is the validator log |
-| 9 | **Usage ledger** | EXPLAINED-ABSENT | TtG prices **wire tokens** (`ttg_wire`) — deliberately NOT provider-billed tokens. There is no provider, no cache accounting, and no dollar figure anywhere in this benchmark. Boundary: wire tokens ≠ billed tokens; payload ≠ cost |
+| 9 | **Usage ledger** | EXPLAINED-ABSENT | TtG prices tokens (`ttg_wire` on the delivered arm: the exact bytes `nbx search` emits; `ttg_ranked_list` on the ranked-list ceiling arms) — deliberately NOT provider-billed tokens. There is no provider, no cache accounting, and no dollar figure anywhere in this benchmark. Boundary: wire tokens ≠ billed tokens; payload ≠ cost |
 | 10 | **Index ledger** | EXPLAINED-ABSENT | Index build economics (build time, RAM, break-even) is not a TtG endpoint: the benchmark measures coverage under a fixed wire budget *given* an index. Derivation wall-times appear in run manifests as provenance, not as an economics claim |
 | 11 | **Scoring** | FILLED | Per-instance rows in every report; aggregates recomputed offline and asserted against the in-binary rollup (`ttg/rollup.py`, `ttg/acceptance.py`); paired stats per the preregistration. Judge rubric N/A |
 | 12 | **Failure publication** | FILLED | Excluded instances + reasons are pinned (`corpora/`, the exclusion record); non-reachers stay in the frozen denominators (ts40 37 / py 39); every report retains its error rows |
@@ -48,7 +48,7 @@ binary scanners) were removed with this change; nothing references them.
 The rows above stay honest only if these quantities are never merged — this
 benchmark never does, and quotes of it must not either:
 
-- **wire tokens ≠ billed tokens** — no dollar or provider-cost claim exists here
+- **priced tokens ≠ billed tokens** — no dollar or provider-cost claim exists here
 - **tool-response ≠ whole-agent** — one response's tokens, not a session's
 - **one query ≠ a task or session**
 - **payload reduction ≠ cost reduction**
