@@ -48,6 +48,7 @@ from ttg.cell_stamps import (
     write_build_receipt,
 )
 from ttg.curve_recompute import curve_parity_findings
+from ttg.delivered_cells import CellBuildMismatch
 from ttg.delivered_cli import MissingAccountError
 from ttg.delivered_cli import register as register_delivered
 from ttg.delivered import DeliveredScoringError
@@ -841,6 +842,7 @@ def main(argv: list[str] | None = None) -> int:
         CeilingNotPublishable,
         TokenCountError,
         MissingAccountError,
+        CellBuildMismatch,
     ) as exc:
         # A refusal is an operator-facing message, not a traceback: these are
         # all "you asked for something this binary/pin cannot honour" errors.
