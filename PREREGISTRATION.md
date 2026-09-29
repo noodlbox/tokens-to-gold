@@ -468,7 +468,7 @@ Any change to one of the following requires a dated amendment before the affecte
 - the object shape, `symbols[]` objects with a location;
 - the B63 lean shape (D+id), `files[].symbols` strings of the form `<id> <a-b> <kind> <name> <role> <reason> <signature>`, plus string `file_index` rows.
 
-A mixed or unknown envelope raises. A result with no row lane counts as empty only when the envelope's typed coverage says every row-bearing section included 0. Otherwise, or with no coverage, the cell fails. Both shapes yield the same `path:name` identity, so pairing between arms is unchanged. The grep identity oracle is read through the same reader.
+A mixed or unknown envelope raises, and so does a result carrying rows in a lane no reader scores (the `--verbosity full` projection's ranked lanes, `UNSCORED_ROW_LANES`); rows are never dropped. A result with no row lane counts as empty only when the envelope's typed coverage says every row-bearing section included 0; this holds whether the lanes are absent or present but empty (fold 460d92f). Otherwise, or with no coverage, the cell fails. Both shapes yield the same `path:name` identity, so pairing between arms is unchanged. The grep identity oracle is read through the same reader.
 
 **Line base.** The oracle key is `(path, 1-based line)`.
 - The object shape carries a 0-based `start_line` or `line`, and the reader adds 1.
