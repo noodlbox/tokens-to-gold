@@ -34,7 +34,7 @@ def verified_build(build_dir: Path, commit: str) -> dict[str, object]:
     the build stamp every delivered report carries."""
     receipt_path = build_dir / "build-receipt.json"
     receipt = load_build_receipt(receipt_path)
-    load_receipt_verdict(build_dir / "receipt-verdict.json", receipt_path, receipt)
+    verdict = load_receipt_verdict(build_dir / "receipt-verdict.json", receipt_path, receipt)
     verify_binary_against_receipt(build_dir / "noodl-eval", receipt, commit)
     verify_nbx_against_receipt(build_dir / "nbx", receipt, commit)
     return {
@@ -45,6 +45,10 @@ def verified_build(build_dir: Path, commit: str) -> dict[str, object]:
         "cargo_features": receipt.cargo_features,
         "model_lock_sha256": receipt.model_lock_sha256,
         "receipt_verified_against_git": True,
+        "commit_date": verdict.commit_date,
+        "grep_fix_commit": verdict.grep_fix_commit,
+        "grep_one_line_per_hit": verdict.grep_one_line_per_hit,
+        "grep_pre_fix_on_newer_commit": verdict.pre_fix_on_newer_commit,
     }
 
 

@@ -16,8 +16,9 @@ Pinned here:
   whitespace name raise.
 * LINE BASES: the same symbol in both shapes yields the same oracle key.
 * EXHAUSTIVE DISPATCH: a mixed or unknown envelope raises; nothing falls through.
-* HEADED GREP: an indented hit before any heading raises; a column-0 line that
-  is not a delivered path is a continuation (Amendment 1).
+* GREP (B64 addendum 4): an indented hit before any heading raises; a hit on
+  an undelivered path raises on every build; any other line is a counted
+  continuation on a pre-#1791 build and raises on a post-#1791 one.
 """
 
 from __future__ import annotations
@@ -28,7 +29,14 @@ import unittest
 from pathlib import Path
 
 from ttg.delivered import DeliveredScoringError, grep_identities, json_identities
-from ttg.delivered_wire import WireError, grep_hits, json_rows, recall_line, symbol_line
+from ttg.delivered_wire import (
+    UndeliveredHit,
+    WireError,
+    grep_hits,
+    json_rows,
+    recall_line,
+    symbol_line,
+)
 
 CELLS = Path(__file__).parent / "fixtures" / "b63_cells"
 
@@ -128,13 +136,14 @@ class B63CellParity(unittest.TestCase):
                 text = cell(name)
                 expected = reference_grep_hits(text, known)
                 self.assertTrue(expected, "non-vacuity: the block carries hits")
-                self.assertEqual(grep_hits(text, known), expected)
+                # B63's cells predate the #1791 fix: continuations are counted.
+                self.assertEqual(grep_hits(text, known, one_line_per_hit=False).hits, expected)
 
     def test_the_headed_block_carries_the_flat_blocks_hits(self):
         known = delivered_paths()
         self.assertEqual(
-            sorted(grep_hits(cell("grep.G2.c4k"), known)),
-            sorted(grep_hits(cell("grep.G0.c4k"), known)),
+            sorted(grep_hits(cell("grep.G2.c4k"), known, one_line_per_hit=False).hits),
+            sorted(grep_hits(cell("grep.G0.c4k"), known, one_line_per_hit=False).hits),
         )
 
 
@@ -189,7 +198,9 @@ class LineBases(unittest.TestCase):
 
     def test_a_grep_hit_joins_a_lines_oracle(self):
         oracle = line_envelope("0123456789ab 22-30 function alpha definition query_match")
-        identities = grep_identities("src/a.ts:22:export function alpha()", oracle)
+        identities = grep_identities(
+            "src/a.ts:22:export function alpha()", oracle, one_line_per_hit=True
+        )
         self.assertEqual(identities.lower, ["src/a.ts:alpha"])
 
 
@@ -226,19 +237,36 @@ class ExhaustiveDispatch(unittest.TestCase):
 
 
 class HeadedGrep(unittest.TestCase):
+    """B64 addendum 4 grep rules, and L18's must-reds (a)-(c)."""
+
     PATHS = frozenset({"src/a.ts", "src/b.ts"})
 
     def test_hits_take_their_heading(self):
         text = "src/a.ts\n  3:[def q] alpha\nsrc/b.ts\n  7:[def x] beta\n"
-        self.assertEqual(grep_hits(text, self.PATHS), [("src/a.ts", 3), ("src/b.ts", 7)])
+        block = grep_hits(text, self.PATHS, one_line_per_hit=True)
+        self.assertEqual(block.hits, [("src/a.ts", 3), ("src/b.ts", 7)])
 
     def test_an_indented_hit_before_any_heading_raises(self):
         with self.assertRaises(WireError):
-            grep_hits("  3:[def q] alpha\n", self.PATHS)
+            grep_hits("  3:[def q] alpha\n", self.PATHS, one_line_per_hit=False)
 
-    def test_a_raw_newline_continuation_carries_no_identity(self):
-        text = "src/a.ts\n  3:[def q] a multi\nline content: 12: here\nsrc/zz.ts:4:not delivered\n"
-        self.assertEqual(grep_hits(text, self.PATHS), [("src/a.ts", 3)])
+    def test_a_stray_column_0_line_in_a_headed_block_raises_after_1791(self):
+        text = "src/a.ts\n  3:[def q] alpha\n/**\n"
+        with self.assertRaises(WireError):
+            grep_hits(text, self.PATHS, one_line_per_hit=True)
+
+    def test_b_a_flat_hit_on_an_undelivered_path_raises_on_every_build(self):
+        for one_line_per_hit in (False, True):
+            with self.subTest(one_line_per_hit=one_line_per_hit):
+                with self.assertRaises(UndeliveredHit):
+                    grep_hits("src/zz.ts:4:alpha()\n", self.PATHS, one_line_per_hit=one_line_per_hit)
+
+    def test_c_a_continuation_is_counted_before_1791_and_raises_after(self):
+        text = "src/a.ts:3:[definition · query] a multi\nline content\n"
+        pre = grep_hits(text, self.PATHS, one_line_per_hit=False)
+        self.assertEqual((pre.hits, pre.continuation_lines), ([("src/a.ts", 3)], 1))
+        with self.assertRaises(WireError):
+            grep_hits(text, self.PATHS, one_line_per_hit=True)
 
 
 if __name__ == "__main__":

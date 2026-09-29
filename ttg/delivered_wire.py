@@ -29,10 +29,8 @@ Both shapes yield the same `(path, name, 1-based line)` rows, so an identity
 wire.
 
 GREP. A block is either flat (G0: `path:line:content`) or headed (G1/G2: a path
-heading, then indented `  line:content` hits). Amendment 1 of the B63 protocol:
-a hit's content can carry raw newlines, so a column-0 line is a heading only
-when it is a path the retrieval delivered, and any other line is a continuation
-that carries no identity. An indented hit before any heading raises.
+heading, then indented `  line:content` hits); the rules are in `grep_hits`
+(B64 addendum 4, stricter than B63's Amendment 1 on a post-#1791 build).
 """
 
 from __future__ import annotations
@@ -252,20 +250,52 @@ _FLAT_HIT = re.compile(r"(?P<path>.+?):(?P<line>[0-9]+):")
 _HEADED_HIT = re.compile(r"  (?P<line>[0-9]+):")
 
 
-def grep_hits(text: str, delivered_paths: Sequence[str] | frozenset[str]) -> list[tuple[str, int]]:
-    """The `(path, 1-based line)` of every hit in a grep block, flat or headed,
-    under Amendment 1: a column-0 line is a heading only when it is a delivered
-    path; any other non-hit line is a continuation."""
+class UndeliveredHit(WireError):
+    """A hit-shaped grep line on a path the retrieval did not deliver."""
+
+
+@dataclass(frozen=True)
+class GrepHits:
+    hits: list[tuple[str, int]]
+    """`(path, 1-based line)` of every hit, in block order."""
+    continuation_lines: int
+    """Non-hit, non-heading lines read as raw-newline continuations (pre-#1791
+    builds only)."""
+
+
+def grep_hits(
+    text: str, delivered_paths: Sequence[str] | frozenset[str], *, one_line_per_hit: bool
+) -> GrepHits:
+    """Every hit of a grep block, flat or headed (B64 addendum 4).
+
+    * A column-0 line that is a delivered path is a heading; an indented
+      `  line:` hit takes the current heading, and one before any heading raises.
+    * A `path:line:` line is a hit; on a path the retrieval did not deliver it
+      raises `UndeliveredHit`, on every build.
+    * Any other non-empty line is a raw-newline continuation. A build that
+      carries the #1791 fix (`one_line_per_hit`, from its receipt verdict) emits
+      none, so there it raises; on an earlier build it is counted, never an
+      identity.
+    """
     paths = frozenset(delivered_paths)
     hits: list[tuple[str, int]] = []
+    continuations = 0
     heading: str | None = None
     for line in text.splitlines():
+        if not line:
+            continue
         if headed := _HEADED_HIT.match(line):
             if heading is None:
                 raise WireError(f"an indented hit before any heading: {line!r}")
             hits.append((heading, int(headed.group("line"))))
         elif line in paths:
             heading = line
-        elif (flat := _FLAT_HIT.match(line)) and flat.group("path") in paths:
+        elif flat := _FLAT_HIT.match(line):
+            if flat.group("path") not in paths:
+                raise UndeliveredHit(f"grep hit on a path the retrieval did not deliver: {line[:120]!r}")
             hits.append((flat.group("path"), int(flat.group("line"))))
-    return hits
+        elif one_line_per_hit:
+            raise WireError(f"a non-hit grep line from a one-line-per-hit (#1791) build: {line[:120]!r}")
+        else:
+            continuations += 1
+    return GrepHits(hits, continuations)

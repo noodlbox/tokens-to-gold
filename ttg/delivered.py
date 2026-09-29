@@ -29,7 +29,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 
-from ttg.delivered_wire import WireError, WireRow, grep_hits, json_rows
+from ttg.delivered_wire import UndeliveredHit, WireError, WireRow, grep_hits, json_rows
 from ttg.matcher import match_gold
 
 TokenCount = Callable[[bytes], int]
@@ -68,6 +68,8 @@ class GrepIdentities:
     upper: list[str]
     """Every name at every hit's key, in hit order."""
     ambiguous_hits: int
+    continuation_lines: int = 0
+    """Raw-newline continuation lines read on a pre-#1791 build (reported)."""
 
 
 @dataclass(frozen=True)
@@ -119,20 +121,26 @@ def _oracle_index(oracle_text: str) -> dict[tuple[str, int], list[str]]:
     return index
 
 
-def grep_identities(grep_text: str, oracle_text: str) -> GrepIdentities:
+def grep_identities(grep_text: str, oracle_text: str, *, one_line_per_hit: bool) -> GrepIdentities:
     """Resolve every grep hit through the same cell's identity oracle.
 
-    A line that is not a `path:line:` hit (a `#` section marker) carries no
-    identity. A hit whose key the oracle lacks raises `UnjoinableHit`."""
+    The block is split by `ttg.delivered_wire.grep_hits` under the build's #1791
+    contract (`one_line_per_hit`, from its receipt verdict). A hit on a path the
+    oracle did not deliver, or whose key the oracle lacks, raises
+    `UnjoinableHit`."""
     index = _oracle_index(oracle_text)
     lower: list[str] = []
     upper: list[str] = []
     ambiguous = 0
     try:
-        hits = grep_hits(grep_text, frozenset(path for path, _ in index))
+        block = grep_hits(
+            grep_text, frozenset(path for path, _ in index), one_line_per_hit=one_line_per_hit
+        )
+    except UndeliveredHit as exc:
+        raise UnjoinableHit(str(exc)) from exc
     except WireError as exc:
         raise DeliveredScoringError(str(exc)) from exc
-    for key in hits:
+    for key in block.hits:
         names = index.get(key)
         if not names:
             raise UnjoinableHit(f"grep hit {key[0]}:{key[1]} has no identity-oracle row")
@@ -141,7 +149,10 @@ def grep_identities(grep_text: str, oracle_text: str) -> GrepIdentities:
             lower.append(f"{key[0]}:{names[0]}")
         else:
             ambiguous += 1
-    return GrepIdentities(lower=lower, upper=upper, ambiguous_hits=ambiguous)
+    return GrepIdentities(
+        lower=lower, upper=upper, ambiguous_hits=ambiguous,
+        continuation_lines=block.continuation_lines,
+    )
 
 
 def price(stdout: bytes, stderr: bytes, count: TokenCount) -> Price:

@@ -159,8 +159,8 @@ class CorpusScorer(unittest.TestCase):
                 "grep.8000": f"{path}:4:[definition · exact] {name}".encode(),
                 "oracle.implement": envelope,
             })
-            report = score_corpus(root, "ts40", whitespace_count, {"nbx_sha256": NBX_SHA})
-            other = score_corpus(root, "ts40", whitespace_count, {"nbx_sha256": "b" * 64})
+            report = score_corpus(root, "ts40", whitespace_count, {"nbx_sha256": NBX_SHA, "grep_one_line_per_hit": True})
+            other = score_corpus(root, "ts40", whitespace_count, {"nbx_sha256": "b" * 64, "grep_one_line_per_hit": True})
         json8 = report["rows"]["json.8000"]
         grep8 = report["rows"]["grep.8000"]
         mine = next(s for s in json8["instances"] if s["instance_id"] == iid)

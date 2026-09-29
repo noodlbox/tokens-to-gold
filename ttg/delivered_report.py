@@ -73,6 +73,8 @@ class InstanceScore:
     box_id: str | None = None
     stderr_tokens: dict[str, int] | None = None
     """Addendum 3: this row's stderr tokens by kind (`StderrKind`)."""
+    continuation_lines: int = 0
+    """Addendum 4: raw-newline continuation lines read on a pre-#1791 build."""
 
 
 class CellFiles:
@@ -125,7 +127,8 @@ def stderr_tokens(stderr: bytes, count: TokenCount) -> dict[str, int]:
 
 
 def score_instance(
-    cell: CellFiles, row: ScoredRow, gold: Sequence[str], count: TokenCount, nbx_sha256: str
+    cell: CellFiles, row: ScoredRow, gold: Sequence[str], count: TokenCount, nbx_sha256: str,
+    *, one_line_per_hit: bool,
 ) -> InstanceScore:
     iid = str(cell.manifest.get("instance_id"))
     if cell.manifest.get("nbx_sha256") != nbx_sha256:
@@ -154,10 +157,12 @@ def score_instance(
         if row.surface.is_grep:
             if row.oracle is None or cell.row_rc(row.oracle) != 0:
                 return _failed(iid, f"identity oracle {row.oracle} failed")
-            grep = grep_identities(stdout.decode(), cell.stdout(row.oracle).decode())
+            grep = grep_identities(
+                stdout.decode(), cell.stdout(row.oracle).decode(), one_line_per_hit=one_line_per_hit
+            )
             return InstanceScore(iid, None, recall(gold, grep.lower), recall(gold, grep.upper),
                                  grep.ambiguous_hits, cost.wire, cost.stdout, cost.stderr,
-                                 provenance.box_id, kinds)
+                                 provenance.box_id, kinds, grep.continuation_lines)
         identities = json_identities(stdout.decode())
         return InstanceScore(iid, None, recall(gold, identities), recall(gold, identities), 0,
                              cost.wire, cost.stdout, cost.stderr, provenance.box_id, kinds)
@@ -186,6 +191,8 @@ def summarize(row: ScoredRow, scores: Sequence[InstanceScore]) -> dict[str, obje
         "gold_delivered": lower,
         "gold_delivered_upper": upper,
         "ambiguous_hits": sum(s.ambiguous_hits for s in scores),
+        "continuation_lines": sum(s.continuation_lines for s in scores),
+        "cells_with_continuations": sum(1 for s in scores if s.continuation_lines),
         "ambiguity_flag": (upper - lower) * 100 > AMBIGUITY_FLAG_PP,
         "reach_at_80_within_budget": sum(1 for s in scores if s.gold_lower >= REACH_COVERAGE) / n if n else 0.0,
         "ttg_wire_median": round(statistics.median(wires)) if wires else None,
@@ -235,7 +242,10 @@ def score_corpus(out_root: Path, corpus: str, count: TokenCount, build: Mapping[
     rows: dict[str, object] = {}
     for row in SCORED_ROWS:
         scores = [
-            score_instance(cells[iid], row, gold[iid], count, str(build["nbx_sha256"]))
+            score_instance(
+                cells[iid], row, gold[iid], count, str(build["nbx_sha256"]),
+                one_line_per_hit=bool(build["grep_one_line_per_hit"]),
+            )
             if iid in cells else _failed(iid, "no cell recorded")
             for iid in sorted(i for i in gold if gold[i])
         ]
@@ -247,6 +257,11 @@ def score_corpus(out_root: Path, corpus: str, count: TokenCount, build: Mapping[
         "corpus": corpus,
         "build": dict(build),
         "mcp_byte_identical_to_cli_json": mcp_byte_identical(list(cells.values())),
+        "warnings": (
+            ["pre-#1791 verdict on a commit newer than every #1791 fix commit: the fix set may "
+             "be missing a merge (ttg.cell_stamps.ONE_LINE_GREP_FIX_COMMITS)"]
+            if build.get("grep_pre_fix_on_newer_commit") else []
+        ),
         "rows": rows,
     }
 

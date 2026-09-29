@@ -56,6 +56,7 @@ import subprocess
 import sys
 import tomllib
 from dataclasses import asdict, dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Final
 
@@ -65,7 +66,19 @@ from ttg.preflight import analysis_languages, require_corpus_support
 RECEIPT_SCHEMA: Final = 3
 """3 (LEDGER B64): the receipt also vouches for the `nbx` built from the same
 tree, the binary the delivered arm invokes."""
-VERDICT_SCHEMA: Final = 2
+VERDICT_SCHEMA: Final = 3
+"""3 (B64 addendum 4): the verdict also records whether the build carries the
+one-grep-line-per-hit fix (noodlbox-app #1791), derived from git ancestry."""
+ONE_LINE_GREP_FIX_COMMITS: Final[tuple[str, ...]] = (
+    # noodlbox-app #1791 "fix(search): one grep line per hit, a multi-line name
+    # included", on #1802's branch (feat/l11-b63-grep-heading). When #1802
+    # squash-merges, main's squash sha is added here BEFORE any post-merge B64
+    # run (#1802 merge checklist): until then a main build that includes the
+    # merge reads as pre-fix, which the verdict flags as a warning.
+    "05fd296b4f2ba464334344118a9c742dc2e168a2",
+)
+"""Commits known to carry the #1791 fix; a build carries it iff any member is
+an ancestor of its commit."""
 MODEL_LOCK_PATH: Final = "assets/models/reranker/model.lock"
 TOOLCHAIN_PATH: Final = "rust-toolchain.toml"
 COMPLETION_MARKER: Final = ".ttg-cell-complete.json"
@@ -330,9 +343,71 @@ class ReceiptVerdict:
     model_lock_sha256: str
     rust_toolchain_sha256: str
     checked: str
+    commit_date: str
+    """The receipt commit's committer date (ISO 8601), from git."""
+    grep_fix_commit: str | None
+    """The `ONE_LINE_GREP_FIX_COMMITS` member that is an ancestor of the commit,
+    or None: the build predates the #1791 fix."""
+    grep_fix_newest_date: str
+    """The committer date of the newest fix-set member."""
+
+    @property
+    def grep_one_line_per_hit(self) -> bool:
+        """The build emits exactly one grep line per hit (#1791): a non-hit line
+        in its grep output is a defect, not a continuation."""
+        return self.grep_fix_commit is not None
+
+    @property
+    def pre_fix_on_newer_commit(self) -> bool:
+        """A pre-#1791 verdict on a commit newer than every fix-set member: the
+        set may be missing a merge of the fix (the lenient direction)."""
+        return self.grep_fix_commit is None and (
+            datetime.fromisoformat(self.commit_date) > datetime.fromisoformat(self.grep_fix_newest_date)
+        )
 
 
-def verify_receipt(*, engine_repo: Path, receipt_path: Path, out: Path) -> ReceiptVerdict:
+@dataclass(frozen=True)
+class GrepFixAncestry:
+    fix_commit: str | None
+    newest_fix_date: str
+
+
+def commit_date(repo: Path, commit: str) -> str:
+    return _decode(
+        _run(["git", "-C", str(repo), "show", "-s", "--format=%cI", validated_commit(commit)],
+             f"git show -s {commit}"),
+        f"date of {commit}",
+    ).strip()
+
+
+def grep_fix_ancestry(
+    repo: Path, commit: str, fix_commits: tuple[str, ...] = ONE_LINE_GREP_FIX_COMMITS
+) -> GrepFixAncestry:
+    """Which fix-set member, if any, is an ancestor of `commit` (git history is
+    the only authority; a member missing from `repo` refuses)."""
+    commit = validated_commit(commit)
+    matched: str | None = None
+    for fix in fix_commits:
+        fix = validated_commit(fix)
+        proc = subprocess.run(
+            ["git", "-C", str(repo), "merge-base", "--is-ancestor", fix, commit],
+            capture_output=True, check=False,
+        )
+        if proc.returncode == 0:
+            matched = matched or fix
+        elif proc.returncode != 1:
+            raise StampError(
+                f"cannot decide whether {fix} (#1791 fix) is an ancestor of {commit}: "
+                f"{proc.stderr.decode(errors='replace').strip()} -- fetch it into {repo}"
+            )
+    newest = max((commit_date(repo, fix) for fix in fix_commits), key=datetime.fromisoformat)
+    return GrepFixAncestry(matched, newest)
+
+
+def verify_receipt(
+    *, engine_repo: Path, receipt_path: Path, out: Path,
+    fix_commits: tuple[str, ...] = ONE_LINE_GREP_FIX_COMMITS,
+) -> ReceiptVerdict:
     """The commit's tree identity, lock and toolchain are DERIVED from git
     history here — never an input — and must equal the receipt's."""
     receipt = load_build_receipt(receipt_path)
@@ -346,6 +421,7 @@ def verify_receipt(*, engine_repo: Path, receipt_path: Path, out: Path) -> Recei
         raise StampError(f"the receipt's model.lock is not commit {receipt.commit}'s")
     if receipt.rust_toolchain_toml != git_show(engine_repo, receipt.commit, TOOLCHAIN_PATH):
         raise StampError(f"the receipt's rust-toolchain.toml is not commit {receipt.commit}'s")
+    ancestry = grep_fix_ancestry(engine_repo, receipt.commit, fix_commits)
     verdict = ReceiptVerdict(
         schema=VERDICT_SCHEMA,
         receipt_sha256=file_sha256(receipt_path),
@@ -353,7 +429,11 @@ def verify_receipt(*, engine_repo: Path, receipt_path: Path, out: Path) -> Recei
         tree_digest=derived,
         model_lock_sha256=receipt.model_lock_sha256,
         rust_toolchain_sha256=_text_sha256(receipt.rust_toolchain_toml),
-        checked="tree digest vs git ls-tree -r; model.lock + rust-toolchain.toml vs git show",
+        checked="tree digest vs git ls-tree -r; model.lock + rust-toolchain.toml vs git show; "
+        "#1791 fix via git merge-base --is-ancestor",
+        commit_date=commit_date(engine_repo, receipt.commit),
+        grep_fix_commit=ancestry.fix_commit,
+        grep_fix_newest_date=ancestry.newest_fix_date,
     )
     out.write_text(json.dumps(asdict(verdict), indent=2, sort_keys=True) + "\n")
     return verdict
