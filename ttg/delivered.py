@@ -25,17 +25,15 @@ Nothing here reconstructs, estimates, or re-renders a payload.
 from __future__ import annotations
 
 import json
-import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 
+from ttg.delivered_wire import UndeliveredHit, WireError, WireRow, grep_hits, json_rows
 from ttg.matcher import match_gold
 
 TokenCount = Callable[[bytes], int]
 """o200k_base token count of a byte string. One authority, injected."""
-
-_GREP_HIT = re.compile(r"^(?P<path>.+?):(?P<line>[0-9]+):")
 
 
 class DeliveredSurface(str, Enum):
@@ -70,6 +68,8 @@ class GrepIdentities:
     upper: list[str]
     """Every name at every hit's key, in hit order."""
     ambiguous_hits: int
+    continuation_lines: int = 0
+    """Raw-newline continuation lines read on a pre-#1791 build (reported)."""
 
 
 @dataclass(frozen=True)
@@ -82,7 +82,8 @@ class Price:
     stderr: int
 
 
-def _envelope_result(text: str) -> Mapping[str, object]:
+def _envelope(text: str) -> tuple[Mapping[str, object], Mapping[str, object]]:
+    """The envelope and its `result` object."""
     try:
         doc = json.loads(text)
     except json.JSONDecodeError as exc:
@@ -90,66 +91,93 @@ def _envelope_result(text: str) -> Mapping[str, object]:
     result = doc.get("result") if isinstance(doc, Mapping) else None
     if not isinstance(result, Mapping):
         raise DeliveredScoringError("delivered JSON has no `result` object")
-    return result
+    return doc, result
 
 
-def _rows(value: object) -> list[Mapping[str, object]]:
-    return [row for row in value if isinstance(row, Mapping)] if isinstance(value, list) else []
+def _envelope_result(text: str) -> Mapping[str, object]:
+    return _envelope(text)[1]
+
+
+ROW_COVERAGE_SECTIONS = (
+    "workflow_symbols", "definitions", "related_symbols", "blast_radius",
+    "dependency_symbols", "file_index",
+)
+"""The envelope's coverage sections that deliver rows (noodlbox-app
+`RankedLane::coverage_key` plus the `file_index` lane). `dependency_symbols` is
+absent from a build without dependency analysis."""
 
 
 def json_identities(text: str) -> list[str]:
     """The delivered `file:name` identities of a JSON search envelope, in wire
-    order: located `symbols[]`, then every `file_index` row (B52's
-    `payload_items`). Counts and totals are never identities."""
-    result = _envelope_result(text)
-    identities: list[str] = []
-    for symbol in _rows(result.get("symbols")):
-        location = symbol.get("location")
-        path = location.get("file_path") if isinstance(location, Mapping) else None
-        if isinstance(path, str) and path:
-            identities.append(f"{path}:{symbol.get('name')}")
-    for group in _rows(result.get("file_index")):
-        path = group.get("file_path")
-        identities.extend(f"{path}:{row.get('name')}" for row in _rows(group.get("rows")))
-    return identities
+    order: located symbols, then every `file_index` row (B52's
+    `payload_items`), read under either wire shape (`ttg.delivered_wire`).
+    Counts and totals are never identities.
+
+    A result that yields no row -- its lanes absent, or present but empty -- is
+    delivered-nothing ONLY when the envelope's typed `coverage` says every
+    row-bearing section included 0; anything else fails the cell."""
+    doc, result = _envelope(text)
+    rows = _wire_rows(result)
+    if not rows:
+        _require_empty_coverage(doc)
+    return [row.identity for row in rows]
+
+
+def _require_empty_coverage(doc: Mapping[str, object]) -> None:
+    coverage = doc.get("coverage")
+    if not isinstance(coverage, Mapping):
+        raise DeliveredScoringError("a result with no rows carries no `coverage` to prove it empty")
+    for section in ROW_COVERAGE_SECTIONS:
+        entry = coverage.get(section)
+        if entry is None and section == "dependency_symbols":
+            continue
+        included = entry.get("included") if isinstance(entry, Mapping) else None
+        if included != 0:
+            raise DeliveredScoringError(
+                f"a result with no rows, but coverage.{section}.included is {included!r}"
+            )
+
+
+def _wire_rows(result: Mapping[str, object]) -> list[WireRow]:
+    try:
+        return json_rows(result)
+    except WireError as exc:
+        raise DeliveredScoringError(str(exc)) from exc
 
 
 def _oracle_index(oracle_text: str) -> dict[tuple[str, int], list[str]]:
     """`(path, 1-based line)` -> the distinct names the oracle places there, in
-    oracle order. Both wire line fields are 0-based; the grep renderer adds 1."""
-    result = _envelope_result(oracle_text)
+    oracle order. The oracle is read through the same wire reader as a JSON
+    row, so either wire shape joins."""
     index: dict[tuple[str, int], list[str]] = {}
-
-    def add(path: object, zero_based: object, name: object) -> None:
-        if isinstance(path, str) and path and isinstance(zero_based, int) and isinstance(name, str):
-            names = index.setdefault((path, zero_based + 1), [])
-            if name not in names:
-                names.append(name)
-
-    for symbol in _rows(result.get("symbols")):
-        location = symbol.get("location")
-        if isinstance(location, Mapping):
-            add(location.get("file_path"), location.get("start_line"), symbol.get("name"))
-    for group in _rows(result.get("file_index")):
-        for row in _rows(group.get("rows")):
-            add(group.get("file_path"), row.get("line"), row.get("name"))
+    for row in _wire_rows(_envelope_result(oracle_text)):
+        if row.line is not None:
+            names = index.setdefault((row.path, row.line), [])
+            if row.name not in names:
+                names.append(row.name)
     return index
 
 
-def grep_identities(grep_text: str, oracle_text: str) -> GrepIdentities:
+def grep_identities(grep_text: str, oracle_text: str, *, one_line_per_hit: bool) -> GrepIdentities:
     """Resolve every grep hit through the same cell's identity oracle.
 
-    A line that is not a `path:line:` hit (a `#` section marker) carries no
-    identity. A hit whose key the oracle lacks raises `UnjoinableHit`."""
+    The block is split by `ttg.delivered_wire.grep_hits` under the build's #1791
+    contract (`one_line_per_hit`, from its receipt verdict). A hit on a path the
+    oracle did not deliver, or whose key the oracle lacks, raises
+    `UnjoinableHit`."""
     index = _oracle_index(oracle_text)
     lower: list[str] = []
     upper: list[str] = []
     ambiguous = 0
-    for line in grep_text.splitlines():
-        hit = _GREP_HIT.match(line)
-        if hit is None:
-            continue
-        key = (hit.group("path"), int(hit.group("line")))
+    try:
+        block = grep_hits(
+            grep_text, frozenset(path for path, _ in index), one_line_per_hit=one_line_per_hit
+        )
+    except UndeliveredHit as exc:
+        raise UnjoinableHit(str(exc)) from exc
+    except WireError as exc:
+        raise DeliveredScoringError(str(exc)) from exc
+    for key in block.hits:
         names = index.get(key)
         if not names:
             raise UnjoinableHit(f"grep hit {key[0]}:{key[1]} has no identity-oracle row")
@@ -158,7 +186,10 @@ def grep_identities(grep_text: str, oracle_text: str) -> GrepIdentities:
             lower.append(f"{key[0]}:{names[0]}")
         else:
             ambiguous += 1
-    return GrepIdentities(lower=lower, upper=upper, ambiguous_hits=ambiguous)
+    return GrepIdentities(
+        lower=lower, upper=upper, ambiguous_hits=ambiguous,
+        continuation_lines=block.continuation_lines,
+    )
 
 
 def price(stdout: bytes, stderr: bytes, count: TokenCount) -> Price:

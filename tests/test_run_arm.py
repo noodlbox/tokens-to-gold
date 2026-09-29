@@ -22,7 +22,7 @@ import unittest
 from dataclasses import asdict
 from pathlib import Path
 
-from ttg.cell_stamps import BuildReceipt, ReceiptVerdict
+from ttg.cell_stamps import VERDICT_SCHEMA, BuildReceipt, ReceiptVerdict
 
 PKG = Path(__file__).resolve().parent.parent
 COMMIT = "c" * 40
@@ -101,11 +101,13 @@ class _Harness(unittest.TestCase):
         ))))
         self.verdict = self.tmp / "receipt-verdict.json"
         self.verdict.write_text(json.dumps(asdict(ReceiptVerdict(
-            schema=2, receipt_sha256=hashlib.sha256(self.receipt.read_bytes()).hexdigest(),
+            schema=VERDICT_SCHEMA, receipt_sha256=hashlib.sha256(self.receipt.read_bytes()).hexdigest(),
             commit=COMMIT, tree_digest="a" * 64,
             model_lock_sha256=hashlib.sha256(lock.encode()).hexdigest(),
             rust_toolchain_sha256=hashlib.sha256(b"[toolchain]\n").hexdigest(),
             checked="test",
+            commit_date="2026-09-29T00:00:00+00:00", grep_fix_commit=None,
+            grep_fix_newest_date="2026-09-29T00:00:00+00:00",
         ))))
 
     def _env(self, install: bool = True, model: bytes = MODEL, exit_code: int = 0,

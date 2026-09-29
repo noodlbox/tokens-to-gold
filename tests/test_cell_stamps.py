@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -15,7 +16,12 @@ from dataclasses import asdict, replace
 from pathlib import Path
 
 from arms.arm_matrix import ARMS
+from ttg.delivered_wire import WireError, grep_hits
 from ttg.cell_stamps import (
+    VERDICT_SCHEMA,
+    ReceiptVerdict,
+    commit_date,
+    grep_fix_ancestry,
     COMPLETION_MARKER,
     BuildReceipt,
     CompletionMarker,
@@ -231,7 +237,8 @@ class WriteBuildReceiptTest(EngineTreeTest):
             self.skipTest("rustc is not on PATH")
         out, receipt = self._write()
         verdict_path = self.synced.parent / "receipt-verdict.json"
-        verdict = verify_receipt(engine_repo=self.repo, receipt_path=out, out=verdict_path)
+        verdict = verify_receipt(engine_repo=self.repo, receipt_path=out, out=verdict_path,
+                                     fix_commits=(self.commit,))
         self.assertEqual(verdict.tree_digest, self.expected)
         self.assertEqual(load_receipt_verdict(verdict_path, out, receipt), verdict)
         # The verdict is bound to the receipt's bytes: any other receipt is refused.
@@ -247,7 +254,8 @@ class WriteBuildReceiptTest(EngineTreeTest):
         out, _ = self._write()
         verdict_path = self.synced.parent / "receipt-verdict.json"
         with self.assertRaisesRegex(StampError, "drifted from the commit"):
-            verify_receipt(engine_repo=self.repo, receipt_path=out, out=verdict_path)
+            verify_receipt(engine_repo=self.repo, receipt_path=out, out=verdict_path,
+                                     fix_commits=(self.commit,))
         self.assertFalse(verdict_path.exists())
 
     def test_a_receipt_with_another_lock_or_toolchain_gets_no_verdict(self) -> None:
@@ -263,7 +271,64 @@ class WriteBuildReceiptTest(EngineTreeTest):
                     forged = replace(forged, model_lock_sha256=_sha(value.encode()))
                 out.write_text(json.dumps(asdict(forged)))
                 with self.assertRaisesRegex(StampError, "is not commit"):
-                    verify_receipt(engine_repo=self.repo, receipt_path=out, out=verdict_path)
+                    verify_receipt(engine_repo=self.repo, receipt_path=out, out=verdict_path,
+                                     fix_commits=(self.commit,))
+
+
+class OneLineGrepFixAncestryTest(unittest.TestCase):
+    """B64 addendum 4 must-red: the #1791 contract comes from git ancestry. A
+    commit that descends from a fix-set member is post-#1791 (strict), its
+    parent pre-#1791 (lenient), and the same continuation line passes, counted,
+    under the parent and raises under the child."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self._tmp.name)
+        subprocess.run(["git", "init", "-q", str(self.repo)], check=True)
+        self.parent = self._commit("before the fix", "2026-09-01T00:00:00+00:00")
+        self.fix = self._commit("fix(search): one grep line per hit (#1791)", "2026-09-02T00:00:00+00:00")
+        self.child = self._commit("after the fix", "2026-09-03T00:00:00+00:00")
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def _commit(self, message: str, date: str) -> str:
+        env = {**os.environ, "GIT_COMMITTER_DATE": date, "GIT_AUTHOR_DATE": date}
+        subprocess.run(["git", "-C", str(self.repo), "-c", "user.email=t@t", "-c", "user.name=t",
+                        "commit", "-q", "--allow-empty", "-m", message], check=True, env=env)
+        return subprocess.run(["git", "-C", str(self.repo), "rev-parse", "HEAD"], check=True,
+                              capture_output=True, text=True).stdout.strip()
+
+    def test_descent_from_a_fix_commit_decides_the_contract(self) -> None:
+        child = grep_fix_ancestry(self.repo, self.child, (self.fix,))
+        parent = grep_fix_ancestry(self.repo, self.parent, (self.fix,))
+        self.assertEqual(child.fix_commit, self.fix)
+        self.assertIsNone(parent.fix_commit)
+        continuation = "src/a.ts\n  3:[def q] alpha\n/**\n"
+        pre = grep_hits(continuation, {"src/a.ts"}, one_line_per_hit=parent.fix_commit is not None)
+        self.assertEqual((pre.hits, pre.continuation_lines), ([("src/a.ts", 3)], 1))
+        with self.assertRaises(WireError):
+            grep_hits(continuation, {"src/a.ts"}, one_line_per_hit=child.fix_commit is not None)
+
+    def test_a_pre_fix_verdict_on_a_newer_commit_is_flagged(self) -> None:
+        later = self._commit("unrelated, newer", "2026-09-04T00:00:00+00:00")
+        subprocess.run(["git", "-C", str(self.repo), "checkout", "-q", "-b", "side", self.parent],
+                       check=True)
+        newer_side = self._commit("side branch, newer than the fix", "2026-09-05T00:00:00+00:00")
+        ancestry = grep_fix_ancestry(self.repo, newer_side, (self.fix,))
+        verdict = ReceiptVerdict(
+            schema=VERDICT_SCHEMA, receipt_sha256="0" * 64, commit=newer_side, tree_digest="0" * 64,
+            model_lock_sha256="0" * 64, rust_toolchain_sha256="0" * 64, checked="test",
+            commit_date=commit_date(self.repo, newer_side), grep_fix_commit=ancestry.fix_commit,
+            grep_fix_newest_date=ancestry.newest_fix_date,
+        )
+        self.assertFalse(verdict.grep_one_line_per_hit)
+        self.assertTrue(verdict.pre_fix_on_newer_commit)
+        self.assertEqual(grep_fix_ancestry(self.repo, later, (self.fix,)).fix_commit, self.fix)
+
+    def test_a_fix_commit_missing_from_the_repo_refuses(self) -> None:
+        with self.assertRaisesRegex(StampError, "fetch it"):
+            grep_fix_ancestry(self.repo, self.child, ("f" * 40,))
 
 
 class BuildReceiptTest(unittest.TestCase):
@@ -463,11 +528,12 @@ class ReuseMarkerOrderTest(unittest.TestCase):
             receipt_path.write_text(json.dumps(asdict(receipt)))
             verdict_path = root / "receipt-verdict.json"
             verdict_path.write_text(json.dumps({
-                "schema": 2, "receipt_sha256": _sha(receipt_path.read_bytes()),
+                "schema": VERDICT_SCHEMA, "receipt_sha256": _sha(receipt_path.read_bytes()),
                 "commit": receipt.commit, "tree_digest": receipt.tree_digest,
                 "model_lock_sha256": receipt.model_lock_sha256,
                 "rust_toolchain_sha256": _sha(receipt.rust_toolchain_toml.encode()),
-                "checked": "test",
+                "checked": "test", "commit_date": "2026-09-29T00:00:00+00:00",
+                "grep_fix_commit": None, "grep_fix_newest_date": "2026-09-29T00:00:00+00:00",
             }))
             jsonl = root / "ts40.jsonl"
             jsonl.write_bytes(b"{}\n")

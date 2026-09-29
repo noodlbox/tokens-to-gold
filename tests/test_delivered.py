@@ -55,8 +55,11 @@ class JsonIdentities(unittest.TestCase):
         self.assertEqual(json_identities(text), ["src/a.ts:alpha", "src/c.ts:eps"])
 
     def test_counts_are_not_identities(self) -> None:
+        zero = {"total": 0, "included": 0, "omitted": 0}
         text = json.dumps({"result": {"symbols": [], "file_index": [
-            {"file_path": "src/c.ts", "rows": [], "more_members": 7}]}})
+            {"file_path": "src/c.ts", "rows": [], "more_members": 7}]},
+            "coverage": {section: zero for section in (
+                "workflow_symbols", "definitions", "related_symbols", "blast_radius", "file_index")}})
         self.assertEqual(json_identities(text), [])
 
     def test_unparseable_payload_fails_the_cell(self) -> None:
@@ -68,27 +71,30 @@ class GrepIdentitiesRule(unittest.TestCase):
     def test_unique_keys_credit_their_one_name(self) -> None:
         got = grep_identities(
             "src/a.ts:10:[definition · exact] function alpha()\nsrc/c.ts:1:[recall · same-file] eps",
-            ORACLE,
+            ORACLE, one_line_per_hit=True,
         )
         self.assertEqual(got.lower, ["src/a.ts:alpha", "src/c.ts:eps"])
         self.assertEqual(got.upper, got.lower)
         self.assertEqual(got.ambiguous_hits, 0)
 
     def test_ambiguous_key_credits_nothing_in_the_headline(self) -> None:
-        got = grep_identities("src/b.ts:5:const gamma = 1, delta = 2", ORACLE)
+        got = grep_identities("src/b.ts:5:const gamma = 1, delta = 2", ORACLE, one_line_per_hit=True)
         self.assertEqual(got.lower, [])
         self.assertEqual(got.upper, ["src/b.ts:gamma", "src/b.ts:delta"])
         self.assertEqual(got.ambiguous_hits, 1)
 
-    def test_section_markers_carry_no_identity(self) -> None:
-        self.assertEqual(grep_identities("# callers\n", ORACLE).lower, [])
+    def test_a_non_hit_line_is_a_counted_continuation_only_before_1791(self) -> None:
+        pre = grep_identities("# callers\n", ORACLE, one_line_per_hit=False)
+        self.assertEqual((pre.lower, pre.continuation_lines), ([], 1))
+        with self.assertRaises(DeliveredScoringError):
+            grep_identities("# callers\n", ORACLE, one_line_per_hit=True)
 
     def test_mr3_unjoinable_hit_fails_the_cell(self) -> None:
         with self.assertRaises(UnjoinableHit):
-            grep_identities("src/a.ts:11:function notInOracle()", ORACLE)
+            grep_identities("src/a.ts:11:function notInOracle()", ORACLE, one_line_per_hit=True)
 
     def test_empty_block_is_no_hits_not_a_failure(self) -> None:
-        self.assertEqual(grep_identities("", ORACLE).lower, [])
+        self.assertEqual(grep_identities("", ORACLE, one_line_per_hit=True).lower, [])
 
 
 def assert_byte_sensitive(testcase: unittest.TestCase, pricer) -> None:
