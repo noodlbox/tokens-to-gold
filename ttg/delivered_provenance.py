@@ -121,14 +121,19 @@ def itemise(stderr: str) -> dict[StderrKind, str]:
 
 
 API_BASE = "https://api.noodlbox.io"
+HARNESS_USER_AGENT = "tokens-to-gold/1"
 """The production API a release `nbx` talks to (debug builds target dev)."""
 
 
 def account_orgs(key: str, api_base: str = API_BASE) -> list[dict[str, str]]:
-    """The signed-in key's organisations and their tiers (addendum 3: the tier
+    """The signed-in key's organisations and their tiers from `GET /api/orgs` (addendum 3: the tier
     is recorded once per run, since entitlement can change behaviour). The key
     travels in a header, never in argv. A failed read is a refusal."""
-    request = urllib.request.Request(f"{api_base}/api/orgs/", headers={"x-api-key": key})
+    # An explicit user agent: the edge (Cloudflare, error 1010) refuses
+    # Python's default signature. The route has no trailing slash.
+    request = urllib.request.Request(
+        f"{api_base}/api/orgs", headers={"x-api-key": key, "User-Agent": HARNESS_USER_AGENT}
+    )
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
             doc = json.loads(response.read())
