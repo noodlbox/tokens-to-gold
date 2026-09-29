@@ -27,12 +27,42 @@ class ReportFormatError(ValueError):
     """The file is neither clean JSON nor a recoverable stdout capture."""
 
 
+LEGACY_ROW_KEYS: Final[dict[str, str]] = {
+    "token_coverage_wire": "token_coverage_ranked_list",
+    "retrieved_wire_positions": "retrieved_ranked_list_positions",
+}
+"""Engine report keys before LEDGER B64 renamed the ranked-list price.
+
+A report written by an engine before that rename is dated evidence and is never
+rewritten on disk. It is upgraded in memory, once, here -- the one seam every
+report read passes through -- so the rest of the harness knows one name. A row
+carrying both spellings is refused: that is not a report any engine wrote."""
+
+
+def _upgrade_legacy_rows(report: dict[str, object]) -> dict[str, object]:
+    results = report.get("results")
+    if not isinstance(results, list):
+        return report
+    for row in results:
+        if not isinstance(row, dict):
+            continue
+        for legacy, current in LEGACY_ROW_KEYS.items():
+            if legacy not in row:
+                continue
+            if current in row:
+                raise ReportFormatError(
+                    f"row {row.get('instance_id')!r} carries both {legacy!r} and {current!r}"
+                )
+            row[current] = row.pop(legacy)
+    return report
+
+
 def loads_report(text: str) -> dict[str, object]:
     """Parse a report from text, tolerating a leading stdout preamble."""
     stripped = text.lstrip()
     if stripped.startswith("{"):
         try:
-            return json.loads(stripped)
+            return _upgrade_legacy_rows(json.loads(stripped))
         except json.JSONDecodeError as exc:
             raise ReportFormatError(f"clean-JSON parse failed: {exc}") from exc
     marker = text.find(_JSON_START)
@@ -42,7 +72,7 @@ def loads_report(text: str) -> dict[str, object]:
             "at column 0, so it is neither clean JSON nor a stdout capture"
         )
     try:
-        return json.loads(text[marker + 1 :])
+        return _upgrade_legacy_rows(json.loads(text[marker + 1 :]))
     except json.JSONDecodeError as exc:
         raise ReportFormatError(
             f"found a JSON start at byte {marker + 1} but the document is not "
@@ -63,18 +93,18 @@ def result_rows(report: Mapping[str, object]) -> list[Mapping[str, object]]:
     return [r for r in results if isinstance(r, Mapping) and "error" not in r]
 
 
-def wire_curve(row: Mapping[str, object]) -> Mapping[str, object]:
-    """The binding wire curve for a result row.
+def binding_curve(row: Mapping[str, object]) -> Mapping[str, object]:
+    """The binding ranked-list curve for a result row.
 
-    `token_coverage_wire` when the arm prices retrieval by wire (shipped/levers),
-    else `token_coverage` — the native_floor comparator delivers spans whose wire
-    price IS their source-text token count (wire == read for spans, B5 §5),
+    `token_coverage_ranked_list` when the arm prices its ranked list (shipped/levers),
+    else `token_coverage` — the native_floor comparator delivers spans whose ranked-list
+    price IS their source-text token count (curve price == read for spans, B5 §5),
     carried as `token_coverage`. This is the single reader both the rollup and
     the within-budget reach consume, so the two can never disagree on which curve
     is binding for an arm."""
-    wire = row.get("token_coverage_wire")
-    if isinstance(wire, Mapping) and wire.get("by_budget"):
-        return wire
+    curve = row.get("token_coverage_ranked_list")
+    if isinstance(curve, Mapping) and curve.get("by_budget"):
+        return curve
     tc = row.get("token_coverage")
     return tc if isinstance(tc, Mapping) else {}
 

@@ -62,7 +62,9 @@ from typing import Final
 from arms.arm_matrix import Arm, FreshStore
 from ttg.preflight import analysis_languages, require_corpus_support
 
-RECEIPT_SCHEMA: Final = 2
+RECEIPT_SCHEMA: Final = 3
+"""3 (LEDGER B64): the receipt also vouches for the `nbx` built from the same
+tree, the binary the delivered arm invokes."""
 VERDICT_SCHEMA: Final = 2
 MODEL_LOCK_PATH: Final = "assets/models/reranker/model.lock"
 TOOLCHAIN_PATH: Final = "rust-toolchain.toml"
@@ -251,6 +253,8 @@ class BuildReceipt:
     tree_digest: str
     """MEASURED on the build host; `verify_receipt` compares it to git."""
     binary_sha256: str
+    nbx_sha256: str
+    """The `nbx` built in the same cargo invocation, from the same tree."""
     cargo_profile: str
     cargo_features: str
     rust_toolchain_toml: str
@@ -261,7 +265,7 @@ class BuildReceipt:
 
 
 def write_build_receipt(
-    *, src: Path, commit: str, pre_build_tree_digest: str, binary: Path,
+    *, src: Path, commit: str, pre_build_tree_digest: str, binary: Path, nbx: Path,
     profile: str, features: str, out: Path,
 ) -> BuildReceipt:
     """Called by the build step AFTER it built `binary` from `src`. The tree is
@@ -279,6 +283,7 @@ def write_build_receipt(
         commit=validated_commit(commit),
         tree_digest=tree,
         binary_sha256=file_sha256(binary),
+        nbx_sha256=file_sha256(nbx),
         cargo_profile=profile,
         cargo_features=features,
         rust_toolchain_toml=_read_text(src / TOOLCHAIN_PATH, "toolchain file"),
@@ -301,7 +306,7 @@ def load_build_receipt(path: Path) -> BuildReceipt:
         raise StampError(f"build receipt {path} is malformed: {exc}") from None
     if receipt.schema != RECEIPT_SCHEMA:
         raise StampError(f"build receipt {path} has schema {receipt.schema}")
-    for name in ("tree_digest", "binary_sha256", "model_lock_sha256"):
+    for name in ("tree_digest", "binary_sha256", "nbx_sha256", "model_lock_sha256"):
         if not _SHA256.fullmatch(str(getattr(receipt, name))):
             raise StampError(f"build receipt {path}: {name} is not a sha256")
     validated_commit(receipt.commit)
@@ -391,6 +396,21 @@ def verify_binary_against_receipt(binary: Path, receipt: BuildReceipt, requested
         raise StampError(
             f"binary {binary} has sha256 {got}, the build receipt's binary is "
             f"{receipt.binary_sha256}: this is not the binary that commit built"
+        )
+
+
+def verify_nbx_against_receipt(nbx: Path, receipt: BuildReceipt, requested_commit: str) -> None:
+    """The delivered arm's `nbx` must be the one this receipt's build produced."""
+    if receipt.commit != validated_commit(requested_commit):
+        raise StampError(
+            f"the build receipt is for commit {receipt.commit}, the run requested "
+            f"{requested_commit}"
+        )
+    got = file_sha256(nbx)
+    if got != receipt.nbx_sha256:
+        raise StampError(
+            f"nbx {nbx} has sha256 {got}, the build receipt's nbx is "
+            f"{receipt.nbx_sha256}: this is not the nbx that commit built"
         )
 
 

@@ -69,34 +69,34 @@ class PairedDeltas:
 RowValue = Callable[[Mapping[str, object]], float | None]
 
 
-def _wire(row: Mapping[str, object]) -> Mapping[str, object]:
-    wire = row.get("token_coverage_wire")
-    return wire if isinstance(wire, Mapping) else {}
+def _ranked_list_block(row: Mapping[str, object]) -> Mapping[str, object]:
+    curve = row.get("token_coverage_ranked_list")
+    return curve if isinstance(curve, Mapping) else {}
 
 
 def gold_at_budget(budget: int) -> tuple[str, RowValue]:
-    """Per-instance `Gold@B_wire` as a fraction."""
+    """Per-instance `Gold@B_ranked_list` as a fraction."""
 
     def value(row: Mapping[str, object]) -> float | None:
-        by_budget = _wire(row).get("by_budget")
+        by_budget = _ranked_list_block(row).get("by_budget")
         if not isinstance(by_budget, Mapping):
             return None
         raw = by_budget.get(str(budget))
         return float(raw) if isinstance(raw, (int, float)) else None
 
-    return (f"Gold@{budget}_wire", value)
+    return (f"Gold@{budget}_ranked_list", value)
 
 
 def reach_at_coverage(coverage: int) -> tuple[str, RowValue]:
     """Per-instance reach at a coverage level: 1.0 reached, 0.0 not."""
 
     def value(row: Mapping[str, object]) -> float | None:
-        wire = row.get("token_coverage_wire")
-        if not isinstance(wire, Mapping):
-            return None  # no wire block at all: MISSING, not a genuine miss
-        ttc = wire.get("tokens_to_coverage")
+        curve = row.get("token_coverage_ranked_list")
+        if not isinstance(curve, Mapping):
+            return None  # no ranked-list block at all: MISSING, not a genuine miss
+        ttc = curve.get("tokens_to_coverage")
         if not isinstance(ttc, Mapping):
-            return 0.0  # wire present, nothing reached: a genuine 0
+            return 0.0  # ranked-list present, nothing reached: a genuine 0
         return 1.0 if isinstance(ttc.get(str(coverage)), (int, float)) else 0.0
 
     return (f"reach@{coverage}", value)

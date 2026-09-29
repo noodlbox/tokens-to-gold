@@ -29,14 +29,14 @@ from ttg.regression import (
 
 
 def _report(per_instance: dict[str, float], reach80: dict[str, bool] | None = None):
-    """A minimal report carrying the per-instance wire coverage the rollup reads."""
+    """A minimal report carrying the per-instance ranked-list coverage the rollup reads."""
     reach80 = reach80 or {k: True for k in per_instance}
     return {
         "results": [
             {
                 "instance_id": iid,
                 "gold_symbols": ["a.py:alpha"],
-                "token_coverage_wire": {
+                "token_coverage_ranked_list": {
                     "by_budget": {"8000": cov, "32000": cov},
                     "tokens_to_coverage": ({"80": 5000} if reach80.get(iid) else {}),
                 },
@@ -114,7 +114,7 @@ class IntentionToTreatTest(unittest.TestCase):
     def _base(self):
         row = {
             "gold_symbols": ["a.py:alpha"],
-            "token_coverage_wire": {
+            "token_coverage_ranked_list": {
                 "by_budget": {"8000": 0.90, "32000": 0.90},
                 "tokens_to_coverage": {"80": 5000},
             },
@@ -142,7 +142,7 @@ class IntentionToTreatTest(unittest.TestCase):
         self.assertIn(-90.0, [round(d, 6) for d in paired.deltas])
 
     def test_gold_and_reach_treat_a_fieldless_row_identically(self) -> None:
-        # A row present but carrying no wire block: both metrics must call it
+        # A row present but carrying no ranked-list block: both metrics must call it
         # MISSING and score 0 — previously Gold skipped it and reach scored 0.
         base = self._base()
         current = {"results": [

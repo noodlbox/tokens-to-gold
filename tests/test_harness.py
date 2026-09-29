@@ -23,7 +23,7 @@ from ttg.own_repo import (
     OWN_REPO_ARMS, OwnRepoError, build_instance, own_repo_flags,
 )
 from ttg.comparable_path import ComparablePath, PathComparison, compare_paths
-from ttg.curve_recompute import recompute_wire_curve
+from ttg.curve_recompute import recompute_ranked_list_curve
 from ttg.gold_freezer import build_gold_map
 from ttg.matcher import match_gold, split_identity
 from ttg.report_io import (
@@ -315,7 +315,7 @@ class T5CurveRecompute(unittest.TestCase):
     POSITIONS = [100, 400, 900]
 
     def test_curve_from_primitives(self) -> None:
-        curve = recompute_wire_curve(
+        curve = recompute_ranked_list_curve(
             self.GOLD, self.RETRIEVED, self.POSITIONS, (100, 500, 1000), (50, 100)
         )
         self.assertEqual(curve.by_budget[100], 0.5)
@@ -327,19 +327,19 @@ class T5CurveRecompute(unittest.TestCase):
 
     def test_misaligned_positions_raise(self) -> None:
         with self.assertRaises(ValueError):
-            recompute_wire_curve(self.GOLD, self.RETRIEVED, [1, 2], (100,), (50,))
+            recompute_ranked_list_curve(self.GOLD, self.RETRIEVED, [1, 2], (100,), (50,))
 
     def test_negative_control_naive_per_symbol_pricing_fails_parity(self) -> None:
         """NEGATIVE CONTROL: pricing each rank uniformly (ignoring the
         section-aware relocation) must NOT reproduce the engine's curve."""
         naive_positions = [(i + 1) * 300 for i in range(len(self.RETRIEVED))]
-        faithful = recompute_wire_curve(
+        faithful = recompute_ranked_list_curve(
             self.GOLD, self.RETRIEVED, self.POSITIONS, (200,), (50,)
         )
-        naive = recompute_wire_curve(
+        naive = recompute_ranked_list_curve(
             self.GOLD, self.RETRIEVED, naive_positions, (200,), (50,)
         )
-        # The first gold is paid at wire 100 under the engine's relocated
+        # The first gold is paid at ranked-list position 100 under the engine's relocated
         # pricing but at 300 under uniform per-rank pricing.
         self.assertEqual(faithful.tokens_to_coverage[50], 100)
         self.assertEqual(naive.tokens_to_coverage[50], 300)

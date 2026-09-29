@@ -17,8 +17,8 @@ _BASE = ArmMetrics(
     n=37,
     head_only_at_10=0.0824,
     head_only_at_25=0.1368,
-    gold_at_8k_wire=0.7891,
-    gold_at_32k_wire=0.8893,
+    gold_at_8k_ranked_list=0.7891,
+    gold_at_32k_ranked_list=0.8893,
     reach_at_80_whole_list=0.7838,
     reach_at_80_within_32k=0.7838,
     whole_list_INTERNAL=0.8893,
@@ -36,11 +36,11 @@ class CompareMetricsTest(unittest.TestCase):
         self.assertTrue(all(c.ok for c in checks), [c.metric for c in checks if not c.ok])
 
     def test_a_1e_3_perturbation_is_caught(self) -> None:
-        # The must-red: 1e-3 > REPLAY_TOL (5e-05), so gold_at_8k_wire fails.
-        perturbed = ArmMetrics(**{**_BASE.__dict__, "gold_at_8k_wire": 0.7891 + 1e-3})
+        # The must-red: 1e-3 > REPLAY_TOL (5e-05), so gold_at_8k_ranked_list fails.
+        perturbed = ArmMetrics(**{**_BASE.__dict__, "gold_at_8k_ranked_list": 0.7891 + 1e-3})
         checks = compare_metrics(perturbed, _expected(_BASE), corpus="ts40")
         bad = [c for c in checks if not c.ok]
-        self.assertEqual([c.metric for c in bad], ["gold_at_8k_wire"])
+        self.assertEqual([c.metric for c in bad], ["gold_at_8k_ranked_list"])
 
     def test_a_1e_6_perturbation_is_within_replay_tol(self) -> None:
         # 1e-6 < REPLAY_TOL: exact-to-4dp tolerates it (pins the tolerance).

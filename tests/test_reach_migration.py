@@ -1,6 +1,6 @@
 """Reach-field migration — the clone-green UNIT half (GC1 fixture, GC3 synthetic,
 GC4 grep). The scored gates (GC1-scored, GC2, GC3 discriminators, the floor
-regression witness, the wire_curve path guard) need the certified reports and
+regression witness, the binding_curve path guard) need the certified reports and
 live in the acceptance suite (`acceptance/test_certified.py`)."""
 
 from __future__ import annotations
@@ -41,19 +41,21 @@ class GC3NonVacuity(unittest.TestCase):
 
     def test_synthetic_079_row_counts_whole_not_within(self) -> None:
         gold_ids = ["inst-1"]  # within_budget_reach keys by INSTANCE ID
-        rows = {"inst-1": {"token_coverage_wire": {"by_budget": {"32000": 0.79}}}}
+        rows = {"inst-1": {"token_coverage_ranked_list": {"by_budget": {"32000": 0.79}}}}
         self.assertEqual(within_budget_reach(rows, gold_ids), 0.0)  # 0.79 < 0.8
-        at_bound = {"inst-1": {"token_coverage_wire": {"by_budget": {"32000": 0.80}}}}
+        at_bound = {"inst-1": {"token_coverage_ranked_list": {"by_budget": {"32000": 0.80}}}}
         self.assertEqual(within_budget_reach(at_bound, gold_ids), 1.0)  # boundary counts
         self.assertEqual(match_gold(["pkg/f.py:a"], ["pkg/f.py:a"]).recall, 1.0)
 
 
 class GC4NoBareReachAt80(unittest.TestCase):
     """No bare reach_at_80 survives anywhere (every use is _whole_list or
-    _within_32k qualified). Excludes THIS file, which names the bare token."""
+    _within_32k qualified on the ranked-list arms, or _within_budget on the
+    delivered arm, where reach is bounded by the row's requested budget B).
+    Excludes THIS file, which names the bare token."""
 
     def test_zero_bare_reach_at_80(self) -> None:
-        pat = re.compile("reach_at_80(?!_whole_list|_within_32k)")
+        pat = re.compile("reach_at_80(?!_whole_list|_within_32k|_within_budget)")
         offenders = []
         for base in ("ttg", "tests", "arms", "acceptance"):
             for f in (PKG / base).rglob("*"):

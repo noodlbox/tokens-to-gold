@@ -6,12 +6,35 @@ A reproducible benchmark for **retrieval efficiency**: how many tokens must
 reach a coding agent's context before the symbols it actually needs are in
 there.
 
-Two curves are measured per instance:
+Two kinds of arm are measured, and only one describes what an agent receives:
 
-| Curve | Meaning |
-|---|---|
-| `ttg_read` | the read-everything ceiling — what it costs to just read the files |
-| `ttg_wire` | what the response actually carried |
+| Quantity | Arm | Meaning |
+|---|---|---|
+| `ttg_wire` | **delivered** (`ttg.delivered*`) | o200k tokens of the exact bytes `nbx search` emits (stdout + stderr; the MCP row prices the tool's content text), scored against the frozen gold. **This is the headline.** |
+| `ttg_ranked_list` | ranked-list ceiling (the noodl-eval arms) | the engine's untrimmed ranked list, each row priced at its carried shape. No packer, no envelope: a **retrieval ceiling, not delivered**. Never a headline. |
+| `ttg_read` | ranked-list ceiling | the read-everything ceiling: what it costs to just read the files |
+
+Until LEDGER B64 (2026-09-29) the ranked-list price was called `ttg_wire`. The
+published V1 numbers below are ranked-list ceiling numbers under that name; see
+`PREREGISTRATION.md` (the two 2026-09-29 addenda) for the delivered arm.
+
+## The delivered arm
+
+```sh
+# on the build host: build noodl-eval AND nbx from one tree, one receipt
+arms/build_engine.sh --src <engine tree> --commit <40-hex> --out-dir <build>
+# where the engine's history is
+python3 -m ttg.cli verify-receipt --engine-repo <checkout> \
+  --receipt <build>/build-receipt.json --out <build>/receipt-verdict.json
+# one fresh sequential cell per gold-bearing instance, then score and render
+python3 -m ttg.cli delivered-run --build-dir <build> --commit <sha> \
+  --corpus ts40 --corpus-jsonl <ts40.jsonl> --root <root>
+python3 -m ttg.cli delivered-score --build-dir <build> --commit <sha> \
+  --corpus ts40 --root <root> --out delivered_ts40.json
+python3 -m ttg.cli delivered-page delivered_*.json
+```
+
+`delivered-page` refuses any ranked-list ceiling report (`CeilingNotPublishable`).
 
 ## The one command
 
@@ -81,9 +104,9 @@ row**, so a number read off a report header is on the wrong basis:
 
 | | binding (n=37 / 39) | report basis (n=38 / 40) |
 |---|---|---|
-| `ts40` Gold@8k_wire | **0.7891** | 0.7684 |
+| `ts40` Gold@8k (ranked-list ceiling, V1 name `_wire`) | **0.7891** | 0.7684 |
 | `ts40` reach@80 | **0.7838** | 0.7632 |
-| `py` Gold@8k_wire | **0.8333** | 0.8125 |
+| `py` Gold@8k (ranked-list ceiling, V1 name `_wire`) | **0.8333** | 0.8125 |
 | `py` reach@80 | **0.8974** | 0.8750 |
 
 The **numerators are identical** on both corpora and both quantities — the
@@ -227,7 +250,7 @@ python3 -m ttg.cli score-own --report runs/mine/shipped_treatment.json \
 Read your readout with the same honesty rules as the published page: the
 gold is a reference-patch proxy; a body-less PR is a THIN query (disclosed);
 one instance is a coarse, largely binary readout (disclosed) — run several
-PRs before reading a trend. Wire ≠ billed tokens; coverage ≠ task success.
+PRs before reading a trend. Priced tokens ≠ billed tokens; coverage ≠ task success.
 
 ## Layout
 

@@ -15,7 +15,7 @@ measures the CORPUS, not the engine.
 
 The trap is not in the offline scorer — that one is right by construction,
 because the frozen gold file contains only gold-bearing instances. The trap
-is that **the engine's own `token_coverage_wire` rollup averages over every
+is that **the engine's own `token_coverage_ranked_list` rollup averages over every
 non-error row**, so anyone who reads the headline off the report header lands
 on the wrong number. Measured, on the official merged-main run:
 
@@ -38,7 +38,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Final
 
-from ttg.report_io import gold_bearing_rows, result_rows, wire_curve
+from ttg.report_io import gold_bearing_rows, result_rows, binding_curve
 
 DEFAULT_BUDGETS: Final[tuple[int, ...]] = (2_000, 8_000, 32_000)
 DEFAULT_COVERAGES: Final[tuple[int, ...]] = (50, 80, 100)
@@ -53,7 +53,7 @@ class Basis(Enum):
     This is the only basis that survives a REUSE run. A warm-store arm
     re-derives its own gold: on the py ablation the report embedded gold for
     just 26 of 39 instances, so a report-derived basis silently shrinks the
-    denominator and inflates every wire metric (measured: +19.23pp on
+    denominator and inflates every ranked-list metric (measured: +19.23pp on
     Gold@8k). That is MUST-NOT #1 in disguise."""
     GOLD_BEARING = "report-gold-bearing"
     """NON-AUTHORITATIVE fallback used when no frozen gold is supplied.
@@ -76,11 +76,11 @@ class BasisRollup:
     basis: Basis
     n: int
     gold_at_budget: dict[int, float]
-    """Mean per-instance wire coverage at each budget (`Gold@B_wire`)."""
+    """Mean per-instance ranked-list coverage at each budget (`Gold@B_ranked_list`)."""
     reach_at_coverage: dict[int, float]
-    """Fraction of instances that reach each coverage level within delivered wire."""
+    """Fraction of instances that reach each coverage level within the ranked-list price."""
     median_ttg_at_coverage: dict[int, int | None]
-    """Median wire tokens to reach each coverage level, over reachers only."""
+    """Median ranked-list tokens to reach each coverage level, over reachers only."""
 
 
 def _median(values: Sequence[int]) -> int | None:
@@ -104,7 +104,7 @@ def _rollup_rows(
     frozen gold but absent from the report counts as a ZERO rather than
     vanishing from the denominator."""
     n = denominator if denominator is not None else len(rows)
-    covers = [wire_curve(row) for row in rows]
+    covers = [binding_curve(row) for row in rows]
 
     gold_at: dict[int, float] = {}
     for budget in budgets:
@@ -156,7 +156,7 @@ class Rollup:
         ]
         for budget in sorted(self.binding.gold_at_budget):
             lines.append(
-                f"  Gold@{budget // 1000}k_wire     : "
+                f"  Gold@{budget // 1000}k_ranked_list     : "
                 f"{self.binding.gold_at_budget[budget]:.4f}  BINDING   "
                 f"(engine basis: {self.engine_basis.gold_at_budget[budget]:.4f})"
             )
