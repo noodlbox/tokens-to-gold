@@ -16,7 +16,9 @@ import unittest
 from pathlib import Path
 
 from ttg.acceptance import load_frozen_gold
-from ttg.delivered_cells import ROW_PLAN, mcp_response, run_mcp, search_argv
+import subprocess
+
+from ttg.delivered_cells import ROW_PLAN, Instance, mcp_response, prepare_checkout, run_mcp, search_argv
 from ttg.delivered_report import MAX_FAILED_CELLS, mcp_content_text, score_corpus
 
 FAKE_MCP = textwrap.dedent(
@@ -63,6 +65,27 @@ class McpDriver(unittest.TestCase):
         self.assertEqual(record["rc"], 0)
         self.assertIsNotNone(mcp_response(transcript))
         self.assertEqual(json.loads(mcp_content_text(transcript))["result"]["echo"], "find the parser")
+
+
+class Checkout(unittest.TestCase):
+    def test_the_checkout_origin_is_the_public_github_repository(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cache = root / "repos" / "owner__repo"
+            cache.mkdir(parents=True)
+            git = ["git", "-C", str(cache), "-c", "user.email=t@t", "-c", "user.name=t"]
+            subprocess.run([*git, "init", "-q"], check=True)
+            (cache / "a.ts").write_text("export const a = 1;\n")
+            subprocess.run([*git, "add", "."], check=True)
+            subprocess.run([*git, "commit", "-q", "-m", "c"], check=True)
+            head = subprocess.run([*git, "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+            checkout = prepare_checkout(root, Instance("ts40", "i", "owner/repo", head, "task"))
+            # The stored value: `remote get-url` would apply a host's url.insteadOf.
+            origin = subprocess.run(["git", "-C", str(checkout), "config", "--get", "remote.origin.url"],
+                                    check=True, capture_output=True, text=True).stdout.strip()
+            self.assertEqual(origin, "https://github.com/owner/repo")
+            self.assertEqual(checkout.name, "checkout")
+            self.assertTrue((checkout / "a.ts").is_file())
 
 
 def write_cell(root: Path, corpus: str, iid: str, stdout: dict[str, bytes]) -> None:

@@ -222,6 +222,10 @@ CHECKOUT_NAME = "checkout"
 """The one constant checkout directory basename, for every cell (B37)."""
 
 
+def github_url(repo: str) -> str:
+    return f"https://github.com/{repo}"
+
+
 def _git(*args: str) -> None:
     subprocess.run(["git", *args], check=True, capture_output=True)
 
@@ -237,11 +241,15 @@ def prepare_checkout(root: Path, instance: Instance) -> Path:
     from a per-repo cache (`<root>/repos`), `._*` stripped."""
     cache = root / "repos" / instance.repo.replace("/", "__")
     if not cache.is_dir():
-        _git("clone", "-q", "--filter=blob:none", f"https://github.com/{instance.repo}", str(cache))
+        _git("clone", "-q", "--filter=blob:none", github_url(instance.repo), str(cache))
     checkout = root / "cell" / CHECKOUT_NAME
     shutil.rmtree(checkout.parent, ignore_errors=True)
     checkout.parent.mkdir(parents=True)
     _git("clone", "-q", "--shared", "--no-checkout", str(cache), str(checkout))
+    # The checkout must look like an agent's: its origin is the public GitHub
+    # repository, not the local cache. nbx settles visibility from the remote,
+    # and a checkout with no GitHub remote is treated as private.
+    _git("-C", str(checkout), "remote", "set-url", "origin", github_url(instance.repo))
     _git("-C", str(checkout), "checkout", "-q", "--detach", instance.base_commit)
     _strip_appledouble(checkout)
     return checkout
