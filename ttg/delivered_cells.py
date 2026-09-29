@@ -241,7 +241,9 @@ def prepare_checkout(root: Path, instance: Instance) -> Path:
     from a per-repo cache (`<root>/repos`), `._*` stripped."""
     cache = root / "repos" / instance.repo.replace("/", "__")
     if not cache.is_dir():
-        _git("clone", "-q", "--filter=blob:none", github_url(instance.repo), str(cache))
+        # A FULL clone: a --shared clone of a partial (blob-filtered) clone
+        # inherits promisor state that libgit2 (nbx's git status) cannot read.
+        _git("clone", "-q", github_url(instance.repo), str(cache))
     checkout = root / "cell" / CHECKOUT_NAME
     shutil.rmtree(checkout.parent, ignore_errors=True)
     checkout.parent.mkdir(parents=True)
