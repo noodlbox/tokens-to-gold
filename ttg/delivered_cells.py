@@ -265,8 +265,9 @@ def run_cell(nbx: str, root: Path, instance: Instance) -> Path:
     checkout = prepare_checkout(root, instance)
     store = root / "cell" / "store"
     shutil.rmtree(store, ignore_errors=True)
+    # The agent's own environment, as it runs: signed in (NOODLBOX_API_KEY is
+    # checked by `delivered-run` before any cell), telemetry off, a fresh store.
     env = dict(os.environ, NOODLBOX_DATA_DIR=str(store), NOODLBOX_DISABLE_TELEMETRY="1", DO_NOT_TRACK="1")
-    env.pop("NOODLBOX_API_KEY", None)
     cell: dict[str, object] = {
         "corpus": instance.corpus,
         "instance_id": instance.instance_id,

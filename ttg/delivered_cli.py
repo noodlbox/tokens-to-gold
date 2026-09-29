@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 from ttg.cell_stamps import (
@@ -46,7 +47,17 @@ def verified_build(build_dir: Path, commit: str) -> dict[str, object]:
     }
 
 
+class MissingAccountError(RuntimeError):
+    """The delivered arm runs as a signed-in agent; without a key every analyze
+    of a repository that is not a public Hub package is refused."""
+
+
 def cmd_delivered_run(args: argparse.Namespace) -> int:
+    if not os.environ.get("NOODLBOX_API_KEY"):
+        raise MissingAccountError(
+            "delivered-run needs NOODLBOX_API_KEY in its environment: the arm measures a "
+            "signed-in agent (pass it through `scripts/crabbox/run.sh --secrets NOODLBOX_API_KEY`)"
+        )
     build = verified_build(Path(args.build_dir), args.commit)
     jsonl = Path(args.corpus_jsonl)
     corpus_sha = verify_corpus(jsonl, args.corpus, PKG / "corpora" / "jsonl.SHA256SUMS")
