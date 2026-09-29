@@ -1,0 +1,187 @@
+src/fetch.ts:22:[definition · query] retryStatusCodes — matched: status code retri
+examples/type-safety.ts:8:[definition · query] description — matched: descript
+examples/headers.mjs:3:[definition · query] response — matched: respons
+examples/type-safety.ts:4:[definition · query] Repo
+src/fetch.ts:200:[definition · query] hasBody — matched: bodi
+src/utils.url.ts:64:[definition · query] withQuery — matched: with
+src/utils.url.ts:40:[definition · query] withBase — matched: with base
+examples/query-string.mjs:3:[definition · query] response — matched: respons
+test/index.test.ts:300:[definition · query] abortHandle
+test/index.test.ts:144:[definition · query] headerFetches — matched: fetch
+src/types.ts:54:[definition · query] dispatcher
+src/fetch.ts:93:[definition · query] context
+examples/methods.mjs:3:[definition · query] response — matched: respons
+src/fetch.ts:89:[definition · query] $fetchRaw — matched: fetch
+src/error.ts:4:[definition · query] FetchError — matched: fetch error
+src/types.ts:22:[definition · query] FetchOptions — matched: fetch option
+src/utils.url.ts:15:[definition · query] joinURL — matched: url
+src/fetch.ts:209:[definition · query] responseType — matched: respons
+src/utils.ts:85:[definition · query] resolveFetchOptions — matched: fetch option
+src/error.ts:5:[definition · query] constructor
+test/index.test.ts:348:[definition · query] _customFetch — matched: fetch
+src/utils.ts:45:[definition · query] textTypes
+src/types.ts:145:[definition · query] IFetchError — matched: fetch error
+src/utils.url.ts:25:[definition · query] pathHasLeading — matched: path
+src/types.ts:70:[definition · query] retryStatusCodes — matched: status code retri
+src/utils.url.ts:53:[definition · query] withoutTrailingSlash — matched: without
+test/index.test.ts:83:[definition · query] called — matched: call
+src/fetch.ts:132:[definition · query] contentType
+src/utils.url.ts:24:[definition · query] baseHasTrailing — matched: base
+src/fetch.ts:39:[definition · query] onError — matched: on error
+test/index.test.ts:439:[definition · query] onRequest — matched: request on
+test/index.test.ts:511:[definition · query] options — matched: option
+src/types.ts:5:[definition · query] $Fetch — matched: fetch
+test/index.test.ts:520:[definition · query] options2 — matched: option
+test/playground.ts:3:[definition · query] main — matched: main
+src/types.ts:94:[definition · query] FetchContext — matched: fetch
+src/types.ts:95:[definition · query] request — matched: request
+src/error.ts:35:[definition · query] message — matched: messag
+test/index.test.ts:16:[definition · query] getURL — matched: url
+src/types.ts:147:[definition · query] options — matched: option
+examples/body.mjs:3:[definition · query] response — matched: respons
+test/index.test.ts:19:[definition · query] fetch — matched: fetch
+src/types.ts:164:[definition · query] SearchParameters
+src/utils.url.ts:87:[definition · query] base — matched: base
+src/utils.url.ts:69:[definition · query] searchIndex
+src/utils.url.ts:105:[definition · query] normalizeQueryValue — matched: normal
+src/error.ts:28:[definition · query] url — matched: url
+test/index.test.ts:226:[definition · query] data
+src/fetch.ts:36:[definition · query] createFetch — matched: fetch creat
+src/types.ts:47:[definition · query] duplex
+src/error.ts:19:[related · same-file] FetchError
+src/error.ts:21:[related · same-file] createFetchError
+src/error.ts:24:[related · same-file] errorMessage
+src/error.ts:39:[related · same-file] fetchError
+src/error.ts:46:[related · same-file] get
+src/error.ts:60:[related · same-file] get
+src/error.ts:26:[related · same-file] method
+src/error.ts:29:[related · same-file] requestStr
+src/error.ts:31:[related · same-file] statusStr
+src/index.ts:15:[related · same-file] $fetch
+src/index.ts:9:[related · same-file] fetch
+src/index.ts:13:[related · same-file] ofetch
+test/index.test.ts:22:[related · same-file] app
+test/index.test.ts:126:[related · same-file] body2
+test/index.test.ts:134:[related · same-file] body3
+test/index.test.ts:299:[related · pool-rescue] controller
+test/index.test.ts:216:[related · pool-rescue] data
+test/index.test.ts:235:[related · same-file] error
+test/index.test.ts:264:[related · same-file] error
+test/index.test.ts:313:[related · same-file] error
+test/index.test.ts:275:[related · same-file] fast
+test/index.test.ts:289:[related · same-file] fast
+test/index.test.ts:15:[related · same-file] listener
+test/index.test.ts:162:[related · same-file] message
+test/index.test.ts:172:[related · same-file] message
+test/index.test.ts:182:[related · same-file] message
+test/index.test.ts:199:[related · same-file] message
+test/index.test.ts:325:[related · pool-rescue] noTimeout
+test/index.test.ts:404:[related · same-file] onRequest
+test/index.test.ts:413:[related · same-file] onRequestError
+test/index.test.ts:440:[related · same-file] onRequestError
+test/index.test.ts:138:[related · same-file] onResponse
+test/index.test.ts:422:[related · same-file] onResponse
+test/index.test.ts:441:[related · same-file] onResponse
+test/index.test.ts:431:[related · same-file] onResponseError
+test/index.test.ts:442:[related · same-file] onResponseError
+test/index.test.ts:380:[related · same-file] parseParams
+test/index.test.ts:84:[related · same-file] parser
+test/index.test.ts:280:[related · same-file] race
+test/index.test.ts:294:[related · same-file] race
+test/index.test.ts:330:[related · same-file] race
+test/index.test.ts:206:[related · same-file] read
+test/index.test.ts:248:[related · same-file] res
+test/index.test.ts:254:[related · same-file] res
+test/index.test.ts:259:[related · pool-rescue] res
+test/index.test.ts:302:[related · same-file] response
+test/index.test.ts:271:[related · same-file] slow
+test/index.test.ts:285:[related · same-file] slow
+test/index.test.ts:189:[related · same-file] start
+test/index.test.ts:326:[related · same-file] timeout
+src/types.ts:80:[related · same-file] CreateFetchOptions
+src/types.ts:160:[related · pool-rescue] Fetch
+src/types.ts:104:[related · same-file] FetchHook
+src/types.ts:108:[related · same-file] FetchHooks
+src/types.ts:162:[related · same-file] FetchRequest
+src/types.ts:137:[related · same-file] FetchResponse
+src/types.ts:85:[related · same-file] GlobalOptions
+src/types.ts:132:[related · pool-rescue] MappedResponseType
+src/types.ts:102:[related · same-file] MaybeArray
+src/types.ts:101:[related · same-file] MaybePromise
+src/types.ts:73:[related · same-file] ResolvedFetchOptions
+src/types.ts:123:[related · same-file] ResponseMap
+src/types.ts:130:[related · pool-rescue] ResponseType
+src/types.ts:138:[related · same-file] _data
+src/types.ts:59:[related · same-file] agent
+src/types.ts:126:[related · same-file] arrayBuffer
+src/types.ts:25:[related · same-file] baseURL
+src/types.ts:124:[related · same-file] blob
+src/types.ts:27:[related · same-file] body
+src/types.ts:15:[related · same-file] create
+src/types.ts:149:[related · same-file] data
+src/types.ts:81:[related · same-file] defaults
+src/types.ts:98:[related · pool-rescue] error
+src/types.ts:82:[related · pool-rescue] fetch
+src/types.ts:77:[related · same-file] headers
+src/types.ts:29:[related · same-file] ignoreResponseError
+src/types.ts:14:[related · pool-rescue] native
+src/types.ts:109:[related · same-file] onRequest
+src/types.ts:110:[related · same-file] onRequestError
+src/types.ts:111:[related · same-file] onResponse
+src/types.ts:114:[related · same-file] onResponseError
+src/types.ts:96:[related · same-file] options
+src/types.ts:34:[related · same-file] params
+src/types.ts:38:[related · same-file] parseResponse
+src/types.ts:36:[related · same-file] query
+src/types.ts:10:[related · same-file] raw
+src/types.ts:146:[related · same-file] request
+src/types.ts:97:[related · pool-rescue] response
+src/types.ts:148:[related · pool-rescue] response
+src/types.ts:40:[related · pool-rescue] responseType
+src/types.ts:64:[related · same-file] retry
+src/types.ts:67:[related · same-file] retryDelay
+src/types.ts:150:[related · same-file] status
+src/types.ts:152:[related · same-file] statusCode
+src/types.ts:153:[related · same-file] statusMessage
+src/types.ts:151:[related · same-file] statusText
+src/types.ts:127:[related · same-file] stream
+src/types.ts:125:[related · pool-rescue] text
+src/types.ts:62:[related · same-file] timeout
+src/utils.ts:52:[related · same-file] JSON_RE
+src/utils.ts:140:[related · same-file] callHooks
+src/utils.ts:61:[related · same-file] contentType
+src/utils.ts:55:[related · same-file] detectResponseType
+src/utils.ts:95:[related · same-file] headers
+src/utils.ts:129:[related · same-file] headers
+src/utils.ts:17:[related · same-file] isJSONSerializable
+src/utils.ts:13:[related · same-file] isPayloadMethod
+src/utils.ts:121:[related · same-file] mergeHeaders
+src/utils.ts:10:[related · same-file] payloadMethods
+src/utils.ts:102:[related · same-file] query
+src/utils.ts:21:[related · same-file] t
+src/utils.url.ts:10:[related · same-file] QueryObject
+src/utils.url.ts:2:[related · same-file] QueryValue
+src/utils.url.ts:45:[related · same-file] _base
+src/utils.url.ts:72:[related · same-file] normalizedQuery
+src/utils.url.ts:82:[related · same-file] queryString
+src/utils.url.ts:101:[related · same-file] queryString
+src/utils.url.ts:81:[related · same-file] searchParams
+src/utils.url.ts:86:[related · same-file] searchParams
+src/fetch.ts:259:[related · same-file] $fetch
+src/fetch.ts:259:[related · same-file] $fetch
+src/fetch.ts:169:[related · same-file] abortTimeout
+src/fetch.ts:217:[related · same-file] data
+src/fetch.ts:80:[related · same-file] error
+src/fetch.ts:43:[related · same-file] isAbort
+src/fetch.ts:34:[related · same-file] nullBodyResponses
+src/fetch.ts:219:[related · same-file] parseFunction
+src/fetch.ts:260:[related · same-file] r
+src/fetch.ts:57:[related · same-file] responseCode
+src/fetch.ts:50:[related · same-file] retries
+src/fetch.ts:64:[related · same-file] retryDelay
+examples/type-safety.ts:5:[related · same-file] id
+examples/type-safety.ts:12:[related · same-file] main
+examples/type-safety.ts:6:[related · same-file] name
+examples/type-safety.ts:7:[related · same-file] repo
+examples/type-safety.ts:9:[related · same-file] stars
+test/playground.ts:5:[related · same-file] r

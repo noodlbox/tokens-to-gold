@@ -1,0 +1,240 @@
+src/fetch.ts
+  22:[def q] retryStatusCodes — matched: status code retri
+examples/type-safety.ts
+  8:[def q] description — matched: descript
+examples/headers.mjs
+  3:[def q] response — matched: respons
+examples/type-safety.ts
+  4:[def q] Repo
+src/fetch.ts
+  200:[def q] hasBody — matched: bodi
+src/utils.url.ts
+  64:[def q] withQuery — matched: with
+  40:[def q] withBase — matched: with base
+examples/query-string.mjs
+  3:[def q] response — matched: respons
+test/index.test.ts
+  300:[def q] abortHandle
+  144:[def q] headerFetches — matched: fetch
+src/types.ts
+  54:[def q] dispatcher
+src/fetch.ts
+  93:[def q] context
+examples/methods.mjs
+  3:[def q] response — matched: respons
+src/fetch.ts
+  89:[def q] $fetchRaw — matched: fetch
+src/error.ts
+  4:[def q] FetchError — matched: fetch error
+src/types.ts
+  22:[def q] FetchOptions — matched: fetch option
+src/utils.url.ts
+  15:[def q] joinURL — matched: url
+src/fetch.ts
+  209:[def q] responseType — matched: respons
+src/utils.ts
+  85:[def q] resolveFetchOptions — matched: fetch option
+src/error.ts
+  5:[def q] constructor
+test/index.test.ts
+  348:[def q] _customFetch — matched: fetch
+src/utils.ts
+  45:[def q] textTypes
+src/types.ts
+  145:[def q] IFetchError — matched: fetch error
+src/utils.url.ts
+  25:[def q] pathHasLeading — matched: path
+src/types.ts
+  70:[def q] retryStatusCodes — matched: status code retri
+src/utils.url.ts
+  53:[def q] withoutTrailingSlash — matched: without
+test/index.test.ts
+  83:[def q] called — matched: call
+src/fetch.ts
+  132:[def q] contentType
+src/utils.url.ts
+  24:[def q] baseHasTrailing — matched: base
+src/fetch.ts
+  39:[def q] onError — matched: on error
+test/index.test.ts
+  439:[def q] onRequest — matched: request on
+  511:[def q] options — matched: option
+src/types.ts
+  5:[def q] $Fetch — matched: fetch
+test/index.test.ts
+  520:[def q] options2 — matched: option
+test/playground.ts
+  3:[def q] main — matched: main
+src/types.ts
+  94:[def q] FetchContext — matched: fetch
+  95:[def q] request — matched: request
+src/error.ts
+  35:[def q] message — matched: messag
+test/index.test.ts
+  16:[def q] getURL — matched: url
+src/types.ts
+  147:[def q] options — matched: option
+examples/body.mjs
+  3:[def q] response — matched: respons
+test/index.test.ts
+  19:[def q] fetch — matched: fetch
+src/types.ts
+  164:[def q] SearchParameters
+src/utils.url.ts
+  87:[def q] base — matched: base
+  69:[def q] searchIndex
+  105:[def q] normalizeQueryValue — matched: normal
+src/error.ts
+  28:[def q] url — matched: url
+test/index.test.ts
+  226:[def q] data
+src/fetch.ts
+  36:[def q] createFetch — matched: fetch creat
+src/types.ts
+  47:[def q] duplex
+src/error.ts
+  19:[rel sf] FetchError
+  21:[rel sf] createFetchError
+  24:[rel sf] errorMessage
+  39:[rel sf] fetchError
+  46:[rel sf] get
+  60:[rel sf] get
+  26:[rel sf] method
+  29:[rel sf] requestStr
+  31:[rel sf] statusStr
+src/index.ts
+  15:[rel sf] $fetch
+  9:[rel sf] fetch
+  13:[rel sf] ofetch
+test/index.test.ts
+  22:[rel sf] app
+  126:[rel sf] body2
+  134:[rel sf] body3
+  299:[rel pr] controller
+  216:[rel pr] data
+  235:[rel sf] error
+  264:[rel sf] error
+  313:[rel sf] error
+  275:[rel sf] fast
+  289:[rel sf] fast
+  15:[rel sf] listener
+  162:[rel sf] message
+  172:[rel sf] message
+  182:[rel sf] message
+  199:[rel sf] message
+  325:[rel pr] noTimeout
+  404:[rel sf] onRequest
+  413:[rel sf] onRequestError
+  440:[rel sf] onRequestError
+  138:[rel sf] onResponse
+  422:[rel sf] onResponse
+  441:[rel sf] onResponse
+  431:[rel sf] onResponseError
+  442:[rel sf] onResponseError
+  380:[rel sf] parseParams
+  84:[rel sf] parser
+  280:[rel sf] race
+  294:[rel sf] race
+  330:[rel sf] race
+  206:[rel sf] read
+  248:[rel sf] res
+  254:[rel sf] res
+  259:[rel pr] res
+  302:[rel sf] response
+  271:[rel sf] slow
+  285:[rel sf] slow
+  189:[rel sf] start
+  326:[rel sf] timeout
+src/types.ts
+  80:[rel sf] CreateFetchOptions
+  160:[rel pr] Fetch
+  104:[rel sf] FetchHook
+  108:[rel sf] FetchHooks
+  162:[rel sf] FetchRequest
+  137:[rel sf] FetchResponse
+  85:[rel sf] GlobalOptions
+  132:[rel pr] MappedResponseType
+  102:[rel sf] MaybeArray
+  101:[rel sf] MaybePromise
+  73:[rel sf] ResolvedFetchOptions
+  123:[rel sf] ResponseMap
+  130:[rel pr] ResponseType
+  138:[rel sf] _data
+  59:[rel sf] agent
+  126:[rel sf] arrayBuffer
+  25:[rel sf] baseURL
+  124:[rel sf] blob
+  27:[rel sf] body
+  15:[rel sf] create
+  149:[rel sf] data
+  81:[rel sf] defaults
+  98:[rel pr] error
+  82:[rel pr] fetch
+  77:[rel sf] headers
+  29:[rel sf] ignoreResponseError
+  14:[rel pr] native
+  109:[rel sf] onRequest
+  110:[rel sf] onRequestError
+  111:[rel sf] onResponse
+  114:[rel sf] onResponseError
+  96:[rel sf] options
+  34:[rel sf] params
+  38:[rel sf] parseResponse
+  36:[rel sf] query
+  10:[rel sf] raw
+  146:[rel sf] request
+  97:[rel pr] response
+  148:[rel pr] response
+  40:[rel pr] responseType
+  64:[rel sf] retry
+  67:[rel sf] retryDelay
+  150:[rel sf] status
+  152:[rel sf] statusCode
+  153:[rel sf] statusMessage
+  151:[rel sf] statusText
+  127:[rel sf] stream
+  125:[rel pr] text
+  62:[rel sf] timeout
+src/utils.ts
+  52:[rel sf] JSON_RE
+  140:[rel sf] callHooks
+  61:[rel sf] contentType
+  55:[rel sf] detectResponseType
+  95:[rel sf] headers
+  129:[rel sf] headers
+  17:[rel sf] isJSONSerializable
+  13:[rel sf] isPayloadMethod
+  121:[rel sf] mergeHeaders
+  10:[rel sf] payloadMethods
+  102:[rel sf] query
+  21:[rel sf] t
+src/utils.url.ts
+  10:[rel sf] QueryObject
+  2:[rel sf] QueryValue
+  45:[rel sf] _base
+  72:[rel sf] normalizedQuery
+  82:[rel sf] queryString
+  101:[rel sf] queryString
+  81:[rel sf] searchParams
+  86:[rel sf] searchParams
+src/fetch.ts
+  259:[rel sf] $fetch
+  259:[rel sf] $fetch
+  169:[rel sf] abortTimeout
+  217:[rel sf] data
+  80:[rel sf] error
+  43:[rel sf] isAbort
+  34:[rel sf] nullBodyResponses
+  219:[rel sf] parseFunction
+  260:[rel sf] r
+  57:[rel sf] responseCode
+  50:[rel sf] retries
+  64:[rel sf] retryDelay
+examples/type-safety.ts
+  5:[rel sf] id
+  12:[rel sf] main
+  6:[rel sf] name
+  7:[rel sf] repo
+  9:[rel sf] stars
+test/playground.ts
+  5:[rel sf] r
