@@ -162,7 +162,9 @@ class Real1808Join(unittest.TestCase):
         return (self.FIXTURE / f"{name}.stdout").read_text(encoding="utf-8")
 
     def full_rows(self) -> list[tuple[str, str, int]]:
-        """(path, name, 0-based line) of the full projection's delivered rows."""
+        """(path, name, 0-based line) of the full projection's delivered rows.
+        The lanes are the full WIRE's field names (`related_members`, whose
+        coverage key is `related_symbols`)."""
         result = json.loads(self.text("json.full"))["result"]
         rows = [
             (s["location"]["file_path"], s["name"], s["location"]["line"])
@@ -180,6 +182,10 @@ class Real1808Join(unittest.TestCase):
         self.assertEqual(joined.continuation_lines, 0)
         self.assertEqual(joined.ambiguous_hits, 0)
         self.assertEqual(joined.lower, json_identities(oracle))
+
+    def test_the_full_verbosity_envelope_is_not_a_scored_wire(self):
+        with self.assertRaises(DeliveredScoringError):
+            json_identities(self.text("json.full"))
 
     def test_the_did_identities_equal_the_same_retrievals_object_identities(self):
         did = json_identities(self.text("json.did"))
@@ -301,6 +307,18 @@ class ExhaustiveDispatch(unittest.TestCase):
             "file_index": {"total": 0, "included": 0, "omitted": 0}}}
         with self.assertRaises(DeliveredScoringError):
             json_identities(json.dumps(doc))
+
+    def test_a_present_but_empty_lane_with_included_rows_raises(self):
+        for lane in ("symbols", "files", "file_index"):
+            with self.subTest(lane=lane):
+                doc = {"result": {lane: []}, "coverage": {
+                    "workflow_symbols": {"total": 0, "included": 0, "omitted": 0},
+                    "definitions": {"total": 2, "included": 2, "omitted": 0},
+                    "related_symbols": {"total": 0, "included": 0, "omitted": 0},
+                    "blast_radius": {"total": 0, "included": 0, "omitted": 0},
+                    "file_index": {"total": 0, "included": 0, "omitted": 0}}}
+                with self.assertRaises(DeliveredScoringError):
+                    json_identities(json.dumps(doc))
 
     def test_a_result_with_no_row_lane_and_no_coverage_raises(self):
         with self.assertRaises(DeliveredScoringError):

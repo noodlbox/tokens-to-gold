@@ -104,9 +104,20 @@ def _objects(value: object, what: str) -> list[Mapping[str, object]]:
     return list(value)
 
 
+UNSCORED_ROW_LANES = (
+    "workflow_symbols", "definitions", "related_members", "blast_radius", "dependency_symbols",
+)
+"""The `--verbosity full` projection's ranked lanes. No scored row is full
+verbosity, so a result carrying rows in any of them is not a compact wire."""
+
+
 def json_shape(result: Mapping[str, object]) -> JsonShape | None:
     """The one wire shape `result` is in, or None when it delivers no symbol
-    lane and no recall row. Mixed or unknown shapes raise."""
+    lane and no recall row. Mixed or unknown shapes -- and a full-verbosity
+    result, whose ranked rows no reader scores -- raise."""
+    unscored = [lane for lane in UNSCORED_ROW_LANES if _list(result.get(lane, []), f"`{lane}`")]
+    if unscored:
+        raise WireError(f"the result carries rows in unscored lanes {unscored} (a full-verbosity envelope)")
     shapes: set[JsonShape] = set()
     if "symbols" in result:
         shapes.add(JsonShape.OBJECTS)

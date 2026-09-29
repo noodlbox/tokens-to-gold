@@ -113,12 +113,12 @@ def json_identities(text: str) -> list[str]:
     `payload_items`), read under either wire shape (`ttg.delivered_wire`).
     Counts and totals are never identities.
 
-    Both wires omit an empty lane, so a result with no row lane at all is
+    A result that yields no row -- its lanes absent, or present but empty -- is
     delivered-nothing ONLY when the envelope's typed `coverage` says every
     row-bearing section included 0; anything else fails the cell."""
     doc, result = _envelope(text)
     rows = _wire_rows(result)
-    if not rows and not any(lane in result for lane in ("symbols", "files", "file_index")):
+    if not rows:
         _require_empty_coverage(doc)
     return [row.identity for row in rows]
 
@@ -126,7 +126,7 @@ def json_identities(text: str) -> list[str]:
 def _require_empty_coverage(doc: Mapping[str, object]) -> None:
     coverage = doc.get("coverage")
     if not isinstance(coverage, Mapping):
-        raise DeliveredScoringError("a result with no row lane carries no `coverage` to prove it empty")
+        raise DeliveredScoringError("a result with no rows carries no `coverage` to prove it empty")
     for section in ROW_COVERAGE_SECTIONS:
         entry = coverage.get(section)
         if entry is None and section == "dependency_symbols":
@@ -134,7 +134,7 @@ def _require_empty_coverage(doc: Mapping[str, object]) -> None:
         included = entry.get("included") if isinstance(entry, Mapping) else None
         if included != 0:
             raise DeliveredScoringError(
-                f"a result with no row lane, but coverage.{section}.included is {included!r}"
+                f"a result with no rows, but coverage.{section}.included is {included!r}"
             )
 
 

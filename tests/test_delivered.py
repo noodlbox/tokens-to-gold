@@ -55,8 +55,11 @@ class JsonIdentities(unittest.TestCase):
         self.assertEqual(json_identities(text), ["src/a.ts:alpha", "src/c.ts:eps"])
 
     def test_counts_are_not_identities(self) -> None:
+        zero = {"total": 0, "included": 0, "omitted": 0}
         text = json.dumps({"result": {"symbols": [], "file_index": [
-            {"file_path": "src/c.ts", "rows": [], "more_members": 7}]}})
+            {"file_path": "src/c.ts", "rows": [], "more_members": 7}]},
+            "coverage": {section: zero for section in (
+                "workflow_symbols", "definitions", "related_symbols", "blast_radius", "file_index")}})
         self.assertEqual(json_identities(text), [])
 
     def test_unparseable_payload_fails_the_cell(self) -> None:
