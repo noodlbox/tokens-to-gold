@@ -423,3 +423,31 @@ Any change to one of the following requires a dated amendment before the affecte
 - **Identity.** The `delivered.json` rule (§3) applied to that content text. A tool error result (`isError: true`) is a failed cell.
 - **Byte-identity check.** When the content text is byte-identical to stdout of `nbx search --format json -- <task text>` in the same cell (Explore, the default budget, the same defaults), the report states "byte-identical to CLI JSON" instead of a separate row of numbers. That comparison invocation is recorded but not otherwise scored.
 - **Publication role.** The MCP row is reported, never the headline.
+
+### Addendum 3: delivered cells run signed in, with pinned local provenance and itemised stderr, 2026-09-29 (before any number)
+
+> Source: `COORD_TO_L18_B64_SIGNED_IN_2026-09-29.md` (ACK with two conditions). It amends the two addenda above. It was found by the harness smoke, which is not a measurement and produced no number.
+
+**Signed in.** The delivered cells run as a working customer agent does: signed in, with `NOODLBOX_API_KEY` set to the eval account's key.
+- The key reaches the lease only through `scripts/crabbox/run.sh --secrets NOODLBOX_API_KEY`, never through argv.
+- `delivered-run` refuses to start without it.
+- An unauthenticated `nbx` refuses to analyze any repository that is not a public Hub package, so an unauthenticated arm could not measure the corpora at all.
+
+**Condition 1: analysis provenance is local and pinned, and asserted per cell.**
+- Every cell analyzes the pinned `base_commit` **locally**, with the `nbx` under test, into a fresh `NOODLBOX_DATA_DIR`. No Hub box is reused and no read is hosted: `--hub` is never passed, and the default build carries no dependency analysis.
+- Each cell records the provenance the binary itself reports, and the harness asserts it:
+  - from `nbx --version`, the engine build, which must be the receipt's commit;
+  - from the JSON identity oracle's envelope `snapshot`, the analyzed revision, which must be the cell's `base_commit`, and the served scope, which must be local;
+  - the box identity.
+- A cell whose provenance cannot be asserted is a **failed cell**. If a local analysis cannot be forced while signed in, the run STOPs and reports; it does not measure.
+- The key's org tier is recorded once per run from the API (`GET /api/orgs/`), since entitlement can change behaviour.
+
+**Condition 2: stderr is priced as delivered, and itemised.**
+- stderr stays in the headline `ttg_wire` (addendum 2 B).
+- Each cell's stderr is broken down by kind, each with its token count:
+  - the freshness receipt;
+  - the meta / continuation footer;
+  - entitlement or account notices;
+  - other.
+- The report carries the per-row medians of each kind, so a one-off notice is not read as retrieval cost and product noise on stderr is visible.
+- The kinds are classified by the product's own line prefixes. Unrecognised lines go to `other`; they are never dropped.
