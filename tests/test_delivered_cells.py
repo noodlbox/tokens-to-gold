@@ -51,8 +51,13 @@ def whitespace_count(data: bytes) -> int:
 
 class RowPlan(unittest.TestCase):
     def test_task_text_follows_the_separator(self) -> None:
-        argv = search_argv("nbx", ROW_PLAN[0], "--looks like a flag")
+        grep = next(spec for spec in ROW_PLAN if spec.key == "grep.8000")
+        argv = search_argv("nbx", grep, "--looks like a flag")
         self.assertEqual(argv[-2:], ["--", "--looks like a flag"])
+
+    def test_the_status_row_carries_no_task_text(self) -> None:
+        status = next(spec for spec in ROW_PLAN if spec.key == "status")
+        self.assertEqual(search_argv("nbx", status, "task"), ["nbx", "status", "--json"])
 
     def test_budgets_and_surfaces_are_the_preregistered_ones(self) -> None:
         keys = [spec.key for spec in ROW_PLAN if spec.scored]
@@ -111,7 +116,8 @@ def write_cell(root: Path, corpus: str, iid: str, stdout: dict[str, bytes]) -> N
     cell = root / corpus / iid
     cell.mkdir(parents=True)
     rows = {key: {"argv": [], "rc": 0, "ms": 1} for key in stdout}
-    (cell / "cell.json").write_text(json.dumps({"instance_id": iid, "analyze": {"rc": 0}, "rows": rows}))
+    (cell / "cell.json").write_text(json.dumps(
+        {"instance_id": iid, "base_commit": "0" * 40, "analyze": {"rc": 0}, "rows": rows}))
     for key, data in stdout.items():
         (cell / f"{key}.stdout").write_bytes(data)
         (cell / f"{key}.stderr").write_bytes(b"freshness: ok")
@@ -122,11 +128,17 @@ class CorpusScorer(unittest.TestCase):
         gold = {k: v for k, v in load_frozen_gold("ts40").items() if v}
         iid = sorted(gold)[0]
         path, name = gold[iid][0].split(":", 1)
-        envelope = json.dumps({"result": {"symbols": [
-            {"name": name, "location": {"file_path": path, "start_line": 3}}]}}).encode()
+        base = "0" * 40
+        envelope = json.dumps({
+            "result": {"symbols": [{"name": name, "location": {"file_path": path, "start_line": 3}}]},
+            "snapshot": {"repository": "checkout", "source_revision": base, "analysis_revision": "blake3-x",
+                         "freshness": {"per_repo": [{"analyzed_commit": base[:7], "head_matches": True}],
+                                       "serves": "committed_only"}},
+        }).encode()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_cell(root, "ts40", iid, {
+                "status": json.dumps({"box_id": "box-1", "noodlbox_version": "2.8.0"}).encode(),
                 "json.8000": envelope,
                 "grep.8000": f"{path}:4:[definition · exact] {name}".encode(),
                 "oracle.implement": envelope,
@@ -137,6 +149,7 @@ class CorpusScorer(unittest.TestCase):
         mine = next(s for s in json8["instances"] if s["instance_id"] == iid)
         self.assertEqual(mine["gold_lower"], 1 / len(gold[iid]))
         self.assertEqual(mine["ttg_wire"], whitespace_count(envelope + b"freshness: ok"))
+        self.assertEqual(mine["box_id"], "box-1")
         self.assertEqual(next(s for s in grep8["instances"] if s["instance_id"] == iid)["gold_lower"],
                          1 / len(gold[iid]))
         self.assertEqual(json8["summary"]["n"], len(gold))

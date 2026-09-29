@@ -41,18 +41,22 @@ MCP_PROTOCOL_VERSION = "2025-06-18"
 
 @dataclass(frozen=True)
 class RowSpec:
-    """One invocation in a cell. `query` rows get the task text after `--`."""
+    """One invocation in a cell. A `query` row gets the task text after `--`."""
 
     key: str
     args: tuple[str, ...]
     scored: bool
+    query: bool = True
 
 
 def _search(key: str, *flags: str, scored: bool = True) -> RowSpec:
     return RowSpec(key, ("search", *flags), scored)
 
 
+STATUS_ROW = "status"
+
 ROW_PLAN: tuple[RowSpec, ...] = (
+    RowSpec(STATUS_ROW, ("status", "--json"), scored=False, query=False),
     *(_search(f"grep.{b}", "--intent", "implement", "--max-tokens", str(b)) for b in BUDGETS),
     *(
         _search(f"json.{b}", "--intent", "implement", "--format", "json", "--max-tokens", str(b))
@@ -70,13 +74,14 @@ ROW_PLAN: tuple[RowSpec, ...] = (
     _search("json.explore_default", "--format", "json", scored=False),
 )
 """The fixed in-cell order. The `mcp` row runs after these (it is a session,
-not an argv). `json.explore_default` is the MCP byte-identity comparand."""
+not an argv). `status` (addendum 3) reports the cell's local box for the
+provenance assertion; `json.explore_default` is the MCP byte-identity comparand."""
 
 MCP_ROW = "mcp"
 
 
 def search_argv(nbx: str, spec: RowSpec, task: str) -> list[str]:
-    return [nbx, *spec.args, "--", task]
+    return [nbx, *spec.args, "--", task] if spec.query else [nbx, *spec.args]
 
 
 @dataclass(frozen=True)

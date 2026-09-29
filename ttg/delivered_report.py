@@ -27,7 +27,8 @@ from ttg.delivered import (
     price,
     recall,
 )
-from ttg.delivered_cells import BUDGETS, MCP_ROW, mcp_response
+from ttg.delivered_cells import BUDGETS, CHECKOUT_NAME, MCP_ROW, STATUS_ROW, mcp_response
+from ttg.delivered_provenance import StderrKind, itemise, local_pinned_provenance
 from ttg.paired_stats import bootstrap_mean_ci, sign_test
 
 MAX_FAILED_CELLS = 2
@@ -69,6 +70,9 @@ class InstanceScore:
     ttg_wire: int | None
     ttg_stdout: int | None
     ttg_stderr: int | None
+    box_id: str | None = None
+    stderr_tokens: dict[str, int] | None = None
+    """Addendum 3: this row's stderr tokens by kind (`StderrKind`)."""
 
 
 class CellFiles:
@@ -116,6 +120,10 @@ def _failed(instance_id: str, reason: str) -> InstanceScore:
     return InstanceScore(instance_id, reason, 0.0, 0.0, 0, None, None, None)
 
 
+def stderr_tokens(stderr: bytes, count: TokenCount) -> dict[str, int]:
+    return {kind.value: count(text.encode()) for kind, text in itemise(stderr.decode()).items()}
+
+
 def score_instance(cell: CellFiles, row: ScoredRow, gold: Sequence[str], count: TokenCount) -> InstanceScore:
     iid = str(cell.manifest.get("instance_id"))
     analyze = cell.manifest.get("analyze")
@@ -124,23 +132,31 @@ def score_instance(cell: CellFiles, row: ScoredRow, gold: Sequence[str], count: 
     if cell.row_rc(row.key) != 0:
         return _failed(iid, f"{row.key} exited {cell.row_rc(row.key)}")
     try:
+        if cell.row_rc(STATUS_ROW) != 0 or cell.row_rc("oracle.implement") != 0:
+            return _failed(iid, "provenance could not be read")
+        provenance = local_pinned_provenance(
+            cell.stdout(STATUS_ROW).decode(), cell.stdout("oracle.implement").decode(),
+            str(cell.manifest.get("base_commit")), CHECKOUT_NAME,
+        )
         if row.surface is DeliveredSurface.MCP:
             body = mcp_content_text(cell.stdout(row.key))
             identities = json_identities(body)
             cost = price(body.encode(), b"", count)
             return InstanceScore(iid, None, recall(gold, identities), recall(gold, identities), 0,
-                                 cost.wire, cost.stdout, None)
+                                 cost.wire, cost.stdout, None, provenance.box_id, {})
         stdout, stderr = cell.stdout(row.key), cell.stderr(row.key)
         cost = price(stdout, stderr, count)
+        kinds = stderr_tokens(stderr, count)
         if row.surface.is_grep:
             if row.oracle is None or cell.row_rc(row.oracle) != 0:
                 return _failed(iid, f"identity oracle {row.oracle} failed")
             grep = grep_identities(stdout.decode(), cell.stdout(row.oracle).decode())
             return InstanceScore(iid, None, recall(gold, grep.lower), recall(gold, grep.upper),
-                                 grep.ambiguous_hits, cost.wire, cost.stdout, cost.stderr)
+                                 grep.ambiguous_hits, cost.wire, cost.stdout, cost.stderr,
+                                 provenance.box_id, kinds)
         identities = json_identities(stdout.decode())
         return InstanceScore(iid, None, recall(gold, identities), recall(gold, identities), 0,
-                             cost.wire, cost.stdout, cost.stderr)
+                             cost.wire, cost.stdout, cost.stderr, provenance.box_id, kinds)
     except DeliveredScoringError as exc:
         return _failed(iid, str(exc))
 
@@ -174,6 +190,13 @@ def summarize(row: ScoredRow, scores: Sequence[InstanceScore]) -> dict[str, obje
         "ttg_stdout_median": round(statistics.median(v)) if (v := [s.ttg_stdout for s in scores if s.ttg_stdout is not None]) else None,
         "ttg_stderr_median": round(statistics.median(v)) if (v := [s.ttg_stderr for s in scores if s.ttg_stderr is not None]) else None,
         "over_budget_cells": sum(1 for w in wires if row.budget is not None and w > row.budget),
+        "stderr_tokens_median_by_kind": {
+            kind.value: round(statistics.median(values))
+            for kind in StderrKind
+            if (values := [
+                (s.stderr_tokens or {}).get(kind.value, 0) for s in scores if s.failed is None
+            ]) and any(values)
+        },
         "failed_cells": [{"instance_id": iid, "reason": reason} for iid, reason in failed],
         "publishable": len(failed) <= MAX_FAILED_CELLS,
     }

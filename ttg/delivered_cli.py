@@ -21,6 +21,7 @@ from ttg.cell_stamps import (
 )
 from ttg.delivered_cells import run_corpus
 from ttg.delivered_page import render_headline
+from ttg.delivered_provenance import account_orgs
 from ttg.delivered_report import paired_delta, score_corpus
 from ttg.report_io import load_report
 from ttg.token_count import EngineTokenCounter
@@ -64,7 +65,10 @@ def cmd_delivered_run(args: argparse.Namespace) -> int:
     root = Path(args.root)
     stamp = root / "out" / args.corpus / "build.json"
     stamp.parent.mkdir(parents=True, exist_ok=True)
-    stamp.write_text(json.dumps({**build, "corpus_sha256": corpus_sha}, indent=1), encoding="utf-8")
+    orgs = account_orgs(os.environ["NOODLBOX_API_KEY"])
+    stamp.write_text(
+        json.dumps({**build, "corpus_sha256": corpus_sha, "account_orgs": orgs}, indent=1), encoding="utf-8"
+    )
     only = frozenset(args.only) if args.only else None
     cells = run_corpus(str(Path(args.build_dir) / "nbx"), root, args.corpus, jsonl, only)
     print(f"delivered-run {args.corpus}: {len(cells)} cells under {root / 'out' / args.corpus}")
