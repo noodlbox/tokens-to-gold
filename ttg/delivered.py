@@ -82,7 +82,8 @@ class Price:
     stderr: int
 
 
-def _envelope_result(text: str) -> Mapping[str, object]:
+def _envelope(text: str) -> tuple[Mapping[str, object], Mapping[str, object]]:
+    """The envelope and its `result` object."""
     try:
         doc = json.loads(text)
     except json.JSONDecodeError as exc:
@@ -90,15 +91,51 @@ def _envelope_result(text: str) -> Mapping[str, object]:
     result = doc.get("result") if isinstance(doc, Mapping) else None
     if not isinstance(result, Mapping):
         raise DeliveredScoringError("delivered JSON has no `result` object")
-    return result
+    return doc, result
+
+
+def _envelope_result(text: str) -> Mapping[str, object]:
+    return _envelope(text)[1]
+
+
+ROW_COVERAGE_SECTIONS = (
+    "workflow_symbols", "definitions", "related_symbols", "blast_radius",
+    "dependency_symbols", "file_index",
+)
+"""The envelope's coverage sections that deliver rows (noodlbox-app
+`RankedLane::coverage_key` plus the `file_index` lane). `dependency_symbols` is
+absent from a build without dependency analysis."""
 
 
 def json_identities(text: str) -> list[str]:
     """The delivered `file:name` identities of a JSON search envelope, in wire
     order: located symbols, then every `file_index` row (B52's
     `payload_items`), read under either wire shape (`ttg.delivered_wire`).
-    Counts and totals are never identities."""
-    return [row.identity for row in _wire_rows(_envelope_result(text))]
+    Counts and totals are never identities.
+
+    Both wires omit an empty lane, so a result with no row lane at all is
+    delivered-nothing ONLY when the envelope's typed `coverage` says every
+    row-bearing section included 0; anything else fails the cell."""
+    doc, result = _envelope(text)
+    rows = _wire_rows(result)
+    if not rows and not any(lane in result for lane in ("symbols", "files", "file_index")):
+        _require_empty_coverage(doc)
+    return [row.identity for row in rows]
+
+
+def _require_empty_coverage(doc: Mapping[str, object]) -> None:
+    coverage = doc.get("coverage")
+    if not isinstance(coverage, Mapping):
+        raise DeliveredScoringError("a result with no row lane carries no `coverage` to prove it empty")
+    for section in ROW_COVERAGE_SECTIONS:
+        entry = coverage.get(section)
+        if entry is None and section == "dependency_symbols":
+            continue
+        included = entry.get("included") if isinstance(entry, Mapping) else None
+        if included != 0:
+            raise DeliveredScoringError(
+                f"a result with no row lane, but coverage.{section}.included is {included!r}"
+            )
 
 
 def _wire_rows(result: Mapping[str, object]) -> list[WireRow]:

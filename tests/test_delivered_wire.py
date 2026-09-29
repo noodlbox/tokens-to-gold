@@ -10,7 +10,9 @@ Pinned here:
   the grep reference records each hit's `(path, line)` where the grader credits
   its content tokens, because ttg joins a hit through the oracle by that key.
   The cells are `ts40/ofetch-per-origin-circuit-breaker/main/*.c4k` of the B63
-  bundles (lane-evidence/l21/b63/results/out).
+  bundles (lane-evidence/l21/b63/results/out): B63-HARNESS renderings, with
+  0-based D+id lines and no name grammar (see fixtures/b63_cells/README.md), so
+  they pin identities and hit parsing only, never a line join.
 * NAME GRAMMAR (L21/L18 ruling): a whitespace, newline or leading-quote name
   round-trips through its JSON literal; a malformed literal and an unquoted
   whitespace name raise.
@@ -185,7 +187,11 @@ class NameGrammar(unittest.TestCase):
 
 
 class LineBases(unittest.TestCase):
-    """Both shapes key the oracle on the same `(path, 1-based line)`."""
+    """Both shapes key the oracle on the same `(path, 1-based line)`. The D+id
+    base is the product's: noodlbox-app `compact_wire.rs` renders spans and
+    recall lines through `one_based()` (#1808). The B63 cells in
+    `fixtures/b63_cells` are B63-harness renderings (0-based, pre-grammar) and are
+    never used for a line join."""
 
     def test_one_symbol_in_both_shapes_yields_one_key(self):
         objects = envelope({"symbols": [
@@ -232,8 +238,28 @@ class ExhaustiveDispatch(unittest.TestCase):
         with self.assertRaises(DeliveredScoringError):
             json_identities(envelope({"files": [{"file_path": "src/a.ts", "symbols": [{"name": "a"}]}]}))
 
-    def test_an_envelope_with_no_rows_delivers_nothing(self):
-        self.assertEqual(json_identities(envelope({"workflows": []})), [])
+    def test_a_real_empty_result_is_proven_empty_by_its_coverage(self):
+        # Both wires omit an empty lane, so an empty compact result is `{}`: its
+        # typed coverage, not the absence of a key, says it delivered nothing.
+        empty = {"total": 0, "included": 0, "omitted": 0}
+        doc = {"result": {}, "coverage": {
+            section: empty for section in (
+                "workflow_symbols", "definitions", "related_symbols", "blast_radius", "file_index")}}
+        self.assertEqual(json_identities(json.dumps(doc)), [])
+
+    def test_a_result_with_no_row_lane_but_included_rows_raises(self):
+        doc = {"result": {"workflows": []}, "coverage": {
+            "workflow_symbols": {"total": 3, "included": 3, "omitted": 0},
+            "definitions": {"total": 0, "included": 0, "omitted": 0},
+            "related_symbols": {"total": 0, "included": 0, "omitted": 0},
+            "blast_radius": {"total": 0, "included": 0, "omitted": 0},
+            "file_index": {"total": 0, "included": 0, "omitted": 0}}}
+        with self.assertRaises(DeliveredScoringError):
+            json_identities(json.dumps(doc))
+
+    def test_a_result_with_no_row_lane_and_no_coverage_raises(self):
+        with self.assertRaises(DeliveredScoringError):
+            json_identities(envelope({"workflows": []}))
 
 
 class HeadedGrep(unittest.TestCase):

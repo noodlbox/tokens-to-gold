@@ -233,7 +233,19 @@ def mcp_byte_identical(cells: Sequence[CellFiles]) -> dict[str, object]:
     }
 
 
-def score_corpus(out_root: Path, corpus: str, count: TokenCount, build: Mapping[str, object]) -> dict[str, object]:
+@dataclass(frozen=True)
+class GrepContract:
+    """The build's #1791 grep contract, from its verified receipt verdict
+    (`ttg.cell_stamps.ReceiptVerdict`): never from the output or a default."""
+
+    one_line_per_hit: bool
+    pre_fix_on_newer_commit: bool
+
+
+def score_corpus(
+    out_root: Path, corpus: str, count: TokenCount, build: Mapping[str, object],
+    grep_contract: GrepContract,
+) -> dict[str, object]:
     """The delivered report for one corpus: every gold-bearing instance, every
     scored row. A gold-bearing instance with no recorded cell is a failed cell."""
     gold = load_frozen_gold(corpus)
@@ -244,7 +256,7 @@ def score_corpus(out_root: Path, corpus: str, count: TokenCount, build: Mapping[
         scores = [
             score_instance(
                 cells[iid], row, gold[iid], count, str(build["nbx_sha256"]),
-                one_line_per_hit=bool(build["grep_one_line_per_hit"]),
+                one_line_per_hit=grep_contract.one_line_per_hit,
             )
             if iid in cells else _failed(iid, "no cell recorded")
             for iid in sorted(i for i in gold if gold[i])
@@ -260,7 +272,7 @@ def score_corpus(out_root: Path, corpus: str, count: TokenCount, build: Mapping[
         "warnings": (
             ["pre-#1791 verdict on a commit newer than every #1791 fix commit: the fix set may "
              "be missing a merge (ttg.cell_stamps.ONE_LINE_GREP_FIX_COMMITS)"]
-            if build.get("grep_pre_fix_on_newer_commit") else []
+            if grep_contract.pre_fix_on_newer_commit else []
         ),
         "rows": rows,
     }

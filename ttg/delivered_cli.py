@@ -22,22 +22,23 @@ from ttg.cell_stamps import (
 from ttg.delivered_cells import run_corpus
 from ttg.delivered_page import render_headline
 from ttg.delivered_provenance import account_orgs
-from ttg.delivered_report import paired_delta, score_corpus
+from ttg.delivered_report import GrepContract, paired_delta, score_corpus
 from ttg.report_io import load_report
 from ttg.token_count import EngineTokenCounter
 
 PKG = Path(__file__).resolve().parent.parent
 
 
-def verified_build(build_dir: Path, commit: str) -> dict[str, object]:
+def verified_build(build_dir: Path, commit: str) -> tuple[dict[str, object], GrepContract]:
     """Verify the build directory's receipt, verdict and both binaries; return
-    the build stamp every delivered report carries."""
+    the build stamp every delivered report carries, and the build's #1791 grep
+    contract from its verdict."""
     receipt_path = build_dir / "build-receipt.json"
     receipt = load_build_receipt(receipt_path)
     verdict = load_receipt_verdict(build_dir / "receipt-verdict.json", receipt_path, receipt)
     verify_binary_against_receipt(build_dir / "noodl-eval", receipt, commit)
     verify_nbx_against_receipt(build_dir / "nbx", receipt, commit)
-    return {
+    stamp: dict[str, object] = {
         "commit": receipt.commit,
         "nbx_sha256": receipt.nbx_sha256,
         "noodl_eval_sha256": receipt.binary_sha256,
@@ -50,6 +51,10 @@ def verified_build(build_dir: Path, commit: str) -> dict[str, object]:
         "grep_one_line_per_hit": verdict.grep_one_line_per_hit,
         "grep_pre_fix_on_newer_commit": verdict.pre_fix_on_newer_commit,
     }
+    return stamp, GrepContract(
+        one_line_per_hit=verdict.grep_one_line_per_hit,
+        pre_fix_on_newer_commit=verdict.pre_fix_on_newer_commit,
+    )
 
 
 class MissingAccountError(RuntimeError):
@@ -63,7 +68,7 @@ def cmd_delivered_run(args: argparse.Namespace) -> int:
             "delivered-run needs NOODLBOX_API_KEY in its environment: the arm measures a "
             "signed-in agent (pass it through `scripts/crabbox/run.sh --secrets NOODLBOX_API_KEY`)"
         )
-    build = verified_build(Path(args.build_dir), args.commit)
+    build, _ = verified_build(Path(args.build_dir), args.commit)
     jsonl = Path(args.corpus_jsonl)
     corpus_sha = verify_corpus(jsonl, args.corpus, PKG / "corpora" / "jsonl.SHA256SUMS")
     root = Path(args.root)
@@ -80,9 +85,9 @@ def cmd_delivered_run(args: argparse.Namespace) -> int:
 
 
 def cmd_delivered_score(args: argparse.Namespace) -> int:
-    build = verified_build(Path(args.build_dir), args.commit)
+    build, grep_contract = verified_build(Path(args.build_dir), args.commit)
     counter = EngineTokenCounter(Path(args.build_dir) / "noodl-eval")
-    report = score_corpus(Path(args.root) / "out", args.corpus, counter, build)
+    report = score_corpus(Path(args.root) / "out", args.corpus, counter, build, grep_contract)
     Path(args.out).write_text(json.dumps(report, indent=1), encoding="utf-8")
     print(f"delivered report: {args.out}")
     return 0

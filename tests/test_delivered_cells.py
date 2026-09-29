@@ -29,7 +29,7 @@ from ttg.delivered_cells import (
     run_mcp,
     search_argv,
 )
-from ttg.delivered_report import MAX_FAILED_CELLS, mcp_content_text, score_corpus
+from ttg.delivered_report import GrepContract, MAX_FAILED_CELLS, mcp_content_text, score_corpus
 
 FAKE_MCP = textwrap.dedent(
     """
@@ -45,6 +45,8 @@ FAKE_MCP = textwrap.dedent(
                               "result": {"content": [{"type": "text", "text": body}]}}), flush=True)
     """
 )
+
+STRICT_GREP = GrepContract(one_line_per_hit=True, pre_fix_on_newer_commit=False)
 
 
 def whitespace_count(data: bytes) -> int:
@@ -159,8 +161,8 @@ class CorpusScorer(unittest.TestCase):
                 "grep.8000": f"{path}:4:[definition · exact] {name}".encode(),
                 "oracle.implement": envelope,
             })
-            report = score_corpus(root, "ts40", whitespace_count, {"nbx_sha256": NBX_SHA, "grep_one_line_per_hit": True})
-            other = score_corpus(root, "ts40", whitespace_count, {"nbx_sha256": "b" * 64, "grep_one_line_per_hit": True})
+            report = score_corpus(root, "ts40", whitespace_count, {"nbx_sha256": NBX_SHA}, STRICT_GREP)
+            other = score_corpus(root, "ts40", whitespace_count, {"nbx_sha256": "b" * 64}, STRICT_GREP)
         json8 = report["rows"]["json.8000"]
         grep8 = report["rows"]["grep.8000"]
         mine = next(s for s in json8["instances"] if s["instance_id"] == iid)

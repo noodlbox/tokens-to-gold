@@ -22,7 +22,9 @@ cell fails (a mixed or unknown envelope is never read by a guess):
 
   `role` and `reason` must come from the product's closed vocabularies: a name
   the product failed to quote would shift them, so a missed escape raises
-  instead of being misread.
+  instead of being misread. Only SYMBOL rows can detect a missed escape: a
+  recall row's name is followed by free-text signature, so an unquoted
+  whitespace name there reads as its first word (the product quotes it).
 
 Both shapes yield the same `(path, name, 1-based line)` rows, so an identity
 (`path:name`) and an oracle key (`(path, line)`) mean the same thing on either
@@ -275,7 +277,8 @@ def grep_hits(
     * Any other non-empty line is a raw-newline continuation. A build that
       carries the #1791 fix (`one_line_per_hit`, from its receipt verdict) emits
       none, so there it raises; on an earlier build it is counted, never an
-      identity.
+      identity. Known pre-#1791 limit: an indented hit after an unrecognised
+      heading keeps the previous heading's path.
     """
     paths = frozenset(delivered_paths)
     hits: list[tuple[str, int]] = []
