@@ -457,3 +457,51 @@ Any change to one of the following requires a dated amendment before the affecte
 > - **Version.** The version `nbx status --json` reports is recorded, and it must be present.
 > - **Org tier.** A missing tier refuses the run.
 > - **Publishability.** A row that is not publishable (more than 2 failed cells) renders no numbers, headline or not.
+
+### Addendum 4: readers for the B63 lean wires (D+id JSON, headed grep) and the #1791 grep contract, 2026-09-29 (before any D+id or G2 number)
+
+> **Rulings:** L21 `to-L22-L18-L11-ttg.txt`, `to-L22-7.txt`, `to-L22-L18-ttg8.txt`, `to-L22-L18-1791.txt`.
+> **Implementation:** tokens-to-gold #8, merged as af33e253a (author L22, review L18). Lenses: Opus 5.5, then a re-glance; see the B64 review ledger.
+> **Scope:** amends §3 of the first addendum. It changes only how delivered identities are read. Pricing, the rows, the headline, the matcher, the oracle's flags and the failed-cell rules are all unchanged.
+
+**One reader, exhaustive dispatch.** A delivered JSON envelope is read in exactly one of two known shapes:
+- the object shape, `symbols[]` objects with a location;
+- the B63 lean shape (D+id), `files[].symbols` strings of the form `<id> <a-b> <kind> <name> <role> <reason> <signature>`, plus string `file_index` rows.
+
+A mixed or unknown envelope raises. A result with no row lane counts as empty only when the envelope's typed coverage says every row-bearing section included 0. Otherwise, or with no coverage, the cell fails. Both shapes yield the same `path:name` identity, so pairing between arms is unchanged. The grep identity oracle is read through the same reader.
+
+**Line base.** The oracle key is `(path, 1-based line)`.
+- The object shape carries a 0-based `start_line` or `line`, and the reader adds 1.
+- The lean shape is 1-based as emitted: the product renders `one_based()` in `compact_wire.rs`.
+
+There is one base per shape, taken from the product, and no second base.
+
+**Name grammar.** In the lean shape a name is bare unless it contains whitespace or starts with `"`; then it is one JSON string literal (decoded with `raw_decode`). In a symbol row, the tokens after the name must belong to the closed role and reason vocabularies, or the row raises, so a missed escape is detected. A `file_index` row has no such columns, so a missed escape there cannot be detected. This is a stated limit: the product quotes those names too.
+
+**Grep.** A hit is either a flat `path:line:` line, or an indented `  line:` hit under a column-0 path heading (G1/G2). An indented hit before any heading raises. A hit-shaped line whose path the oracle did not deliver ALWAYS raises (`UnjoinableHit`).
+
+**The #1791 contract.** "One grep line per hit" holds for a build iff a member of `ONE_LINE_GREP_FIX_COMMITS` is an ancestor of the build commit.
+- The set is typed and any-of. It is seeded with `05fd296b4f2ba464334344118a9c742dc2e168a2`, the #1791 fix commit on #1802's branch.
+- The squash sha of #1802 on main is added in a one-line PR BEFORE any post-merge B64 run; it is on #1802's merge checklist.
+- `verify-receipt` computes the ancestry on the Mac, where the engine's git history is, and records it in the receipt verdict (schema 3; schema 2 is refused). A member missing from the repository refuses.
+- The scorer takes the contract from the verified build stamp, never from the output or the environment.
+
+Consequences:
+- **Post-#1791 build:** any line that is neither a hit nor a heading raises, in headed and flat output alike.
+- **Pre-#1791 build:** such a line is a continuation. It carries no identity, is counted per cell, and the counts are reported per row.
+- A pre-#1791 verdict on a commit newer than the newest set member is a visible report warning.
+- Known limit, pre-#1791 only: an indented hit after an unrecognised heading keeps the previous heading's path. It usually raises at the join.
+
+**Must-reds**, each red at 2feadfe:
+- real #1808 dev-binary cells (one binary, one box, no trim), where the grep block joins the lean oracle strictly with no raise and the identities equal the same run's full-verbosity identities;
+- exhaustive dispatch;
+- the name grammar, including `Frame time` round-tripping and a malformed literal raising;
+- an indented hit before any heading raising;
+- an undelivered hit raising;
+- the #1791 ancestry on a local git repository (the child strict, the parent lenient, the same continuation line counted under the parent and raising under the child).
+
+**Parity pin.** On the B63 bundle cells, the reader equals `grade_b63.py` on the same cell:
+- object shape and A+ 1752/1752;
+- grep hits 5256/5256 in pre-#1791 mode.
+
+The B63 lean cells are a pre-#1808 rendering: 0-based, before the name grammar. They pin name identity only, never a grep join.
