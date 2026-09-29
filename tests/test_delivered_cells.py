@@ -18,7 +18,15 @@ from pathlib import Path
 from ttg.acceptance import load_frozen_gold
 import subprocess
 
-from ttg.delivered_cells import ROW_PLAN, Instance, mcp_response, prepare_checkout, run_mcp, search_argv
+from ttg.delivered_cells import (
+    ROW_PLAN,
+    Instance,
+    mcp_response,
+    prepare_checkout,
+    run_invocation,
+    run_mcp,
+    search_argv,
+)
 from ttg.delivered_report import MAX_FAILED_CELLS, mcp_content_text, score_corpus
 
 FAKE_MCP = textwrap.dedent(
@@ -50,6 +58,17 @@ class RowPlan(unittest.TestCase):
         keys = [spec.key for spec in ROW_PLAN if spec.scored]
         self.assertEqual(keys, ["grep.4000", "grep.8000", "grep.32000",
                                 "json.4000", "json.8000", "json.32000", "default"])
+
+
+class Invocation(unittest.TestCase):
+    def test_every_dotted_row_key_keeps_its_own_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            for key in ("grep.4000", "grep.8000", "oracle.implement"):
+                run_invocation(["/bin/sh", "-c", f"echo {key}; echo err-{key} >&2"], out, {}, out / key)
+            for key in ("grep.4000", "grep.8000", "oracle.implement"):
+                self.assertEqual((out / f"{key}.stdout").read_text(), f"{key}\n")
+                self.assertEqual((out / f"{key}.stderr").read_text(), f"err-{key}\n")
 
 
 class McpDriver(unittest.TestCase):

@@ -106,8 +106,9 @@ def gold_bearing_instances(corpus: str, jsonl: Path) -> Iterator[Instance]:
 
 
 def _record(prefix: Path, argv: Sequence[str], rc: int, ms: int, stdout: bytes, stderr: bytes) -> dict[str, object]:
-    prefix.with_suffix(".stdout").write_bytes(stdout)
-    prefix.with_suffix(".stderr").write_bytes(stderr)
+    # Row keys carry dots (`grep.8000`); `with_suffix` would replace `.8000`.
+    prefix.parent.joinpath(f"{prefix.name}.stdout").write_bytes(stdout)
+    prefix.parent.joinpath(f"{prefix.name}.stderr").write_bytes(stderr)
     return {"argv": list(argv), "rc": rc, "ms": ms}
 
 
