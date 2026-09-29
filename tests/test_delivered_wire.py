@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import re
 import unittest
+from collections import Counter
 from pathlib import Path
 
 from ttg.delivered import DeliveredScoringError, grep_identities, json_identities
@@ -147,6 +148,50 @@ class B63CellParity(unittest.TestCase):
             sorted(grep_hits(cell("grep.G2.c4k"), known, one_line_per_hit=False).hits),
             sorted(grep_hits(cell("grep.G0.c4k"), known, one_line_per_hit=False).hits),
         )
+
+
+class Real1808Join(unittest.TestCase):
+    """L18 condition 2 (the B1 blocker): on ONE real noodlbox-app #1808 binary
+    and ONE box (fixtures/did_1808), the grep block joins the D+id oracle with
+    no raise, and the joined names equal the same retrieval's object-shape
+    (`--verbosity full`) identities. The D+id line base is the product's."""
+
+    FIXTURE = Path(__file__).parent / "fixtures" / "did_1808"
+
+    def text(self, name: str) -> str:
+        return (self.FIXTURE / f"{name}.stdout").read_text(encoding="utf-8")
+
+    def full_rows(self) -> list[tuple[str, str, int]]:
+        """(path, name, 0-based line) of the full projection's delivered rows."""
+        result = json.loads(self.text("json.full"))["result"]
+        rows = [
+            (s["location"]["file_path"], s["name"], s["location"]["line"])
+            for lane in ("workflow_symbols", "definitions", "related_members",
+                         "blast_radius", "dependency_symbols")
+            for s in result.get(lane, [])
+        ]
+        rows += [(g["file_path"], r["name"], r["line"])
+                 for g in result.get("file_index", []) for r in g["rows"]]
+        return rows
+
+    def test_the_real_grep_block_joins_the_real_did_oracle_strictly(self):
+        oracle = self.text("json.did")
+        joined = grep_identities(self.text("grep.g0"), oracle, one_line_per_hit=True)
+        self.assertEqual(joined.continuation_lines, 0)
+        self.assertEqual(joined.ambiguous_hits, 0)
+        self.assertEqual(joined.lower, json_identities(oracle))
+
+    def test_the_did_identities_equal_the_same_retrievals_object_identities(self):
+        did = json_identities(self.text("json.did"))
+        full = [f"{path}:{name}" for path, name, _ in self.full_rows()]
+        self.assertTrue(did, "non-vacuity: the fixture delivers rows")
+        self.assertEqual(Counter(did), Counter(full))
+
+    def test_the_did_line_base_is_the_full_rows_zero_based_line_plus_one(self):
+        did = {(r.path, r.name): r.line for r in json_rows(json.loads(self.text("json.did"))["result"])}
+        for path, name, line in self.full_rows():
+            with self.subTest(row=f"{path}:{name}"):
+                self.assertEqual(did[(path, name)], line + 1)
 
 
 class NameGrammar(unittest.TestCase):
