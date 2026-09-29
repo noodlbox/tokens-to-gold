@@ -76,9 +76,12 @@ def local_pinned_provenance(
     box_id = status.get("box_id")
     if not isinstance(box_id, str) or not box_id:
         raise ProvenanceError("nbx status reports no local box")
+    version = status.get("noodlbox_version")
+    if not isinstance(version, str) or not version:
+        raise ProvenanceError("nbx status reports no noodlbox version")
     return Provenance(
         box_id=box_id,
-        noodlbox_version=str(status.get("noodlbox_version")),
+        noodlbox_version=version,
         source_revision=base_commit,
         analysis_revision=str(snapshot.get("analysis_revision")),
         serves=serves,
@@ -142,4 +145,10 @@ def account_orgs(key: str, api_base: str = API_BASE) -> list[dict[str, str]]:
     orgs = doc if isinstance(doc, list) else doc.get("data") if isinstance(doc, Mapping) else None
     if not isinstance(orgs, list) or not orgs:
         raise ProvenanceError("the key belongs to no organisation")
-    return [{"slug": str(org.get("slug")), "tier": str(org.get("tier"))} for org in orgs if isinstance(org, Mapping)]
+    records = []
+    for org in orgs:
+        tier = org.get("tier") if isinstance(org, Mapping) else None
+        if not isinstance(tier, str) or not tier:
+            raise ProvenanceError("an organisation of the key carries no tier")
+        records.append({"slug": str(org.get("slug")), "tier": tier})
+    return records

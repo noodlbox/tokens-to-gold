@@ -451,3 +451,9 @@ Any change to one of the following requires a dated amendment before the affecte
   - other.
 - The report carries the per-row medians of each kind, so a one-off notice is not read as retrieval cost and product noise on stderr is visible.
 - The kinds are classified by the product's own line prefixes. Unrecognised lines go to `other`; they are never dropped.
+
+> **Correction to addendum 3, 2026-09-29 (before any number, from the B64 lens pass).**
+> - **Engine build.** `nbx --version` prints only the package version, not a commit, so it cannot prove the build. The engine build is proven by the `nbx` binary's sha256. `delivered-run` verifies it against the build receipt, whose commit is checked against git. Every cell stamps that sha in its `cell.json`, and the scorer fails any cell whose sha is not the receipt's, so a resumed or reused root can never be scored under the wrong build.
+> - **Version.** The version `nbx status --json` reports is recorded, and it must be present.
+> - **Org tier.** A missing tier refuses the run.
+> - **Publishability.** A row that is not publishable (more than 2 failed cells) renders no numbers, headline or not.

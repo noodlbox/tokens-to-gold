@@ -41,21 +41,28 @@ def render_corpus(report: Mapping[str, object]) -> str:
         if s is None:
             continue
         mark = " **(headline)**" if row in HEADLINE_ROWS else ""
-        flag = " ⚑" if s.get("ambiguity_flag") else ""
         failed = s.get("failed_cells")
         n_failed = len(failed) if isinstance(failed, list) else 0
-        publishable = "" if s.get("publishable") else " (not publishable)"
+        if not s.get("publishable"):
+            # Addendum §1: more than MAX_FAILED_CELLS failed cells make the row
+            # not publishable, so it carries no numbers, headline or not.
+            out.append(f"| `{row}`{mark} | NOT PUBLISHABLE: {n_failed} failed cells | | | | | | | {n_failed} |")
+            continue
+        flag = " ⚑" if s.get("ambiguity_flag") else ""
         out.append(
             f"| `{row}`{mark} | {float(s['gold_delivered']):.4f} | {float(s['gold_delivered_upper']):.4f}{flag} "
             f"| {s.get('ambiguous_hits')} | {float(s['reach_at_80_within_budget']):.4f} "
             f"| {_tokens(s.get('ttg_wire_median'))} / {_tokens(s.get('ttg_wire_p90'))} / {_tokens(s.get('ttg_wire_max'))} "
             f"| {_tokens(s.get('ttg_stdout_median'))} / {_tokens(s.get('ttg_stderr_median'))} "
-            f"| {s.get('over_budget_cells')} | {n_failed}{publishable} |"
+            f"| {s.get('over_budget_cells')} | {n_failed} |"
         )
-    identical = report.get("mcp_byte_identical_to_cli_json")
-    if identical is True:
+    identity = report.get("mcp_byte_identical_to_cli_json")
+    if isinstance(identity, Mapping) and identity.get("identical") is True:
         out.append("")
-        out.append("The MCP `nbx_search` content is byte-identical to CLI `--format json` (same defaults).")
+        out.append(
+            "The MCP `nbx_search` content is byte-identical to CLI `--format json` (same defaults) "
+            f"on {identity.get('cells_compared')} of {identity.get('cells')} cells."
+        )
     out.append("")
     return "\n".join(out)
 

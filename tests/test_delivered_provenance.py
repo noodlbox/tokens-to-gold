@@ -6,10 +6,12 @@ harness smoke (their cursor payload shortened).
 
 from __future__ import annotations
 
+import io
 import json
 import unittest
+from unittest import mock
 
-from ttg.delivered_provenance import ProvenanceError, StderrKind, classify, itemise, local_pinned_provenance
+from ttg.delivered_provenance import ProvenanceError, account_orgs, StderrKind, classify, itemise, local_pinned_provenance
 
 BASE = "82ac179c1de4c216c4e333093044fac643303f0c"
 STATUS = json.dumps({"box_id": "55ca4098-b44a-4d9c-81f3-4d3f711b4e67", "noodlbox_version": "2.8.0"})
@@ -48,6 +50,26 @@ class LocalPinnedProvenance(unittest.TestCase):
     def test_no_local_box_fails(self) -> None:
         with self.assertRaises(ProvenanceError):
             local_pinned_provenance(json.dumps({"box_id": None}), oracle(), BASE, "checkout")
+
+
+class AccountTier(unittest.TestCase):
+    def _orgs(self, payload: object) -> list[dict[str, str]]:
+        class Response(io.BytesIO):
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc: object) -> None:
+                self.close()
+
+        with mock.patch("urllib.request.urlopen", return_value=Response(json.dumps(payload).encode())):
+            return account_orgs("key")
+
+    def test_the_tier_is_recorded(self) -> None:
+        self.assertEqual(self._orgs([{"slug": "o", "tier": "pro"}]), [{"slug": "o", "tier": "pro"}])
+
+    def test_a_missing_tier_refuses(self) -> None:
+        with self.assertRaises(ProvenanceError):
+            self._orgs([{"slug": "o"}])
 
 
 REAL_STDERR = "\n".join([

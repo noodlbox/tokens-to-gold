@@ -81,13 +81,22 @@ SUPERIORITY_CLAIMABLE: Final[dict[tuple[str, str], bool]] = {
 
 
 V1_FIXTURE_METRIC_NAMES: Final[dict[str, str]] = {
-    "gold_at_8k_ranked_list": "gold_at_8k_ranked_list",
-    "gold_at_32k_ranked_list": "gold_at_32k_ranked_list",
+    "gold_at_8k_ranked_list": "gold_at_8k_wire",
+    "gold_at_32k_ranked_list": "gold_at_32k_wire",
 }
 """The dated V1 fixture records the ranked-list coverage under its V1 name
 `gold_at_*_wire`. The fixture is digest-pinned evidence and is never edited;
 its vocabulary is translated here, once, to the current metric names (LEDGER
 B64 renamed the ranked-list quantity; `wire` now names delivered bytes only)."""
+
+
+REQUIRED_EXPECTED_METRICS: Final[tuple[str, ...]] = (
+    "gold_at_8k_ranked_list",
+    "gold_at_32k_ranked_list",
+)
+"""Every arm's expected values carry these. A missing one is an error, never a
+skipped check (a skip silently stops comparing the headline metrics). The
+head-only metrics stay optional: the span comparator omits them by design."""
 
 
 class AcceptanceError(ValueError):
@@ -357,6 +366,9 @@ def compare_metrics(
         checks.append(
             MetricCheck("n", float(got.n), float(expected_n), got.n == expected_n)
         )
+    missing = [m for m in REQUIRED_EXPECTED_METRICS if not isinstance(expected.get(m), (int, float))]
+    if missing:
+        raise AcceptanceError(f"expected values lack {', '.join(missing)}; nothing to compare them to")
     for metric in LOCKED_METRICS:
         want = expected.get(metric)
         if not isinstance(want, (int, float)):

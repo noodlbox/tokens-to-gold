@@ -20,9 +20,11 @@ import subprocess
 
 from ttg.delivered_cells import (
     ROW_PLAN,
+    CellBuildMismatch,
     Instance,
     mcp_response,
     prepare_checkout,
+    run_cell,
     run_invocation,
     run_mcp,
     search_argv,
@@ -47,6 +49,17 @@ FAKE_MCP = textwrap.dedent(
 
 def whitespace_count(data: bytes) -> int:
     return len(data.split())
+
+
+class Resume(unittest.TestCase):
+    def test_a_cell_from_another_nbx_refuses_the_resume(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cell = root / "out" / "ts40" / "i"
+            cell.mkdir(parents=True)
+            (cell / "cell.json").write_text(json.dumps({"nbx_sha256": "a" * 64}))
+            with self.assertRaises(CellBuildMismatch):
+                run_cell("nbx", root, Instance("ts40", "i", "o/r", "0" * 40, "t"), "b" * 64)
 
 
 class RowPlan(unittest.TestCase):
@@ -112,12 +125,15 @@ class Checkout(unittest.TestCase):
             self.assertTrue((checkout / "a.ts").is_file())
 
 
+NBX_SHA = "a" * 64
+
+
 def write_cell(root: Path, corpus: str, iid: str, stdout: dict[str, bytes]) -> None:
     cell = root / corpus / iid
     cell.mkdir(parents=True)
     rows = {key: {"argv": [], "rc": 0, "ms": 1} for key in stdout}
     (cell / "cell.json").write_text(json.dumps(
-        {"instance_id": iid, "base_commit": "0" * 40, "analyze": {"rc": 0}, "rows": rows}))
+        {"instance_id": iid, "base_commit": "0" * 40, "nbx_sha256": NBX_SHA, "analyze": {"rc": 0}, "rows": rows}))
     for key, data in stdout.items():
         (cell / f"{key}.stdout").write_bytes(data)
         (cell / f"{key}.stderr").write_bytes(b"freshness: ok")
@@ -143,7 +159,8 @@ class CorpusScorer(unittest.TestCase):
                 "grep.8000": f"{path}:4:[definition · exact] {name}".encode(),
                 "oracle.implement": envelope,
             })
-            report = score_corpus(root, "ts40", whitespace_count, {"nbx_sha256": "x"})
+            report = score_corpus(root, "ts40", whitespace_count, {"nbx_sha256": NBX_SHA})
+            other = score_corpus(root, "ts40", whitespace_count, {"nbx_sha256": "b" * 64})
         json8 = report["rows"]["json.8000"]
         grep8 = report["rows"]["grep.8000"]
         mine = next(s for s in json8["instances"] if s["instance_id"] == iid)
@@ -157,6 +174,9 @@ class CorpusScorer(unittest.TestCase):
         self.assertGreater(len(gold) - 1, MAX_FAILED_CELLS)
         self.assertFalse(json8["summary"]["publishable"])
         self.assertTrue(report["publishable_as_delivered"])
+        # Lens H2: a cell recorded by another nbx is never scored under this receipt.
+        theirs = next(s for s in other["rows"]["json.8000"]["instances"] if s["instance_id"] == iid)
+        self.assertIn("not the receipt's", theirs["failed"])
 
 
 if __name__ == "__main__":

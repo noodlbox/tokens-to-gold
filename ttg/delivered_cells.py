@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ttg.acceptance import load_frozen_gold
+from ttg.cell_stamps import file_sha256
 
 BUDGETS = (4000, 8000, 32000)
 """The pre-registered delivered budgets B."""
@@ -263,11 +264,21 @@ def prepare_checkout(root: Path, instance: Instance) -> Path:
     return checkout
 
 
-def run_cell(nbx: str, root: Path, instance: Instance) -> Path:
-    """Run one instance's cell; resumable (an existing `cell.json` is kept)."""
+class CellBuildMismatch(RuntimeError):
+    """A recorded cell was produced by another `nbx` than the one this run uses."""
+
+
+def run_cell(nbx: str, root: Path, instance: Instance, nbx_sha256: str) -> Path:
+    """Run one instance's cell. Resumable, but only under the SAME `nbx`: a
+    recorded cell from another binary refuses the run (use a fresh root)."""
     out = root / "out" / instance.corpus / instance.instance_id
     manifest = out / "cell.json"
     if manifest.is_file():
+        recorded = json.loads(manifest.read_text(encoding="utf-8")).get("nbx_sha256")
+        if recorded != nbx_sha256:
+            raise CellBuildMismatch(
+                f"{manifest} was recorded by nbx {recorded}, this run uses {nbx_sha256}; use a fresh --root"
+            )
         return manifest
     out.mkdir(parents=True, exist_ok=True)
     checkout = prepare_checkout(root, instance)
@@ -280,6 +291,7 @@ def run_cell(nbx: str, root: Path, instance: Instance) -> Path:
         "corpus": instance.corpus,
         "instance_id": instance.instance_id,
         "base_commit": instance.base_commit,
+        "nbx_sha256": nbx_sha256,
         "analyze": run_invocation([nbx, "analyze", "."], checkout, env, out / "analyze"),
     }
     rows: dict[str, object] = {}
@@ -300,8 +312,9 @@ def run_corpus(nbx: str, root: Path, corpus: str, jsonl: Path, only: frozenset[s
     """Every gold-bearing instance of one corpus (or the `only` subset), one
     cell at a time. A subset run is never publishable: every instance it skips
     scores as a failed cell (`ttg.delivered_report`)."""
+    nbx_sha256 = file_sha256(Path(nbx))
     return [
-        run_cell(nbx, root, instance)
+        run_cell(nbx, root, instance, nbx_sha256)
         for instance in gold_bearing_instances(corpus, jsonl)
         if only is None or instance.instance_id in only
     ]

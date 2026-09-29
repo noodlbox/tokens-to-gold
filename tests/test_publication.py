@@ -54,6 +54,14 @@ class CeilingIsNotDelivered(unittest.TestCase):
         self.assertIn("900 / 1,200 / 1,500", page)
 
 
+    def test_a_non_publishable_row_renders_no_numbers(self) -> None:
+        summary = dict(DELIVERED_REPORT["rows"]["grep.8000"]["summary"], publishable=False,
+                       failed_cells=[{"instance_id": str(i), "reason": "x"} for i in range(3)])
+        report = {**DELIVERED_REPORT, "rows": {"grep.8000": {"summary": summary}}}
+        page = render_headline([report])
+        self.assertIn("NOT PUBLISHABLE: 3 failed cells", page)
+        self.assertNotIn("0.5000", page)
+
     def test_mr2_the_cli_refuses_a_ceiling_report_as_a_page(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "shipped_treatment_ts40.json"

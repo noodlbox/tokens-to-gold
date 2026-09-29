@@ -124,8 +124,12 @@ def stderr_tokens(stderr: bytes, count: TokenCount) -> dict[str, int]:
     return {kind.value: count(text.encode()) for kind, text in itemise(stderr.decode()).items()}
 
 
-def score_instance(cell: CellFiles, row: ScoredRow, gold: Sequence[str], count: TokenCount) -> InstanceScore:
+def score_instance(
+    cell: CellFiles, row: ScoredRow, gold: Sequence[str], count: TokenCount, nbx_sha256: str
+) -> InstanceScore:
     iid = str(cell.manifest.get("instance_id"))
+    if cell.manifest.get("nbx_sha256") != nbx_sha256:
+        return _failed(iid, f"cell recorded by nbx {cell.manifest.get('nbx_sha256')}, not the receipt's {nbx_sha256}")
     analyze = cell.manifest.get("analyze")
     if not isinstance(analyze, Mapping) or analyze.get("rc") != 0:
         return _failed(iid, "analyze failed")
@@ -202,9 +206,10 @@ def summarize(row: ScoredRow, scores: Sequence[InstanceScore]) -> dict[str, obje
     }
 
 
-def mcp_byte_identical(cells: Sequence[CellFiles]) -> bool | None:
-    """True iff every cell's MCP content text equals its CLI JSON comparand's
-    stdout byte for byte; None when no cell has both."""
+def mcp_byte_identical(cells: Sequence[CellFiles]) -> dict[str, object]:
+    """Whether each cell's MCP content text equals its CLI JSON comparand's
+    stdout byte for byte, with how many cells were compared out of how many:
+    a verdict over a subset says so."""
     verdicts = []
     for cell in cells:
         if cell.row_rc(MCP_ROW) != 0 or cell.row_rc(MCP_COMPARAND) != 0:
@@ -214,7 +219,11 @@ def mcp_byte_identical(cells: Sequence[CellFiles]) -> bool | None:
         except DeliveredScoringError:
             continue
         verdicts.append(body == cell.stdout(MCP_COMPARAND))
-    return all(verdicts) if verdicts else None
+    return {
+        "identical": all(verdicts) if verdicts else None,
+        "cells_compared": len(verdicts),
+        "cells": len(cells),
+    }
 
 
 def score_corpus(out_root: Path, corpus: str, count: TokenCount, build: Mapping[str, object]) -> dict[str, object]:
@@ -226,7 +235,8 @@ def score_corpus(out_root: Path, corpus: str, count: TokenCount, build: Mapping[
     rows: dict[str, object] = {}
     for row in SCORED_ROWS:
         scores = [
-            score_instance(cells[iid], row, gold[iid], count) if iid in cells else _failed(iid, "no cell recorded")
+            score_instance(cells[iid], row, gold[iid], count, str(build["nbx_sha256"]))
+            if iid in cells else _failed(iid, "no cell recorded")
             for iid in sorted(i for i in gold if gold[i])
         ]
         rows[row.key] = {"summary": summarize(row, scores), "instances": [asdict(s) for s in scores]}
