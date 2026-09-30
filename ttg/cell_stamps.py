@@ -71,11 +71,13 @@ VERDICT_SCHEMA: Final = 3
 one-grep-line-per-hit fix (noodlbox-app #1791), derived from git ancestry."""
 ONE_LINE_GREP_FIX_COMMITS: Final[tuple[str, ...]] = (
     # noodlbox-app #1791 "fix(search): one grep line per hit, a multi-line name
-    # included", on #1802's branch (feat/l11-b63-grep-heading). When #1802
-    # squash-merges, main's squash sha is added here BEFORE any post-merge B64
-    # run (#1802 merge checklist): until then a main build that includes the
-    # merge reads as pre-fix, which the verdict flags as a warning.
-    "05fd296b4f2ba464334344118a9c742dc2e168a2",
+    # included". The fix reaches main through #1845 (split from the held #1802,
+    # L21 ruling 2026-09-29). When #1845 squash-merges, main's squash sha is
+    # added here BEFORE any post-merge B64 run (#1845 merge checklist): until
+    # then a main build that includes the merge reads as pre-fix, which the
+    # verdict flags as a warning.
+    "05fd296b4f2ba464334344118a9c742dc2e168a2",  # on #1802's branch (feat/l11-b63-grep-heading)
+    "97f3b576cede3615fe45cb6495e6a3b4e5fef42e",  # on #1845's branch (fix/l11-1791-one-line-per-hit)
 )
 """Commits known to carry the #1791 fix; a build carries it iff any member is
 an ancestor of its commit."""
