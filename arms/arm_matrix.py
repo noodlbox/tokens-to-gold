@@ -433,7 +433,7 @@ def store_name(arm_name: str, corpus_name: str) -> str:
 DEFAULT_CELL_JOBS: Final = 2
 """Store groups `arms/run_matrix.sh` runs at once unless told otherwise, on a
 build that carries noodlbox-app #2129 (`ttg.cli check-concurrency` gates it). The
-real-cell witness of this width is the #2126 entry in the benchmarks LEDGER."""
+real-cell witness of this width is row B85 of the benchmarks LEDGER (#2126)."""
 
 
 @dataclass(frozen=True)
