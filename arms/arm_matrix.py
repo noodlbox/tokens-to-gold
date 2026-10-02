@@ -57,6 +57,7 @@ control", which has been false since #1347.
 
 from __future__ import annotations
 
+import itertools
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
@@ -122,8 +123,11 @@ _GATE_ROLES: Final = frozenset({ArmRole.ACCEPTANCE, ArmRole.SECTION5})
 class FreshStore:
     """The cell runs in its OWN absent-or-empty store (`<root>/<arm>_<corpus>`).
 
-    Fresh covers the store only: the engine's repo checkout cache
-    (`~/.cache/noodlbox-eval/repos`) is shared by every cell on a host."""
+    The engine's repository checkouts belong to the store too: since
+    noodlbox-app #2129 they live in a cache scope keyed by the store's
+    NOODLBOX_DATA_DIR (`~/.cache/noodlbox-eval/scopes/<id>/checkouts`, cloned
+    from mirrors shared per host), so a fresh store gets fresh working trees and
+    two stores' cells never touch the same tree."""
 
 
 @dataclass(frozen=True)
@@ -245,8 +249,7 @@ ARMS: Final[dict[str, Arm]] = {
     # rows from the reused store — see the incident note in the preservation
     # tree. REUSE silently depends on a warm checkout cache and a stable
     # disk, neither of which this arm can guarantee; a FRESH store removes the
-    # store dependency — the engine's checkout cache stays shared, see
-    # `FreshStore`.)
+    # store dependency, checkouts included — see `FreshStore`.)
     "native_floor": Arm(
         "native_floor", "off", None, "native-floor",
         extra_flags=("--explorer",),
@@ -424,6 +427,42 @@ def store_name(arm_name: str, corpus_name: str) -> str:
             return f"{arm_name}_{corpus_name}"
         case ReuseStore(of=source):
             return f"{source}_{corpus_name}"
+
+
+@dataclass(frozen=True)
+class CellGroup:
+    """The cells of one run that share a store, in the order they must run."""
+
+    store: str
+    corpus: str
+    arms: tuple[str, ...]
+
+
+def cell_groups(
+    arm_names: Sequence[str], corpus_names: Sequence[str]
+) -> list[CellGroup]:
+    """The cells of an arm x corpus run, grouped by the store they run in.
+
+    Cells in different groups touch different stores, so they may run at the
+    same time: the engine scopes its repository cache to each store's
+    NOODLBOX_DATA_DIR (noodlbox-app #2129, EVAL-CLONE-RACE), and it refuses a
+    second process on a store another one holds. Cells in one group share a
+    store (a REUSE arm reads the store of the FRESH arm it reuses), so they run
+    in order, the FRESH cell first. Groups keep the order of first appearance.
+    """
+    members: dict[str, tuple[str, list[str]]] = {}
+    for corpus_name, arm_name in itertools.product(corpus_names, arm_names):
+        store = store_name(arm_name, corpus_name)
+        members.setdefault(store, (corpus_name, []))[1].append(arm_name)
+    return [
+        CellGroup(store, corpus, tuple(sorted(arms, key=reuses_a_store)))
+        for store, (corpus, arms) in members.items()
+    ]
+
+
+def reuses_a_store(arm_name: str) -> bool:
+    """Whether `arm_name` runs in a store another arm made (sorts FRESH first)."""
+    return isinstance(get_arm(arm_name).store, ReuseStore)
 
 
 def assert_corpus_matches_protocol(

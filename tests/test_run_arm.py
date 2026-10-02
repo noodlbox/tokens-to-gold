@@ -43,13 +43,17 @@ sha256 = "{hashlib.sha256(b"{}").hexdigest()}"
 """
 
 STUB = """#!/usr/bin/env python3
-import os, sys, pathlib
+import os, sys, pathlib, time
 if sys.argv[1] == "capabilities":
     print('{"analysis_languages": ["python", "typescript", "go", "rust"]}')
     sys.exit(0)
 store = pathlib.Path(os.environ["NOODLBOX_DATA_DIR"])
 store.mkdir(parents=True, exist_ok=True)
 (store / "ran").write_text(" ".join(sys.argv[1:]))
+if os.environ.get("STUB_SLEEP"):
+    (store / "started").write_text(repr(time.time()))
+    time.sleep(float(os.environ["STUB_SLEEP"]))
+    (store / "ended").write_text(repr(time.time()))
 if os.environ.get("STUB_CLOBBER"):
     pathlib.Path(os.environ["STUB_CLOBBER"]).write_text(
         os.environ.get("STUB_CLOBBER_WITH") or "{overwritten mid-cell")
@@ -111,11 +115,11 @@ class _Harness(unittest.TestCase):
         ))))
 
     def _env(self, install: bool = True, model: bytes = MODEL, exit_code: int = 0,
-             clobber: str = "", clobber_with: str = "") -> dict[str, str]:
+             clobber: str = "", clobber_with: str = "", sleep: str = "") -> dict[str, str]:
         return {
             **os.environ, "STUB_CACHE_DIR": CACHE_DIR, "STUB_MODEL": model.decode(),
             "STUB_INSTALL": "1" if install else "0", "STUB_EXIT": str(exit_code),
-            "STUB_CLOBBER": clobber, "STUB_CLOBBER_WITH": clobber_with,
+            "STUB_CLOBBER": clobber, "STUB_CLOBBER_WITH": clobber_with, "STUB_SLEEP": sleep,
         }
 
     def run_arm(self, arm: str, store: Path, *, commit: str = COMMIT, install: bool = True,
@@ -285,7 +289,7 @@ class RunArmTest(_Harness):
 
 
 class RunMatrixTest(_Harness):
-    def _matrix(self, arms: str, *, model: bytes = MODEL,
+    def _matrix(self, arms: str, *, model: bytes = MODEL, sleep: str = "",
                 **overrides: str) -> subprocess.CompletedProcess[str]:
         args = {
             "--arms": arms, "--corpora": "ts40", "--binary": str(self.binary),
@@ -296,8 +300,47 @@ class RunMatrixTest(_Harness):
         argv = [part for pair in args.items() for part in pair if pair[1] != ""]
         return subprocess.run(
             ["bash", str(self.pkg / "arms" / "run_matrix.sh"), *argv],
-            capture_output=True, text=True, env=self._env(model=model), check=False,
+            capture_output=True, text=True, env=self._env(model=model, sleep=sleep), check=False,
         )
+
+    def _window(self, store: str) -> tuple[float, float]:
+        """When the stub engine ran in `store`: (start, end)."""
+        root = self.tmp / "root" / store
+        return float((root / "started").read_text()), float((root / "ended").read_text())
+
+    def test_cells_of_different_stores_run_at_once(self) -> None:
+        run = self._matrix("shipped_treatment,shipped_explore", sleep="1")
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        first, second = self._window("shipped_treatment_ts40"), self._window("shipped_explore_ts40")
+        self.assertTrue(first[0] < second[1] and second[0] < first[1],
+                        f"the two stores' cells did not overlap: {first} {second}")
+
+    def test_one_job_runs_the_cells_in_turn(self) -> None:
+        run = self._matrix("shipped_treatment,shipped_explore", sleep="0.5", **{"--jobs": "1"})
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        first, second = self._window("shipped_treatment_ts40"), self._window("shipped_explore_ts40")
+        self.assertFalse(first[0] < second[1] and second[0] < first[1],
+                         f"--jobs 1 overlapped two cells: {first} {second}")
+
+    def test_a_reuse_cell_listed_before_its_source_runs_after_it(self) -> None:
+        # One store, two cells: the FRESH source runs first whatever the order
+        # given, and the REUSE cell then finds its completion marker.
+        run = self._matrix("levers_off_ablation,shipped_treatment")
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        manifest = (self.out / "levers_off_ablation_ts40.manifest.txt").read_text()
+        self.assertIn("reuse of shipped_treatment_ts40", manifest)
+        self.assertIn("matrix: 2 cells, 0 failed", run.stdout)
+
+    def test_jobs_must_be_a_positive_integer(self) -> None:
+        run = self._matrix("shipped_explore", **{"--jobs": "0"})
+        self.assertEqual(run.returncode, 2)
+        self.assertIn("--jobs must be a positive integer", run.stderr)
+
+    def test_an_unknown_arm_fails_before_any_cell_runs(self) -> None:
+        run = self._matrix("shipped_explore,no_such_arm")
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("unknown arm 'no_such_arm'", run.stdout + run.stderr)
+        self.assertFalse((self.tmp / "root" / "shipped_explore_ts40").exists())
 
     def test_each_fresh_cell_runs_in_its_own_store(self) -> None:
         run = self._matrix("shipped_treatment,shipped_explore")

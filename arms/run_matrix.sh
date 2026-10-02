@@ -6,10 +6,17 @@
 # `--store` is a ROOT: each FRESH cell runs in its own `<root>/<arm>_<corpus>`
 # store and a REUSE cell in the store of the arm it reuses (`ttg.cli
 # store-name`). Every cell is stamped against `--build-receipt` (see run_arm.sh).
+#
+# CONCURRENCY. Cells run `--jobs` store groups at a time (default 2, the width
+# witnessed equal to a sequential run; raise it once a wider run is witnessed
+# too). `ttg.cli cell-groups` owns the grouping: cells of one store run in
+# order, the FRESH cell first, and different stores never share anything: the
+# engine scopes its repository cache to each store's NOODLBOX_DATA_DIR
+# (noodlbox-app #2129, EVAL-CLONE-RACE). `--jobs 1` runs every cell in turn.
 set -euo pipefail
 
 ARMS="default"; CORPORA="ts40,py_nosphinx"; BINARY=""; CORPUS_DIR=""; STORE=""; OUTDIR=""
-BUILD_RECEIPT=""; RECEIPT_VERDICT=""; BUILD_COMMIT=""
+BUILD_RECEIPT=""; RECEIPT_VERDICT=""; BUILD_COMMIT=""; JOBS=2
 while [ $# -gt 0 ]; do
   case "$1" in
     --arms) ARMS="$2"; shift 2 ;;
@@ -21,6 +28,7 @@ while [ $# -gt 0 ]; do
     --build-receipt) BUILD_RECEIPT="$2"; shift 2 ;;
     --receipt-verdict) RECEIPT_VERDICT="$2"; shift 2 ;;
     --build-commit) BUILD_COMMIT="$2"; shift 2 ;;
+    --jobs) JOBS="$2"; shift 2 ;;
     *) echo "run_matrix: unknown argument '$1'" >&2; exit 2 ;;
   esac
 done
@@ -30,35 +38,30 @@ for required in BINARY CORPUS_DIR STORE OUTDIR BUILD_RECEIPT RECEIPT_VERDICT BUI
     echo "run_matrix: --$(echo "$required" | tr 'A-Z_' 'a-z-') is required" >&2; exit 2
   fi
 done
+[[ "$JOBS" =~ ^[1-9][0-9]*$ ]] || { echo "run_matrix: --jobs must be a positive integer, got '$JOBS'" >&2; exit 2; }
 PKG="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-case "$ARMS" in
-  default) ARM_LIST="wf_b3 a0_off" ;;
-  all)     ARM_LIST="a0_off wf_b1 wf_b2 wf_b3 pfc_b1 pfc_b2 pfc_b3" ;;
-  *)       ARM_LIST="${ARMS//,/ }" ;;
-esac
-CORPUS_LIST="${CORPORA//,/ }"
+# One line per store group (an unknown arm or corpus fails here, before any cell).
+GROUPS_LIST="$(cd "$PKG" && python3 -m ttg.cli cell-groups --arms "$ARMS" --corpora "$CORPORA")"
 
-TOTAL=0; FAILED=0
-for corpus in $CORPUS_LIST; do
-  for arm in $ARM_LIST; do
-    TOTAL=$((TOTAL+1))
-    echo "=== cell ${TOTAL}: ${arm} x ${corpus} ==="
-    if ! cell_name="$(cd "$PKG" && python3 -m ttg.cli store-name --arm "$arm" --corpus "$corpus")"; then
-      FAILED=$((FAILED+1))
-      echo "  cell FAILED: ${arm} x ${corpus} (no store for this arm)"
-      continue
-    fi
-    if ! "$PKG/arms/run_arm.sh" \
-        --arm "$arm" --corpus "$corpus" --binary "$BINARY" \
-        --corpus-jsonl "$CORPUS_DIR/${corpus}.jsonl" \
-        --store "$STORE/$cell_name" --out "$OUTDIR/${arm}_${corpus}.json" \
-        --build-receipt "$BUILD_RECEIPT" --receipt-verdict "$RECEIPT_VERDICT" \
-        --build-commit "$BUILD_COMMIT"; then
-      FAILED=$((FAILED+1))
-      echo "  cell FAILED: ${arm} x ${corpus}"
-    fi
-  done
-done
+mkdir -p "$OUTDIR"
+RESULTS="$(mktemp "$OUTDIR/.matrix-results.XXXXXX")"
+trap 'rm -f "$RESULTS"' EXIT
+export RUN_MATRIX_BINARY="$BINARY" RUN_MATRIX_CORPUS_DIR="$CORPUS_DIR" RUN_MATRIX_STORE="$STORE" \
+  RUN_MATRIX_OUTDIR="$OUTDIR" RUN_MATRIX_BUILD_RECEIPT="$BUILD_RECEIPT" \
+  RUN_MATRIX_RECEIPT_VERDICT="$RECEIPT_VERDICT" RUN_MATRIX_BUILD_COMMIT="$BUILD_COMMIT" \
+  RUN_MATRIX_RESULTS="$RESULTS"
+# A cell's failure is recorded in $RESULTS and counted below; a group runner
+# itself exits 0, so a non-zero status here is a runner that died outside its
+# cells, and every cell must have left exactly one result line.
+if ! printf '%s\n' "$GROUPS_LIST" | xargs -P "$JOBS" -L 1 "$PKG/arms/run_cell_group.sh"; then
+  echo "run_matrix: a cell group runner failed outside its cells" >&2
+  exit 1
+fi
+
+EXPECTED="$(printf '%s\n' "$GROUPS_LIST" | awk '{ n += NF - 2 } END { print n + 0 }')"
+TOTAL="$(wc -l < "$RESULTS" | tr -d ' ')"
+[ "$TOTAL" -eq "$EXPECTED" ] || { echo "run_matrix: $TOTAL cell results for $EXPECTED cells" >&2; exit 1; }
+FAILED="$(awk '$1 == "FAILED" { n++ } END { print n + 0 }' "$RESULTS")"
 echo "matrix: ${TOTAL} cells, ${FAILED} failed"
 [ "$FAILED" -eq 0 ]

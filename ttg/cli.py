@@ -26,6 +26,7 @@ from arms.arm_matrix import (
     DEFAULT_ARMS,
     SWEEP_ARMS,
     ArmError,
+    cell_groups,
     flags_for,
     get_arm,
     store_name,
@@ -115,6 +116,13 @@ def cmd_flags(args: argparse.Namespace) -> int:
 
 def cmd_store_name(args: argparse.Namespace) -> int:
     print(store_name(args.arm, args.corpus))
+    return 0
+
+
+def cmd_cell_groups(args: argparse.Namespace) -> int:
+    corpora = [c.strip() for c in args.corpora.split(",") if c.strip()]
+    for group in cell_groups(_resolve_arms(args.arms), corpora):
+        print(" ".join((group.store, group.corpus, *group.arms)))
     return 0
 
 
@@ -602,6 +610,14 @@ def main(argv: list[str] | None = None) -> int:
     p_store.add_argument("--arm", required=True)
     p_store.add_argument("--corpus", required=True, choices=sorted(CORPORA))
     p_store.set_defaults(func=cmd_store_name)
+
+    p_groups = sub.add_parser(
+        "cell-groups",
+        help="one line per store: <store> <corpus> <arm>..., in run order",
+    )
+    p_groups.add_argument("--arms", required=True, help="default | all | a,b,...")
+    p_groups.add_argument("--corpora", required=True, help="a,b,...")
+    p_groups.set_defaults(func=cmd_cell_groups)
 
     p_etd = sub.add_parser(
         "engine-tree-digest", help="the engine tree identity at a commit (git side)"
