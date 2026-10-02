@@ -160,8 +160,7 @@ def json_rows(result: Mapping[str, object]) -> list[WireRow]:
         rows = [
             row
             for group in _objects(result.get("files", []), "`files`")
-            for line in _list(group.get("symbols"), "`files[].symbols`")
-            if (row := symbol_line(_path(group), line)) is not None
+            for row in _file_group_rows(group)
         ]
     for group in _objects(result.get("file_index", []), "`file_index`"):
         path = _path(group)
@@ -169,6 +168,27 @@ def json_rows(result: Mapping[str, object]) -> list[WireRow]:
             row = _object_recall(path, entry) if shape is JsonShape.OBJECTS else recall_line(path, entry)
             if row.path:
                 rows.append(row)
+    return rows
+
+
+def _file_group_rows(group: Mapping[str, object]) -> list[WireRow]:
+    """One `files[]` group's rows in wire order: its `symbols` lines, then its
+    `members` lines. A member line (the lean-member arm, L21 pre-registration
+    wiki 3f86d1beb) carries no id, role or reason: `<line> <kind> <name>`, read
+    with the recall-row grammar. A group without `members` reads exactly as
+    before this addendum."""
+    path = _path(group)
+    rows = [
+        row
+        for line in _list(group.get("symbols"), "`files[].symbols`")
+        if (row := symbol_line(path, line)) is not None
+    ]
+    if "members" in group:
+        rows.extend(
+            row
+            for line in _list(group.get("members"), "`files[].members`")
+            if (row := recall_line(path, line)).path
+        )
     return rows
 
 

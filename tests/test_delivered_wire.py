@@ -237,6 +237,31 @@ class NameGrammar(unittest.TestCase):
             symbol_line("src/a.ts", "abc 8-12 function f definition query_match")
 
 
+class MemberLines(unittest.TestCase):
+    """The lean-member arm's `files[].members` lines (L21 pre-registration,
+    wiki 3f86d1beb): read with the recall grammar after the group's symbols,
+    and a group without them reads as before."""
+
+    def test_member_lines_are_read_after_the_groups_symbols(self):
+        result = {"files": [{
+            "file_path": "src/a.ts",
+            "symbols": ["0123456789ab 22-30 function alpha definition query_match"],
+            "members": ["31 method beta", '40 attribute "a b"'],
+        }]}
+        self.assertEqual(
+            [(r.path, r.name, r.line) for r in json_rows(result)],
+            [("src/a.ts", "alpha", 22), ("src/a.ts", "beta", 31), ("src/a.ts", "a b", 40)],
+        )
+
+    def test_a_group_of_members_only_has_rows(self):
+        result = {"files": [{"file_path": "src/a.ts", "symbols": [], "members": ["7 method gamma"]}]}
+        self.assertEqual([r.identity for r in json_rows(result)], ["src/a.ts:gamma"])
+
+    def test_members_must_be_a_list_of_lines(self):
+        with self.assertRaises(WireError):
+            json_rows({"files": [{"file_path": "src/a.ts", "symbols": [], "members": "7 method gamma"}]})
+
+
 class LineBases(unittest.TestCase):
     """Both shapes key the oracle on the same `(path, 1-based line)`. The D+id
     base is the product's: noodlbox-app `compact_wire.rs` renders spans and
