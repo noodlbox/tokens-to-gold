@@ -12,17 +12,19 @@ for the stub's own bytes.
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 import os
 import shutil
 import stat
 import subprocess
 import tempfile
+import time
 import unittest
 from dataclasses import asdict
 from pathlib import Path
 
-from ttg.cell_stamps import VERDICT_SCHEMA, BuildReceipt, ReceiptVerdict
+from ttg.cell_stamps import EVAL_CACHE_SCOPE_COMMITS, VERDICT_SCHEMA, BuildReceipt, ReceiptVerdict
 
 PKG = Path(__file__).resolve().parent.parent
 COMMIT = "c" * 40
@@ -43,7 +45,10 @@ sha256 = "{hashlib.sha256(b"{}").hexdigest()}"
 """
 
 STUB = """#!/usr/bin/env python3
-import os, sys, pathlib, time
+import os
+import pathlib
+import sys
+import time
 if sys.argv[1] == "capabilities":
     print('{"analysis_languages": ["python", "typescript", "go", "rust"]}')
     sys.exit(0)
@@ -54,6 +59,15 @@ if os.environ.get("STUB_SLEEP"):
     (store / "started").write_text(repr(time.time()))
     time.sleep(float(os.environ["STUB_SLEEP"]))
     (store / "ended").write_text(repr(time.time()))
+if os.environ.get("STUB_RENDEZVOUS"):
+    # Arrive, then wait for every expected cell to arrive: met only if they ran at once.
+    meeting = pathlib.Path(os.environ["STUB_RENDEZVOUS"])
+    (meeting / store.name).touch()
+    deadline = time.time() + 20
+    while len(list(meeting.iterdir())) < int(os.environ["STUB_RENDEZVOUS_COUNT"]) and time.time() < deadline:
+        time.sleep(0.05)
+    met = len(list(meeting.iterdir())) >= int(os.environ["STUB_RENDEZVOUS_COUNT"])
+    (store / ("met" if met else "alone")).touch()
 if os.environ.get("STUB_CLOBBER"):
     pathlib.Path(os.environ["STUB_CLOBBER"]).write_text(
         os.environ.get("STUB_CLOBBER_WITH") or "{overwritten mid-cell")
@@ -67,7 +81,7 @@ sys.exit(int(os.environ.get("STUB_EXIT", "0")))
 """
 
 
-class _Harness(unittest.TestCase):
+class ArmHarness(unittest.TestCase):
     def setUp(self) -> None:
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
@@ -90,9 +104,11 @@ class _Harness(unittest.TestCase):
         self.write_receipt(("go", "python", "rust", "typescript"))
         self.out = self.tmp / "out"
 
-    def write_receipt(self, languages: tuple[str, ...], lock: str = LOCK) -> None:
+    def write_receipt(self, languages: tuple[str, ...], lock: str = LOCK,
+                      eval_cache_scope: str | None = EVAL_CACHE_SCOPE_COMMITS[0]) -> None:
         """A receipt for the stub's bytes and the verdict `verify-receipt` would
-        issue for it (the git side is covered by test_cell_stamps)."""
+        issue for it (the git side is covered by test_cell_stamps). By default the
+        build carries #2129's per-store eval cache, so cells may run at once."""
         self.receipt.write_text(json.dumps(asdict(BuildReceipt(
             schema=3, commit=COMMIT, tree_digest="a" * 64,
             binary_sha256=hashlib.sha256(self.binary.read_bytes()).hexdigest(),
@@ -112,14 +128,17 @@ class _Harness(unittest.TestCase):
             checked="test",
             commit_date="2026-09-29T00:00:00+00:00", grep_fix_commit=None,
             grep_fix_newest_date="2026-09-29T00:00:00+00:00",
+            eval_cache_scope_commit=eval_cache_scope,
         ))))
 
-    def _env(self, install: bool = True, model: bytes = MODEL, exit_code: int = 0,
-             clobber: str = "", clobber_with: str = "", sleep: str = "") -> dict[str, str]:
+    def cell_env(self, install: bool = True, model: bytes = MODEL, exit_code: int = 0,
+             clobber: str = "", clobber_with: str = "", sleep: str = "",
+             rendezvous: str = "", rendezvous_count: int = 0) -> dict[str, str]:
         return {
             **os.environ, "STUB_CACHE_DIR": CACHE_DIR, "STUB_MODEL": model.decode(),
             "STUB_INSTALL": "1" if install else "0", "STUB_EXIT": str(exit_code),
             "STUB_CLOBBER": clobber, "STUB_CLOBBER_WITH": clobber_with, "STUB_SLEEP": sleep,
+            "STUB_RENDEZVOUS": rendezvous, "STUB_RENDEZVOUS_COUNT": str(rendezvous_count),
         }
 
     def run_arm(self, arm: str, store: Path, *, commit: str = COMMIT, install: bool = True,
@@ -135,11 +154,11 @@ class _Harness(unittest.TestCase):
                 "--build-commit", commit,
             ],
             capture_output=True, text=True,
-            env=self._env(install, model, exit_code, clobber, clobber_with), check=False,
+            env=self.cell_env(install, model, exit_code, clobber, clobber_with), check=False,
         )
 
 
-class RunArmTest(_Harness):
+class RunArmTest(ArmHarness):
     def test_a_clean_cell_publishes_its_report_with_every_stamp(self) -> None:
         store = self.tmp / "stores" / "shipped_explore_ts40"
         run = self.run_arm("shipped_explore", store)
@@ -288,62 +307,119 @@ class RunArmTest(_Harness):
         self.assertIn("declaration is wrong", run.stderr)
 
 
-class RunMatrixTest(_Harness):
-    def _matrix(self, arms: str, *, model: bytes = MODEL, sleep: str = "",
-                **overrides: str) -> subprocess.CompletedProcess[str]:
+class RunMatrixTest(ArmHarness):
+    def matrix_argv(self, arms: str, **overrides: str) -> list[str]:
         args = {
             "--arms": arms, "--corpora": "ts40", "--binary": str(self.binary),
             "--corpus-dir": str(self.corpus_dir), "--store": str(self.tmp / "root"),
             "--outdir": str(self.out), "--build-receipt": str(self.receipt),
             "--receipt-verdict": str(self.verdict), "--build-commit": COMMIT, **overrides,
         }
-        argv = [part for pair in args.items() for part in pair if pair[1] != ""]
+        # An empty value drops the flag (a test of a missing required flag).
+        argv = itertools.chain.from_iterable(pair for pair in args.items() if pair[1] != "")
+        return ["bash", str(self.pkg / "arms" / "run_matrix.sh"), *argv]
+
+    def run_matrix(self, arms: str, *, model: bytes = MODEL, sleep: str = "",
+                   rendezvous: str = "", rendezvous_count: int = 0,
+                   **overrides: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
-            ["bash", str(self.pkg / "arms" / "run_matrix.sh"), *argv],
-            capture_output=True, text=True, env=self._env(model=model, sleep=sleep), check=False,
+            self.matrix_argv(arms, **overrides), capture_output=True, text=True,
+            env=self.cell_env(model=model, sleep=sleep, rendezvous=rendezvous,
+                              rendezvous_count=rendezvous_count),
+            check=False,
         )
 
-    def _window(self, store: str) -> tuple[float, float]:
+    def engine_window(self, store: str) -> tuple[float, float]:
         """When the stub engine ran in `store`: (start, end)."""
         root = self.tmp / "root" / store
         return float((root / "started").read_text()), float((root / "ended").read_text())
 
     def test_cells_of_different_stores_run_at_once(self) -> None:
-        run = self._matrix("shipped_treatment,shipped_explore", sleep="1")
+        # Each stub engine waits (up to 20 s) for the other to arrive: both meet
+        # only if the two stores' cells really ran at the same time.
+        meeting = self.tmp / "meeting"
+        meeting.mkdir()
+        run = self.run_matrix("shipped_treatment,shipped_explore",
+                              rendezvous=str(meeting), rendezvous_count=2)
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-        first, second = self._window("shipped_treatment_ts40"), self._window("shipped_explore_ts40")
-        self.assertTrue(first[0] < second[1] and second[0] < first[1],
-                        f"the two stores' cells did not overlap: {first} {second}")
+        root = self.tmp / "root"
+        self.assertTrue((root / "shipped_treatment_ts40" / "met").exists(), run.stderr)
+        self.assertTrue((root / "shipped_explore_ts40" / "met").exists(), run.stderr)
+        manifest = (self.out / "shipped_explore_ts40.manifest.txt").read_text()
+        self.assertIn("concurrency:  2", manifest)
+
+    def test_concurrent_cells_need_a_build_with_the_per_store_eval_cache(self) -> None:
+        # EVAL-CLONE-RACE: a build without noodlbox-app #2129 shares one working
+        # tree per repository across engines, so --jobs above 1 is refused there,
+        # before any cell, and --jobs 1 still runs.
+        self.write_receipt(("go", "python", "rust", "typescript"), eval_cache_scope=None)
+        refused = self.run_matrix("shipped_treatment,shipped_explore")
+        self.assertEqual(refused.returncode, 2, refused.stdout + refused.stderr)
+        self.assertIn("needs an engine with the per-store eval cache", refused.stderr)
+        self.assertFalse((self.tmp / "root").exists())
+        in_turn = self.run_matrix("shipped_treatment,shipped_explore", **{"--jobs": "1"})
+        self.assertEqual(in_turn.returncode, 0, in_turn.stdout + in_turn.stderr)
+        manifest = (self.out / "shipped_explore_ts40.manifest.txt").read_text()
+        self.assertIn("concurrency:  1", manifest)
+
+    def test_a_runner_that_dies_stops_the_whole_run(self) -> None:
+        # A group runner killed outside its cells (here: SIGKILL) fails the run,
+        # and no engine outlives it. GNU xargs returns at once and run_matrix.sh
+        # stops the rest of the run; BSD xargs first waits for the other runner.
+        matrix = subprocess.Popen(
+            self.matrix_argv("shipped_treatment,shipped_explore"),
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            env=self.cell_env(sleep="8"),
+        )
+        self.addCleanup(matrix.kill)
+        root = self.tmp / "root"
+        deadline = time.time() + 20
+        while time.time() < deadline and not all(
+            (root / store / "started").exists() for store in ("shipped_treatment_ts40", "shipped_explore_ts40")
+        ):
+            time.sleep(0.1)
+        runner = subprocess.run(
+            ["pgrep", "-f", "run_cell_group.sh.* -- shipped_explore_ts40 "],
+            capture_output=True, text=True, check=False,
+        ).stdout.split()
+        self.assertEqual(len(runner), 1, f"expected one runner for shipped_explore_ts40, got {runner}")
+        os.kill(int(runner[0]), 9)
+        stdout, stderr = matrix.communicate(timeout=60)
+        self.assertEqual(matrix.returncode, 1, stdout + stderr)
+        self.assertIn("failed outside its cells", stderr)
+        engines = subprocess.run(["pgrep", "-f", str(self.binary)], capture_output=True,
+                                 text=True, check=False).stdout.split()
+        self.assertEqual(engines, [], "an engine outlived the failed run")
 
     def test_one_job_runs_the_cells_in_turn(self) -> None:
-        run = self._matrix("shipped_treatment,shipped_explore", sleep="0.5", **{"--jobs": "1"})
+        run = self.run_matrix("shipped_treatment,shipped_explore", sleep="0.5", **{"--jobs": "1"})
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-        first, second = self._window("shipped_treatment_ts40"), self._window("shipped_explore_ts40")
+        first, second = self.engine_window("shipped_treatment_ts40"), self.engine_window("shipped_explore_ts40")
         self.assertFalse(first[0] < second[1] and second[0] < first[1],
                          f"--jobs 1 overlapped two cells: {first} {second}")
 
     def test_a_reuse_cell_listed_before_its_source_runs_after_it(self) -> None:
         # One store, two cells: the FRESH source runs first whatever the order
         # given, and the REUSE cell then finds its completion marker.
-        run = self._matrix("levers_off_ablation,shipped_treatment")
+        run = self.run_matrix("levers_off_ablation,shipped_treatment")
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
         manifest = (self.out / "levers_off_ablation_ts40.manifest.txt").read_text()
         self.assertIn("reuse of shipped_treatment_ts40", manifest)
         self.assertIn("matrix: 2 cells, 0 failed", run.stdout)
 
     def test_jobs_must_be_a_positive_integer(self) -> None:
-        run = self._matrix("shipped_explore", **{"--jobs": "0"})
+        run = self.run_matrix("shipped_explore", **{"--jobs": "0"})
         self.assertEqual(run.returncode, 2)
         self.assertIn("--jobs must be a positive integer", run.stderr)
 
     def test_an_unknown_arm_fails_before_any_cell_runs(self) -> None:
-        run = self._matrix("shipped_explore,no_such_arm")
+        run = self.run_matrix("shipped_explore,no_such_arm")
         self.assertNotEqual(run.returncode, 0)
         self.assertIn("unknown arm 'no_such_arm'", run.stdout + run.stderr)
         self.assertFalse((self.tmp / "root" / "shipped_explore_ts40").exists())
 
     def test_each_fresh_cell_runs_in_its_own_store(self) -> None:
-        run = self._matrix("shipped_treatment,shipped_explore")
+        run = self.run_matrix("shipped_treatment,shipped_explore")
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
         root = self.tmp / "root"
         self.assertIn("--intent implement",
@@ -351,22 +427,22 @@ class RunMatrixTest(_Harness):
         self.assertIn("--intent explore", (root / "shipped_explore_ts40" / "ran").read_text())
 
     def test_an_empty_store_root_is_refused(self) -> None:
-        run = self._matrix("shipped_explore", **{"--store": ""})
+        run = self.run_matrix("shipped_explore", **{"--store": ""})
         self.assertEqual(run.returncode, 2)
         self.assertIn("--store is required", run.stderr)
 
     def test_the_reuse_arm_needs_its_source_cell_to_have_completed(self) -> None:
         # No source cell at all: the REUSE preflight refuses before the engine.
-        alone = self._matrix("levers_off_ablation")
+        alone = self.run_matrix("levers_off_ablation")
         self.assertNotEqual(alone.returncode, 0)
         self.assertIn("has no completion marker", alone.stderr)
         # A source cell that ran but failed its stamp leaves no marker: refused.
-        failed = self._matrix("shipped_treatment,levers_off_ablation", model=b"other")
+        failed = self.run_matrix("shipped_treatment,levers_off_ablation", model=b"other")
         self.assertNotEqual(failed.returncode, 0)
         self.assertIn("has no completion marker", failed.stderr)
 
     def test_a_completed_source_cell_is_reused_and_its_marker_given_back(self) -> None:
-        run = self._matrix("shipped_treatment,levers_off_ablation")
+        run = self.run_matrix("shipped_treatment,levers_off_ablation")
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
         manifest = (self.out / "levers_off_ablation_ts40.manifest.txt").read_text()
         self.assertIn("reuse of shipped_treatment_ts40 (verified completion marker", manifest)
@@ -375,7 +451,7 @@ class RunMatrixTest(_Harness):
         self.assertEqual(list(store.glob(".ttg-cell-complete.json.in-use.*")), [])
 
     def test_a_reuse_run_that_dies_leaves_its_store_unmarked(self) -> None:
-        source = self._matrix("shipped_treatment")
+        source = self.run_matrix("shipped_treatment")
         self.assertEqual(source.returncode, 0, source.stdout + source.stderr)
         store = self.tmp / "root" / "shipped_treatment_ts40"
         died = self.run_arm("levers_off_ablation", store, exit_code=3)

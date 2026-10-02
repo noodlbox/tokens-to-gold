@@ -19,7 +19,7 @@
 set -euo pipefail
 
 ARM=""; CORPUS=""; BINARY=""; JSONL=""; STORE=""; OUT=""; TIMEOUT="900"
-BUILD_RECEIPT=""; RECEIPT_VERDICT=""; BUILD_COMMIT=""
+BUILD_RECEIPT=""; RECEIPT_VERDICT=""; BUILD_COMMIT=""; CONCURRENCY="1"
 while [ $# -gt 0 ]; do
   case "$1" in
     --arm) ARM="$2"; shift 2 ;;
@@ -32,6 +32,7 @@ while [ $# -gt 0 ]; do
     --build-receipt) BUILD_RECEIPT="$2"; shift 2 ;;
     --receipt-verdict) RECEIPT_VERDICT="$2"; shift 2 ;;
     --build-commit) BUILD_COMMIT="$2"; shift 2 ;;
+    --concurrency) CONCURRENCY="$2"; shift 2 ;;
     *) echo "run_arm: unknown argument '$1'" >&2; exit 2 ;;
   esac
 done
@@ -40,6 +41,8 @@ for required in ARM CORPUS BINARY JSONL STORE OUT BUILD_RECEIPT RECEIPT_VERDICT 
     echo "run_arm: --$(echo "$required" | tr 'A-Z_' 'a-z-') is required" >&2; exit 2
   fi
 done
+
+[[ "$CONCURRENCY" =~ ^[1-9][0-9]*$ ]] || { echo "run_arm: --concurrency must be a positive integer, got '$CONCURRENCY'" >&2; exit 2; }
 
 PKG="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PKG"
@@ -72,6 +75,9 @@ STAMPS="$(python3 -m ttg.cli cell-preflight --arm "$ARM" --corpus "$CORPUS" \
   echo "binary:       $BINARY"
   echo "corpus_jsonl: $JSONL"
   echo "store:        $STORE"
+  # Cells of other stores running at the same time (run_matrix.sh --jobs): wall
+  # times compare only between cells stamped with the same concurrency.
+  echo "concurrency:  $CONCURRENCY"
   echo "$STAMPS"
   echo "started:      $(date '+%F %T')"
   echo "# THE FULL INVOCATION — flags are recorded, never inferred from defaults:"

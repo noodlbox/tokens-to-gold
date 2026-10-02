@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tokens-to-gold — the one command.
 #
-#   ./reproduce.sh --binary <noodl-eval> --corpus-dir <dir> --store <dir>
+#   ./reproduce.sh --binary <noodl-eval> --corpus-dir <dir> --store <dir> [--jobs N]
 #   ./reproduce.sh --score-only --report-dir <dir>
 #
 # Stages: verify -> preflight -> (derive) -> run -> score -> report.
@@ -51,6 +51,7 @@ fi
 ARMS="default"; CORPORA="ts40,py_nosphinx"; BINARY=""; CORPUS_DIR=""
 STORE=""; OUTDIR="./out"; REDERIVE=0; SCORE_ONLY=0; REPORT_DIR=""
 ARM="shipped_treatment"; BUILD_COMMIT=""; BUILD_RECEIPT=""; RECEIPT_VERDICT=""
+JOBS=2  # cells of different stores at once (arms/run_matrix.sh; 1 runs them in turn)
 while [ $# -gt 0 ]; do
   case "$1" in
     --arms) ARMS="$2"; shift 2 ;;
@@ -67,6 +68,7 @@ while [ $# -gt 0 ]; do
     --build-commit) BUILD_COMMIT="$2"; shift 2 ;;
     --build-receipt) BUILD_RECEIPT="$2"; shift 2 ;;
     --receipt-verdict) RECEIPT_VERDICT="$2"; shift 2 ;;
+    --jobs) JOBS="$2"; shift 2 ;;
     -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
     *) echo "reproduce: unknown argument '$1'" >&2; exit 2 ;;
   esac
@@ -117,7 +119,7 @@ else
   arms/run_matrix.sh --arms "$ARMS" --corpora "$CORPORA" --binary "$BINARY" \
     --corpus-dir "$CORPUS_DIR" --store "$STORE" --outdir "$OUTDIR/reports" \
     --build-commit "$BUILD_COMMIT" --build-receipt "$BUILD_RECEIPT" \
-    --receipt-verdict "$RECEIPT_VERDICT"
+    --receipt-verdict "$RECEIPT_VERDICT" --jobs "$JOBS"
   REPORT_DIR="$OUTDIR/reports"
 fi
 

@@ -21,7 +21,7 @@ from ttg.cell_stamps import (
     VERDICT_SCHEMA,
     ReceiptVerdict,
     commit_date,
-    grep_fix_ancestry,
+    fix_ancestry,
     COMPLETION_MARKER,
     BuildReceipt,
     CompletionMarker,
@@ -238,8 +238,9 @@ class WriteBuildReceiptTest(EngineTreeTest):
         out, receipt = self._write()
         verdict_path = self.synced.parent / "receipt-verdict.json"
         verdict = verify_receipt(engine_repo=self.repo, receipt_path=out, out=verdict_path,
-                                     fix_commits=(self.commit,))
+                                     fix_commits=(self.commit,), eval_cache_commits=(self.commit,))
         self.assertEqual(verdict.tree_digest, self.expected)
+        self.assertTrue(verdict.cells_may_run_concurrently)
         self.assertEqual(load_receipt_verdict(verdict_path, out, receipt), verdict)
         # The verdict is bound to the receipt's bytes: any other receipt is refused.
         out.write_text(out.read_text() + " ")
@@ -255,7 +256,7 @@ class WriteBuildReceiptTest(EngineTreeTest):
         verdict_path = self.synced.parent / "receipt-verdict.json"
         with self.assertRaisesRegex(StampError, "drifted from the commit"):
             verify_receipt(engine_repo=self.repo, receipt_path=out, out=verdict_path,
-                                     fix_commits=(self.commit,))
+                                     fix_commits=(self.commit,), eval_cache_commits=(self.commit,))
         self.assertFalse(verdict_path.exists())
 
     def test_a_receipt_with_another_lock_or_toolchain_gets_no_verdict(self) -> None:
@@ -272,7 +273,8 @@ class WriteBuildReceiptTest(EngineTreeTest):
                 out.write_text(json.dumps(asdict(forged)))
                 with self.assertRaisesRegex(StampError, "is not commit"):
                     verify_receipt(engine_repo=self.repo, receipt_path=out, out=verdict_path,
-                                     fix_commits=(self.commit,))
+                                     fix_commits=(self.commit,),
+                                     eval_cache_commits=(self.commit,))
 
 
 class OneLineGrepFixAncestryTest(unittest.TestCase):
@@ -300,8 +302,8 @@ class OneLineGrepFixAncestryTest(unittest.TestCase):
                               capture_output=True, text=True).stdout.strip()
 
     def test_descent_from_a_fix_commit_decides_the_contract(self) -> None:
-        child = grep_fix_ancestry(self.repo, self.child, (self.fix,))
-        parent = grep_fix_ancestry(self.repo, self.parent, (self.fix,))
+        child = fix_ancestry(self.repo, self.child, (self.fix,), "#1791 fix")
+        parent = fix_ancestry(self.repo, self.parent, (self.fix,), "#1791 fix")
         self.assertEqual(child.fix_commit, self.fix)
         self.assertIsNone(parent.fix_commit)
         continuation = "src/a.ts\n  3:[def q] alpha\n/**\n"
@@ -315,20 +317,36 @@ class OneLineGrepFixAncestryTest(unittest.TestCase):
         subprocess.run(["git", "-C", str(self.repo), "checkout", "-q", "-b", "side", self.parent],
                        check=True)
         newer_side = self._commit("side branch, newer than the fix", "2026-09-05T00:00:00+00:00")
-        ancestry = grep_fix_ancestry(self.repo, newer_side, (self.fix,))
+        ancestry = fix_ancestry(self.repo, newer_side, (self.fix,), "#1791 fix")
         verdict = ReceiptVerdict(
             schema=VERDICT_SCHEMA, receipt_sha256="0" * 64, commit=newer_side, tree_digest="0" * 64,
             model_lock_sha256="0" * 64, rust_toolchain_sha256="0" * 64, checked="test",
             commit_date=commit_date(self.repo, newer_side), grep_fix_commit=ancestry.fix_commit,
-            grep_fix_newest_date=ancestry.newest_fix_date,
+            grep_fix_newest_date=ancestry.newest_fix_date, eval_cache_scope_commit=None,
         )
         self.assertFalse(verdict.grep_one_line_per_hit)
         self.assertTrue(verdict.pre_fix_on_newer_commit)
-        self.assertEqual(grep_fix_ancestry(self.repo, later, (self.fix,)).fix_commit, self.fix)
+        self.assertEqual(fix_ancestry(self.repo, later, (self.fix,), "#1791 fix").fix_commit, self.fix)
 
     def test_a_fix_commit_missing_from_the_repo_refuses(self) -> None:
         with self.assertRaisesRegex(StampError, "fetch it"):
-            grep_fix_ancestry(self.repo, self.child, ("f" * 40,))
+            fix_ancestry(self.repo, self.child, ("f" * 40,), "#1791 fix")
+
+    def test_concurrent_cells_need_a_build_that_descends_from_the_eval_cache_scope(self) -> None:
+        # EVAL-CLONE-RACE: the per-store eval cache (noodlbox-app #2129) is decided
+        # by the same git ancestry, and decides whether cells may run at once.
+        def verdict_for(commit: str) -> ReceiptVerdict:
+            scope = fix_ancestry(self.repo, commit, (self.fix,), "#2129 per-store eval cache")
+            return ReceiptVerdict(
+                schema=VERDICT_SCHEMA, receipt_sha256="0" * 64, commit=commit,
+                tree_digest="0" * 64, model_lock_sha256="0" * 64, rust_toolchain_sha256="0" * 64,
+                checked="test", commit_date=commit_date(self.repo, commit), grep_fix_commit=None,
+                grep_fix_newest_date=scope.newest_fix_date,
+                eval_cache_scope_commit=scope.fix_commit,
+            )
+
+        self.assertTrue(verdict_for(self.child).cells_may_run_concurrently)
+        self.assertFalse(verdict_for(self.parent).cells_may_run_concurrently)
 
 
 class BuildReceiptTest(unittest.TestCase):
@@ -534,6 +552,7 @@ class ReuseMarkerOrderTest(unittest.TestCase):
                 "rust_toolchain_sha256": _sha(receipt.rust_toolchain_toml.encode()),
                 "checked": "test", "commit_date": "2026-09-29T00:00:00+00:00",
                 "grep_fix_commit": None, "grep_fix_newest_date": "2026-09-29T00:00:00+00:00",
+                "eval_cache_scope_commit": None,
             }))
             jsonl = root / "ts40.jsonl"
             jsonl.write_bytes(b"{}\n")

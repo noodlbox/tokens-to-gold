@@ -66,9 +66,12 @@ from ttg.preflight import analysis_languages, require_corpus_support
 RECEIPT_SCHEMA: Final = 3
 """3 (LEDGER B64): the receipt also vouches for the `nbx` built from the same
 tree, the binary the delivered arm invokes."""
-VERDICT_SCHEMA: Final = 3
+VERDICT_SCHEMA: Final = 4
 """3 (B64 addendum 4): the verdict also records whether the build carries the
-one-grep-line-per-hit fix (noodlbox-app #1791), derived from git ancestry."""
+one-grep-line-per-hit fix (noodlbox-app #1791), derived from git ancestry.
+4 (EVAL-CLONE-RACE): it also records whether the build scopes its repository
+cache to each store (noodlbox-app #2129), the condition for running cells of
+different stores at once."""
 ONE_LINE_GREP_FIX_COMMITS: Final[tuple[str, ...]] = (
     # noodlbox-app #1791 "fix(search): one grep line per hit, a multi-line name
     # included". The fix reached main through #1845 (split from the held #1802,
@@ -81,6 +84,15 @@ ONE_LINE_GREP_FIX_COMMITS: Final[tuple[str, ...]] = (
 )
 """Commits known to carry the #1791 fix; a build carries it iff any member is
 an ancestor of its commit."""
+EVAL_CACHE_SCOPE_COMMITS: Final[tuple[str, ...]] = (
+    # noodlbox-app #2129 "fix(eval): scope the eval cache to NOODLBOX_DATA_DIR so TtG
+    # cells run concurrently (#2059)": before it, every engine process shared one
+    # working tree per repository, so concurrent cells raced (EVAL-CLONE-RACE). A
+    # future merge of the change by another route adds its sha here.
+    "f593e1893a851d4633f11fbcea4902c0a12672b7",  # #2129's squash on noodlbox-app main
+)
+"""Commits known to carry #2129's per-store eval cache; a build carries it iff
+any member is an ancestor of its commit."""
 MODEL_LOCK_PATH: Final = "assets/models/reranker/model.lock"
 TOOLCHAIN_PATH: Final = "rust-toolchain.toml"
 COMPLETION_MARKER: Final = ".ttg-cell-complete.json"
@@ -352,12 +364,20 @@ class ReceiptVerdict:
     or None: the build predates the #1791 fix."""
     grep_fix_newest_date: str
     """The committer date of the newest fix-set member."""
+    eval_cache_scope_commit: str | None
+    """The `EVAL_CACHE_SCOPE_COMMITS` member that is an ancestor of the commit, or
+    None: the build shares one working tree per repository across processes."""
 
     @property
     def grep_one_line_per_hit(self) -> bool:
         """The build emits exactly one grep line per hit (#1791): a non-hit line
         in its grep output is a defect, not a continuation."""
         return self.grep_fix_commit is not None
+
+    @property
+    def cells_may_run_concurrently(self) -> bool:
+        """Cells of different stores may run at once on this build (#2129)."""
+        return self.eval_cache_scope_commit is not None
 
     @property
     def pre_fix_on_newer_commit(self) -> bool:
@@ -369,7 +389,7 @@ class ReceiptVerdict:
 
 
 @dataclass(frozen=True)
-class GrepFixAncestry:
+class FixAncestry:
     fix_commit: str | None
     newest_fix_date: str
 
@@ -382,11 +402,11 @@ def commit_date(repo: Path, commit: str) -> str:
     ).strip()
 
 
-def grep_fix_ancestry(
-    repo: Path, commit: str, fix_commits: tuple[str, ...] = ONE_LINE_GREP_FIX_COMMITS
-) -> GrepFixAncestry:
-    """Which fix-set member, if any, is an ancestor of `commit` (git history is
-    the only authority; a member missing from `repo` refuses)."""
+def fix_ancestry(
+    repo: Path, commit: str, fix_commits: tuple[str, ...], fix_name: str
+) -> FixAncestry:
+    """Which member of a fix set (`fix_name`), if any, is an ancestor of `commit`
+    (git history is the only authority; a member missing from `repo` refuses)."""
     commit = validated_commit(commit)
     matched: str | None = None
     for fix in fix_commits:
@@ -399,16 +419,17 @@ def grep_fix_ancestry(
             matched = matched or fix
         elif proc.returncode != 1:
             raise StampError(
-                f"cannot decide whether {fix} (#1791 fix) is an ancestor of {commit}: "
+                f"cannot decide whether {fix} ({fix_name}) is an ancestor of {commit}: "
                 f"{proc.stderr.decode(errors='replace').strip()} -- fetch it into {repo}"
             )
     newest = max((commit_date(repo, fix) for fix in fix_commits), key=datetime.fromisoformat)
-    return GrepFixAncestry(matched, newest)
+    return FixAncestry(matched, newest)
 
 
 def verify_receipt(
     *, engine_repo: Path, receipt_path: Path, out: Path,
     fix_commits: tuple[str, ...] = ONE_LINE_GREP_FIX_COMMITS,
+    eval_cache_commits: tuple[str, ...] = EVAL_CACHE_SCOPE_COMMITS,
 ) -> ReceiptVerdict:
     """The commit's tree identity, lock and toolchain are DERIVED from git
     history here — never an input — and must equal the receipt's."""
@@ -423,7 +444,10 @@ def verify_receipt(
         raise StampError(f"the receipt's model.lock is not commit {receipt.commit}'s")
     if receipt.rust_toolchain_toml != git_show(engine_repo, receipt.commit, TOOLCHAIN_PATH):
         raise StampError(f"the receipt's rust-toolchain.toml is not commit {receipt.commit}'s")
-    ancestry = grep_fix_ancestry(engine_repo, receipt.commit, fix_commits)
+    ancestry = fix_ancestry(engine_repo, receipt.commit, fix_commits, "#1791 fix")
+    eval_cache = fix_ancestry(
+        engine_repo, receipt.commit, eval_cache_commits, "#2129 per-store eval cache"
+    )
     verdict = ReceiptVerdict(
         schema=VERDICT_SCHEMA,
         receipt_sha256=file_sha256(receipt_path),
@@ -432,10 +456,11 @@ def verify_receipt(
         model_lock_sha256=receipt.model_lock_sha256,
         rust_toolchain_sha256=_text_sha256(receipt.rust_toolchain_toml),
         checked="tree digest vs git ls-tree -r; model.lock + rust-toolchain.toml vs git show; "
-        "#1791 fix via git merge-base --is-ancestor",
+        "#1791 fix and #2129 per-store eval cache via git merge-base --is-ancestor",
         commit_date=commit_date(engine_repo, receipt.commit),
         grep_fix_commit=ancestry.fix_commit,
         grep_fix_newest_date=ancestry.newest_fix_date,
+        eval_cache_scope_commit=eval_cache.fix_commit,
     )
     out.write_text(json.dumps(asdict(verdict), indent=2, sort_keys=True) + "\n")
     return verdict
