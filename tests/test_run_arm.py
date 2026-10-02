@@ -16,6 +16,7 @@ import itertools
 import json
 import os
 import shutil
+import signal
 import stat
 import subprocess
 import tempfile
@@ -62,11 +63,12 @@ if os.environ.get("STUB_SLEEP"):
 if os.environ.get("STUB_RENDEZVOUS"):
     # Arrive, then wait for every expected cell to arrive: met only if they ran at once.
     meeting = pathlib.Path(os.environ["STUB_RENDEZVOUS"])
+    expected = int(os.environ["STUB_RENDEZVOUS_COUNT"])
     (meeting / store.name).touch()
     deadline = time.time() + 20
-    while len(list(meeting.iterdir())) < int(os.environ["STUB_RENDEZVOUS_COUNT"]) and time.time() < deadline:
+    while len(list(meeting.iterdir())) < expected and time.time() < deadline:
         time.sleep(0.05)
-    met = len(list(meeting.iterdir())) >= int(os.environ["STUB_RENDEZVOUS_COUNT"])
+    met = len(list(meeting.iterdir())) >= expected
     (store / ("met" if met else "alone")).touch()
 if os.environ.get("STUB_CLOBBER"):
     pathlib.Path(os.environ["STUB_CLOBBER"]).write_text(
@@ -132,8 +134,8 @@ class ArmHarness(unittest.TestCase):
         ))))
 
     def cell_env(self, install: bool = True, model: bytes = MODEL, exit_code: int = 0,
-             clobber: str = "", clobber_with: str = "", sleep: str = "",
-             rendezvous: str = "", rendezvous_count: int = 0) -> dict[str, str]:
+                 clobber: str = "", clobber_with: str = "", sleep: str = "",
+                 rendezvous: str = "", rendezvous_count: int = 0) -> dict[str, str]:
         return {
             **os.environ, "STUB_CACHE_DIR": CACHE_DIR, "STUB_MODEL": model.decode(),
             "STUB_INSTALL": "1" if install else "0", "STUB_EXIT": str(exit_code),
@@ -362,34 +364,59 @@ class RunMatrixTest(ArmHarness):
         manifest = (self.out / "shipped_explore_ts40.manifest.txt").read_text()
         self.assertIn("concurrency:  1", manifest)
 
-    def test_a_runner_that_dies_stops_the_whole_run(self) -> None:
-        # A group runner killed outside its cells (here: SIGKILL) fails the run,
-        # and no engine outlives it. GNU xargs returns at once and run_matrix.sh
-        # stops the rest of the run; BSD xargs first waits for the other runner.
+    def start_two_slow_groups(self) -> subprocess.Popen[str]:
+        """run_matrix.sh in a session of its own (as a terminal or supervisor
+        starts it), returned once both groups' stub engines are running."""
         matrix = subprocess.Popen(
             self.matrix_argv("shipped_treatment,shipped_explore"),
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-            env=self.cell_env(sleep="8"),
+            env=self.cell_env(sleep="8"), start_new_session=True,
         )
         self.addCleanup(matrix.kill)
-        root = self.tmp / "root"
+        started = [self.tmp / "root" / store / "started"
+                   for store in ("shipped_treatment_ts40", "shipped_explore_ts40")]
         deadline = time.time() + 20
-        while time.time() < deadline and not all(
-            (root / store / "started").exists() for store in ("shipped_treatment_ts40", "shipped_explore_ts40")
-        ):
+        while time.time() < deadline and not all(path.exists() for path in started):
             time.sleep(0.1)
-        runner = subprocess.run(
-            ["pgrep", "-f", "run_cell_group.sh.* -- shipped_explore_ts40 "],
-            capture_output=True, text=True, check=False,
-        ).stdout.split()
+        self.assertTrue(all(path.exists() for path in started), "the two groups never both started")
+        return matrix
+
+    def running(self, pattern: str) -> list[str]:
+        """PIDs whose command line matches `pattern` (scoped by this test's tmp path)."""
+        return subprocess.run(["pgrep", "-f", pattern], capture_output=True, text=True,
+                              check=False).stdout.split()
+
+    def test_a_runner_that_dies_stops_the_whole_run(self) -> None:
+        # A group runner killed outside its cells (here: SIGKILL) fails the run,
+        # and no engine outlives it.
+        matrix = self.start_two_slow_groups()
+        runner = self.running(f"run_cell_group.sh .*{self.tmp}/root .*-- shipped_explore_ts40 ")
         self.assertEqual(len(runner), 1, f"expected one runner for shipped_explore_ts40, got {runner}")
-        os.kill(int(runner[0]), 9)
+        os.kill(int(runner[0]), signal.SIGKILL)
         stdout, stderr = matrix.communicate(timeout=60)
         self.assertEqual(matrix.returncode, 1, stdout + stderr)
         self.assertIn("failed outside its cells", stderr)
-        engines = subprocess.run(["pgrep", "-f", str(self.binary)], capture_output=True,
-                                 text=True, check=False).stdout.split()
-        self.assertEqual(engines, [], "an engine outlived the failed run")
+        self.assertEqual(self.running(str(self.binary)), [], "an engine outlived the failed run")
+
+    def test_an_interrupted_run_stops_every_engine(self) -> None:
+        # Ctrl-C (INT to the foreground group), a supervisor's TERM or a lost
+        # terminal (HUP) reach run_matrix.sh's group, not the runners' own: the
+        # run forwards them, and exits only once no engine is left.
+        for sig, exit_code in ((signal.SIGINT, 130), (signal.SIGTERM, 143), (signal.SIGHUP, 129)):
+            with self.subTest(signal=sig.name):
+                for leftover in (self.tmp / "root", self.out):  # the previous signal's run
+                    if leftover.exists():
+                        shutil.rmtree(leftover)
+                matrix = self.start_two_slow_groups()
+                os.killpg(matrix.pid, sig)
+                # communicate() returns at EOF, which an orphaned engine holding
+                # the pipes delays until it finishes its cell: no cell may finish.
+                stdout, stderr = matrix.communicate(timeout=30)
+                finished = [store for store in ("shipped_treatment_ts40", "shipped_explore_ts40")
+                            if (self.tmp / "root" / store / "ended").exists()]
+                self.assertEqual(finished, [], "an engine ran its cell to the end after the interrupt")
+                self.assertEqual(self.running(str(self.binary)), [], "an engine outlived the interrupt")
+                self.assertEqual(matrix.returncode, exit_code, stdout + stderr)
 
     def test_one_job_runs_the_cells_in_turn(self) -> None:
         run = self.run_matrix("shipped_treatment,shipped_explore", sleep="0.5", **{"--jobs": "1"})

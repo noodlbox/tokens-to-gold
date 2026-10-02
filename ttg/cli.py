@@ -24,6 +24,7 @@ from pathlib import Path
 from arms.arm_matrix import (
     CORPORA,
     DEFAULT_ARMS,
+    DEFAULT_CELL_JOBS,
     SWEEP_ARMS,
     ArmError,
     cell_groups,
@@ -117,6 +118,7 @@ def resolve_corpora(spec: str) -> list[str]:
 
 
 def comma_list(spec: str) -> list[str]:
+    """The non-empty, stripped items of a comma list."""
     return [item.strip() for item in spec.split(",") if item.strip()]
 
 
@@ -136,25 +138,30 @@ def cmd_cell_groups(args: argparse.Namespace) -> int:
 
 
 def cmd_check_concurrency(args: argparse.Namespace) -> int:
-    """Refuse running cells of different stores at once (`--jobs` above 1) on a
-    build whose verdict does not show #2129's per-store eval cache."""
-    if args.jobs < 1:
-        raise ArmError(f"--jobs must be a positive integer, got {args.jobs}")
-    if args.jobs == 1:
-        print("concurrency: 1 (cells run in turn)")
+    """The width cells of different stores run at (`--jobs`, else the default),
+    refused above 1 on a build whose verdict does not show #2129's per-store
+    eval cache. Prints the width alone on stdout; the reason goes to stderr."""
+    jobs = DEFAULT_CELL_JOBS if args.jobs is None else args.jobs
+    if jobs < 1:
+        raise ArmError(f"--jobs must be a positive integer, got {jobs}")
+    if jobs == 1:
+        print("concurrency: 1 (cells run in turn)", file=sys.stderr)
+        print(jobs)
         return 0
     receipt = load_build_receipt(Path(args.build_receipt))
     verdict = load_receipt_verdict(Path(args.receipt_verdict), Path(args.build_receipt), receipt)
     if not verdict.cells_may_run_concurrently:
         raise StampError(
-            f"--jobs {args.jobs} needs an engine with the per-store eval cache "
+            f"--jobs {jobs} needs an engine with the per-store eval cache "
             f"(noodlbox-app #2129); build {verdict.commit} predates it, so its cells would "
             "race on one working tree per repository (EVAL-CLONE-RACE): use --jobs 1"
         )
     print(
-        f"concurrency: {args.jobs} (build {verdict.commit} carries #2129 via "
-        f"{verdict.eval_cache_scope_commit})"
+        f"concurrency: {jobs} (build {verdict.commit} carries #2129 via "
+        f"{verdict.eval_cache_scope_commit})",
+        file=sys.stderr,
     )
+    print(jobs)
     return 0
 
 
@@ -645,7 +652,7 @@ def main(argv: list[str] | None = None) -> int:
         "check-concurrency",
         help="refuse --jobs above 1 unless the verdict shows the per-store eval cache",
     )
-    p_conc.add_argument("--jobs", required=True, type=int)
+    p_conc.add_argument("--jobs", type=int, help=f"default {DEFAULT_CELL_JOBS}")
     p_conc.add_argument("--build-receipt", required=True)
     p_conc.add_argument("--receipt-verdict", required=True)
     p_conc.set_defaults(func=cmd_check_concurrency)

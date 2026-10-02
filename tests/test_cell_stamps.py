@@ -22,6 +22,7 @@ from ttg.cell_stamps import (
     ReceiptVerdict,
     commit_date,
     fix_ancestry,
+    newest_fix_date,
     COMPLETION_MARKER,
     BuildReceipt,
     CompletionMarker,
@@ -304,13 +305,13 @@ class OneLineGrepFixAncestryTest(unittest.TestCase):
     def test_descent_from_a_fix_commit_decides_the_contract(self) -> None:
         child = fix_ancestry(self.repo, self.child, (self.fix,), "#1791 fix")
         parent = fix_ancestry(self.repo, self.parent, (self.fix,), "#1791 fix")
-        self.assertEqual(child.fix_commit, self.fix)
-        self.assertIsNone(parent.fix_commit)
+        self.assertEqual(child, self.fix)
+        self.assertIsNone(parent)
         continuation = "src/a.ts\n  3:[def q] alpha\n/**\n"
-        pre = grep_hits(continuation, {"src/a.ts"}, one_line_per_hit=parent.fix_commit is not None)
+        pre = grep_hits(continuation, {"src/a.ts"}, one_line_per_hit=parent is not None)
         self.assertEqual((pre.hits, pre.continuation_lines), ([("src/a.ts", 3)], 1))
         with self.assertRaises(WireError):
-            grep_hits(continuation, {"src/a.ts"}, one_line_per_hit=child.fix_commit is not None)
+            grep_hits(continuation, {"src/a.ts"}, one_line_per_hit=child is not None)
 
     def test_a_pre_fix_verdict_on_a_newer_commit_is_flagged(self) -> None:
         later = self._commit("unrelated, newer", "2026-09-04T00:00:00+00:00")
@@ -321,12 +322,12 @@ class OneLineGrepFixAncestryTest(unittest.TestCase):
         verdict = ReceiptVerdict(
             schema=VERDICT_SCHEMA, receipt_sha256="0" * 64, commit=newer_side, tree_digest="0" * 64,
             model_lock_sha256="0" * 64, rust_toolchain_sha256="0" * 64, checked="test",
-            commit_date=commit_date(self.repo, newer_side), grep_fix_commit=ancestry.fix_commit,
-            grep_fix_newest_date=ancestry.newest_fix_date, eval_cache_scope_commit=None,
+            commit_date=commit_date(self.repo, newer_side), grep_fix_commit=ancestry,
+            grep_fix_newest_date=newest_fix_date(self.repo, (self.fix,)), eval_cache_scope_commit=None,
         )
         self.assertFalse(verdict.grep_one_line_per_hit)
         self.assertTrue(verdict.pre_fix_on_newer_commit)
-        self.assertEqual(fix_ancestry(self.repo, later, (self.fix,), "#1791 fix").fix_commit, self.fix)
+        self.assertEqual(fix_ancestry(self.repo, later, (self.fix,), "#1791 fix"), self.fix)
 
     def test_a_fix_commit_missing_from_the_repo_refuses(self) -> None:
         with self.assertRaisesRegex(StampError, "fetch it"):
@@ -341,8 +342,8 @@ class OneLineGrepFixAncestryTest(unittest.TestCase):
                 schema=VERDICT_SCHEMA, receipt_sha256="0" * 64, commit=commit,
                 tree_digest="0" * 64, model_lock_sha256="0" * 64, rust_toolchain_sha256="0" * 64,
                 checked="test", commit_date=commit_date(self.repo, commit), grep_fix_commit=None,
-                grep_fix_newest_date=scope.newest_fix_date,
-                eval_cache_scope_commit=scope.fix_commit,
+                grep_fix_newest_date=newest_fix_date(self.repo, (self.fix,)),
+                eval_cache_scope_commit=scope,
             )
 
         self.assertTrue(verdict_for(self.child).cells_may_run_concurrently)

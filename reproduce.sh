@@ -51,7 +51,7 @@ fi
 ARMS="default"; CORPORA="ts40,py_nosphinx"; BINARY=""; CORPUS_DIR=""
 STORE=""; OUTDIR="./out"; REDERIVE=0; SCORE_ONLY=0; REPORT_DIR=""
 ARM="shipped_treatment"; BUILD_COMMIT=""; BUILD_RECEIPT=""; RECEIPT_VERDICT=""
-JOBS=2  # cells of different stores at once (arms/run_matrix.sh; 1 runs them in turn)
+JOBS=""  # --jobs: cells of different stores at once (default: ttg.cli check-concurrency's)
 while [ $# -gt 0 ]; do
   case "$1" in
     --arms) ARMS="$2"; shift 2 ;;
@@ -98,6 +98,11 @@ else
       "40-hex commit) and --build-receipt (written by arms/build_engine.sh when it" \
       "built --binary) and --receipt-verdict (from ttg.cli verify-receipt) are" \
       "required" >&2; exit 2; }
+  # Before any stage that can take hours: the run's width must be safe on this build.
+  jobs_args=()
+  [ -z "$JOBS" ] || jobs_args=(--jobs "$JOBS")
+  JOBS="$(python3 -m ttg.cli check-concurrency "${jobs_args[@]}" \
+    --build-receipt "$BUILD_RECEIPT" --receipt-verdict "$RECEIPT_VERDICT")"
   if [ "$REDERIVE" -eq 1 ]; then
     echo; echo "== stage 2/5: re-derive gold (L1, slow) =="
     # U1 first: a derivation on a binary that cannot analyze the corpus is

@@ -430,6 +430,12 @@ def store_name(arm_name: str, corpus_name: str) -> str:
             return f"{source}_{corpus_name}"
 
 
+DEFAULT_CELL_JOBS: Final = 2
+"""Store groups `arms/run_matrix.sh` runs at once unless told otherwise, on a
+build that carries noodlbox-app #2129 (`ttg.cli check-concurrency` gates it). The
+real-cell witness of this width is the #2126 entry in the benchmarks LEDGER."""
+
+
 @dataclass(frozen=True)
 class CellGroup:
     """The cells of one run that share a store, in the order they must run."""

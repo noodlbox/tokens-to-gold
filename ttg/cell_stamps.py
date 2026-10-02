@@ -388,12 +388,6 @@ class ReceiptVerdict:
         )
 
 
-@dataclass(frozen=True)
-class FixAncestry:
-    fix_commit: str | None
-    newest_fix_date: str
-
-
 def commit_date(repo: Path, commit: str) -> str:
     return _decode(
         _run(["git", "-C", str(repo), "show", "-s", "--format=%cI", validated_commit(commit)],
@@ -404,7 +398,7 @@ def commit_date(repo: Path, commit: str) -> str:
 
 def fix_ancestry(
     repo: Path, commit: str, fix_commits: tuple[str, ...], fix_name: str
-) -> FixAncestry:
+) -> str | None:
     """Which member of a fix set (`fix_name`), if any, is an ancestor of `commit`
     (git history is the only authority; a member missing from `repo` refuses)."""
     commit = validated_commit(commit)
@@ -422,8 +416,12 @@ def fix_ancestry(
                 f"cannot decide whether {fix} ({fix_name}) is an ancestor of {commit}: "
                 f"{proc.stderr.decode(errors='replace').strip()} -- fetch it into {repo}"
             )
-    newest = max((commit_date(repo, fix) for fix in fix_commits), key=datetime.fromisoformat)
-    return FixAncestry(matched, newest)
+    return matched
+
+
+def newest_fix_date(repo: Path, fix_commits: tuple[str, ...]) -> str:
+    """The committer date of a fix set's newest member."""
+    return max((commit_date(repo, fix) for fix in fix_commits), key=datetime.fromisoformat)
 
 
 def verify_receipt(
@@ -444,7 +442,7 @@ def verify_receipt(
         raise StampError(f"the receipt's model.lock is not commit {receipt.commit}'s")
     if receipt.rust_toolchain_toml != git_show(engine_repo, receipt.commit, TOOLCHAIN_PATH):
         raise StampError(f"the receipt's rust-toolchain.toml is not commit {receipt.commit}'s")
-    ancestry = fix_ancestry(engine_repo, receipt.commit, fix_commits, "#1791 fix")
+    grep_fix = fix_ancestry(engine_repo, receipt.commit, fix_commits, "#1791 fix")
     eval_cache = fix_ancestry(
         engine_repo, receipt.commit, eval_cache_commits, "#2129 per-store eval cache"
     )
@@ -458,9 +456,9 @@ def verify_receipt(
         checked="tree digest vs git ls-tree -r; model.lock + rust-toolchain.toml vs git show; "
         "#1791 fix and #2129 per-store eval cache via git merge-base --is-ancestor",
         commit_date=commit_date(engine_repo, receipt.commit),
-        grep_fix_commit=ancestry.fix_commit,
-        grep_fix_newest_date=ancestry.newest_fix_date,
-        eval_cache_scope_commit=eval_cache.fix_commit,
+        grep_fix_commit=grep_fix,
+        grep_fix_newest_date=newest_fix_date(engine_repo, fix_commits),
+        eval_cache_scope_commit=eval_cache,
     )
     out.write_text(json.dumps(asdict(verdict), indent=2, sort_keys=True) + "\n")
     return verdict
