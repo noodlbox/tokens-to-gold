@@ -101,7 +101,8 @@ else
   # Before any stage that can take hours: the run's width must be safe on this build.
   jobs_args=()
   [ -z "$JOBS" ] || jobs_args=(--jobs "$JOBS")
-  JOBS="$(python3 -m ttg.cli check-concurrency "${jobs_args[@]}" \
+  # ${a[@]+"${a[@]}"}: bash before 4.4 (macOS /bin/bash) calls an empty array unbound.
+  JOBS="$(python3 -m ttg.cli check-concurrency ${jobs_args[@]+"${jobs_args[@]}"} \
     --build-receipt "$BUILD_RECEIPT" --receipt-verdict "$RECEIPT_VERDICT")"
   if [ "$REDERIVE" -eq 1 ]; then
     echo; echo "== stage 2/5: re-derive gold (L1, slow) =="

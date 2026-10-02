@@ -11,6 +11,7 @@ for the stub's own bytes.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import itertools
 import json
@@ -29,6 +30,19 @@ from ttg.cell_stamps import EVAL_CACHE_SCOPE_COMMITS, VERDICT_SCHEMA, BuildRecei
 
 PKG = Path(__file__).resolve().parent.parent
 COMMIT = "c" * 40
+
+
+def system_bash_predates_4_4() -> bool:
+    """Whether /bin/bash exists and is older than 4.4 (macOS ships 3.2)."""
+    if not Path("/bin/bash").exists():
+        return False
+    version = subprocess.run(["/bin/bash", "-c", "echo ${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}"],
+                             capture_output=True, text=True, check=True).stdout.strip()
+    major, minor = (int(part) for part in version.split("."))
+    return (major, minor) < (4, 4)
+
+
+OLD_SYSTEM_BASH = system_bash_predates_4_4()
 MODEL = b"onnx-bytes"
 CACHE_DIR = "models/reranker/jina/rev1"
 LOCK = f"""\
@@ -310,7 +324,7 @@ class RunArmTest(ArmHarness):
 
 
 class RunMatrixTest(ArmHarness):
-    def matrix_argv(self, arms: str, **overrides: str) -> list[str]:
+    def matrix_argv(self, arms: str, shell: str = "bash", **overrides: str) -> list[str]:
         args = {
             "--arms": arms, "--corpora": "ts40", "--binary": str(self.binary),
             "--corpus-dir": str(self.corpus_dir), "--store": str(self.tmp / "root"),
@@ -319,13 +333,13 @@ class RunMatrixTest(ArmHarness):
         }
         # An empty value drops the flag (a test of a missing required flag).
         argv = itertools.chain.from_iterable(pair for pair in args.items() if pair[1] != "")
-        return ["bash", str(self.pkg / "arms" / "run_matrix.sh"), *argv]
+        return [shell, str(self.pkg / "arms" / "run_matrix.sh"), *argv]
 
     def run_matrix(self, arms: str, *, model: bytes = MODEL, sleep: str = "",
-                   rendezvous: str = "", rendezvous_count: int = 0,
+                   rendezvous: str = "", rendezvous_count: int = 0, shell: str = "bash",
                    **overrides: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
-            self.matrix_argv(arms, **overrides), capture_output=True, text=True,
+            self.matrix_argv(arms, shell, **overrides), capture_output=True, text=True,
             env=self.cell_env(model=model, sleep=sleep, rendezvous=rendezvous,
                               rendezvous_count=rendezvous_count),
             check=False,
@@ -372,7 +386,7 @@ class RunMatrixTest(ArmHarness):
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
             env=self.cell_env(sleep="8"), start_new_session=True,
         )
-        self.addCleanup(matrix.kill)
+        self.addCleanup(self.kill_session, matrix)
         started = [self.tmp / "root" / store / "started"
                    for store in ("shipped_treatment_ts40", "shipped_explore_ts40")]
         deadline = time.time() + 20
@@ -380,6 +394,13 @@ class RunMatrixTest(ArmHarness):
             time.sleep(0.1)
         self.assertTrue(all(path.exists() for path in started), "the two groups never both started")
         return matrix
+
+    @staticmethod
+    def kill_session(matrix: subprocess.Popen[str]) -> None:
+        """After a failed assertion, nothing of the run outlives the test."""
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(matrix.pid, signal.SIGKILL)
+        matrix.communicate()
 
     def running(self, pattern: str) -> list[str]:
         """PIDs whose command line matches `pattern` (scoped by this test's tmp path)."""
@@ -398,25 +419,37 @@ class RunMatrixTest(ArmHarness):
         self.assertIn("failed outside its cells", stderr)
         self.assertEqual(self.running(str(self.binary)), [], "an engine outlived the failed run")
 
-    def test_an_interrupted_run_stops_every_engine(self) -> None:
+    def assert_an_interrupt_stops_every_engine(self, sig: signal.Signals, exit_code: int) -> None:
         # Ctrl-C (INT to the foreground group), a supervisor's TERM or a lost
         # terminal (HUP) reach run_matrix.sh's group, not the runners' own: the
-        # run forwards them, and exits only once no engine is left.
-        for sig, exit_code in ((signal.SIGINT, 130), (signal.SIGTERM, 143), (signal.SIGHUP, 129)):
-            with self.subTest(signal=sig.name):
-                for leftover in (self.tmp / "root", self.out):  # the previous signal's run
-                    if leftover.exists():
-                        shutil.rmtree(leftover)
-                matrix = self.start_two_slow_groups()
-                os.killpg(matrix.pid, sig)
-                # communicate() returns at EOF, which an orphaned engine holding
-                # the pipes delays until it finishes its cell: no cell may finish.
-                stdout, stderr = matrix.communicate(timeout=30)
-                finished = [store for store in ("shipped_treatment_ts40", "shipped_explore_ts40")
-                            if (self.tmp / "root" / store / "ended").exists()]
-                self.assertEqual(finished, [], "an engine ran its cell to the end after the interrupt")
-                self.assertEqual(self.running(str(self.binary)), [], "an engine outlived the interrupt")
-                self.assertEqual(matrix.returncode, exit_code, stdout + stderr)
+        # run forwards the signal, and exits only once no engine is left.
+        matrix = self.start_two_slow_groups()
+        os.killpg(matrix.pid, sig)
+        # communicate() returns at EOF, which an orphaned engine holding the
+        # pipes delays until it finishes its cell: no cell may finish.
+        stdout, stderr = matrix.communicate(timeout=30)
+        root = self.tmp / "root"
+        finished = [path.parent.name for path in root.glob("*/ended")]
+        self.assertEqual(finished, [], "an engine ran its cell to the end after the interrupt")
+        self.assertEqual(self.running(str(self.binary)), [], "an engine outlived the interrupt")
+        self.assertEqual(matrix.returncode, exit_code, stdout + stderr)
+
+    def test_ctrl_c_stops_every_engine(self) -> None:
+        self.assert_an_interrupt_stops_every_engine(signal.SIGINT, 130)
+
+    def test_term_stops_every_engine(self) -> None:
+        self.assert_an_interrupt_stops_every_engine(signal.SIGTERM, 143)
+
+    def test_hangup_stops_every_engine(self) -> None:
+        self.assert_an_interrupt_stops_every_engine(signal.SIGHUP, 129)
+
+    @unittest.skipUnless(OLD_SYSTEM_BASH, "no /bin/bash older than 4.4 (macOS ships 3.2)")
+    def test_the_default_width_runs_under_an_old_bash(self) -> None:
+        # bash before 4.4 calls an empty array unbound under `set -u`: the
+        # default path (no --jobs) must still run under macOS /bin/bash.
+        run = self.run_matrix("shipped_explore", shell="/bin/bash")
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.assertIn("concurrency:  2", (self.out / "shipped_explore_ts40.manifest.txt").read_text())
 
     def test_one_job_runs_the_cells_in_turn(self) -> None:
         run = self.run_matrix("shipped_treatment,shipped_explore", sleep="0.5", **{"--jobs": "1"})

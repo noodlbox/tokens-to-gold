@@ -8,15 +8,16 @@
 # cell-groups`). Every cell is stamped against `--build-receipt` (see run_arm.sh).
 #
 # CONCURRENCY. Cells run `--jobs` store groups at a time (default
-# DEFAULT_CELL_JOBS in arms/arm_matrix.py). `ttg.cli cell-groups` owns the grouping: cells of one store run in order, the FRESH cell
-# first; groups of different stores share only the engine's locked repository
+# DEFAULT_CELL_JOBS in arms/arm_matrix.py). `ttg.cli cell-groups` owns the
+# grouping: cells of one store run in order, the FRESH cell first; groups of different stores share only the engine's locked repository
 # mirrors and the host. That is safe only on an engine that scopes its
 # repository cache to each store's NOODLBOX_DATA_DIR (noodlbox-app #2129,
 # EVAL-CLONE-RACE), so `--jobs` above 1 is refused unless the receipt verdict
 # shows that build carries it (`ttg.cli check-concurrency`). Every cell's
 # manifest stamps the width it ran at; wall times compare only at equal width.
 # `--jobs 1` runs every cell in turn. An interrupt (INT, TERM, HUP) stops every
-# runner and engine before the script exits.
+# runner and engine before the script exits; one still alive 30 s after TERM is
+# killed, and named on stderr.
 set -euo pipefail
 
 ARMS="default"; CORPORA="ts40,py_nosphinx"; BINARY=""; CORPUS_DIR=""; STORE=""; OUTDIR=""
@@ -48,7 +49,8 @@ PKG="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # on this build, and the arm and corpus lists must name known, distinct cells.
 jobs_args=()
 [ -z "$JOBS" ] || jobs_args=(--jobs "$JOBS")
-JOBS="$(cd "$PKG" && python3 -m ttg.cli check-concurrency "${jobs_args[@]}" \
+# ${a[@]+"${a[@]}"}: bash before 4.4 (macOS /bin/bash) calls an empty array unbound.
+JOBS="$(cd "$PKG" && python3 -m ttg.cli check-concurrency ${jobs_args[@]+"${jobs_args[@]}"} \
   --build-receipt "$BUILD_RECEIPT" --receipt-verdict "$RECEIPT_VERDICT")"
 GROUPS_LIST="$(cd "$PKG" && python3 -m ttg.cli cell-groups --arms "$ARMS" --corpora "$CORPORA")"
 EXPECTED="$(awk '{ n += NF - 2 } END { print n + 0 }' <<< "$GROUPS_LIST")"
@@ -59,6 +61,24 @@ trap 'rm -f "$RESULTS"' EXIT
 # xargs runs in its own process group (set -m), so the whole run (runners and
 # engines) can be stopped together: when a runner dies outside its cells, and
 # when this script is interrupted, which no longer reaches that group by itself.
+# The group is xargs' pid; the traps hold from before the launch.
+runners=""
+stop_runners() {
+  [ -n "$runners" ] || return 0
+  kill -TERM -- "-$runners" 2> /dev/null || return 0
+  local waited=0
+  while kill -0 -- "-$runners" 2> /dev/null && [ "$waited" -lt 300 ]; do
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  if kill -0 -- "-$runners" 2> /dev/null; then
+    echo "run_matrix: still running 30 s after TERM, killed: $(pgrep -g "$runners" | tr '\n' ' ')" >&2
+    kill -KILL -- "-$runners" 2> /dev/null || true
+  fi
+}
+trap 'stop_runners; exit 130' INT
+trap 'stop_runners; exit 143' TERM
+trap 'stop_runners; exit 129' HUP
 set -m
 xargs -P "$JOBS" -L 1 "$PKG/arms/run_cell_group.sh" \
   --binary "$BINARY" --corpus-dir "$CORPUS_DIR" --store-root "$STORE" --outdir "$OUTDIR" \
@@ -67,18 +87,6 @@ xargs -P "$JOBS" -L 1 "$PKG/arms/run_cell_group.sh" \
   <<< "$GROUPS_LIST" &
 runners=$!
 set +m
-# Stop every runner and engine of the run, and return once none is left.
-stop_runners() {
-  kill -TERM -- "-$runners" 2> /dev/null || return 0
-  local waited=0
-  while kill -0 -- "-$runners" 2> /dev/null && [ "$waited" -lt 300 ]; do
-    sleep 0.1
-    waited=$((waited + 1))
-  done
-}
-trap 'stop_runners; exit 130' INT
-trap 'stop_runners; exit 143' TERM
-trap 'stop_runners; exit 129' HUP
 # A cell's failure is recorded in $RESULTS; a group runner itself exits 0, so a
 # non-zero status here is a runner that died outside its cells. xargs then
 # finishes the other runners (123), or, when the runner was killed by a signal
