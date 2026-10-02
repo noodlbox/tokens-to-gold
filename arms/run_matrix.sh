@@ -9,8 +9,9 @@
 #
 # CONCURRENCY. Cells run `--jobs` store groups at a time (default
 # DEFAULT_CELL_JOBS in arms/arm_matrix.py). `ttg.cli cell-groups` owns the
-# grouping: cells of one store run in order, the FRESH cell first; groups of different stores share only the engine's locked repository
-# mirrors and the host. That is safe only on an engine that scopes its
+# grouping: cells of one store run in order, the FRESH cell first; groups of
+# different stores share only the engine's locked repository mirrors and the
+# host. That is safe only on an engine that scopes its
 # repository cache to each store's NOODLBOX_DATA_DIR (noodlbox-app #2129,
 # EVAL-CLONE-RACE), so `--jobs` above 1 is refused unless the receipt verdict
 # shows that build carries it (`ttg.cli check-concurrency`). Every cell's
