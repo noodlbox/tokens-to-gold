@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tokens-to-gold — the one command.
 #
-#   ./reproduce.sh --binary <noodl-eval> --corpus-dir <dir> --store <dir>
+#   ./reproduce.sh --binary <noodl-eval> --corpus-dir <dir> --store <dir> [--jobs N]
 #   ./reproduce.sh --score-only --report-dir <dir>
 #
 # Stages: verify -> preflight -> (derive) -> run -> score -> report.
@@ -51,6 +51,7 @@ fi
 ARMS="default"; CORPORA="ts40,py_nosphinx"; BINARY=""; CORPUS_DIR=""
 STORE=""; OUTDIR="./out"; REDERIVE=0; SCORE_ONLY=0; REPORT_DIR=""
 ARM="shipped_treatment"; BUILD_COMMIT=""; BUILD_RECEIPT=""; RECEIPT_VERDICT=""
+JOBS=""  # --jobs: cells of different stores at once (default: ttg.cli check-concurrency's)
 while [ $# -gt 0 ]; do
   case "$1" in
     --arms) ARMS="$2"; shift 2 ;;
@@ -67,6 +68,7 @@ while [ $# -gt 0 ]; do
     --build-commit) BUILD_COMMIT="$2"; shift 2 ;;
     --build-receipt) BUILD_RECEIPT="$2"; shift 2 ;;
     --receipt-verdict) RECEIPT_VERDICT="$2"; shift 2 ;;
+    --jobs) JOBS="$2"; shift 2 ;;
     -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
     *) echo "reproduce: unknown argument '$1'" >&2; exit 2 ;;
   esac
@@ -96,6 +98,12 @@ else
       "40-hex commit) and --build-receipt (written by arms/build_engine.sh when it" \
       "built --binary) and --receipt-verdict (from ttg.cli verify-receipt) are" \
       "required" >&2; exit 2; }
+  # Before any stage that can take hours: the run's width must be safe on this build.
+  jobs_args=()
+  [ -z "$JOBS" ] || jobs_args=(--jobs "$JOBS")
+  # ${a[@]+"${a[@]}"}: bash before 4.4 (macOS /bin/bash) calls an empty array unbound.
+  JOBS="$(python3 -m ttg.cli check-concurrency ${jobs_args[@]+"${jobs_args[@]}"} \
+    --build-receipt "$BUILD_RECEIPT" --receipt-verdict "$RECEIPT_VERDICT")"
   if [ "$REDERIVE" -eq 1 ]; then
     echo; echo "== stage 2/5: re-derive gold (L1, slow) =="
     # U1 first: a derivation on a binary that cannot analyze the corpus is
@@ -117,7 +125,7 @@ else
   arms/run_matrix.sh --arms "$ARMS" --corpora "$CORPORA" --binary "$BINARY" \
     --corpus-dir "$CORPUS_DIR" --store "$STORE" --outdir "$OUTDIR/reports" \
     --build-commit "$BUILD_COMMIT" --build-receipt "$BUILD_RECEIPT" \
-    --receipt-verdict "$RECEIPT_VERDICT"
+    --receipt-verdict "$RECEIPT_VERDICT" --jobs "$JOBS"
   REPORT_DIR="$OUTDIR/reports"
 fi
 

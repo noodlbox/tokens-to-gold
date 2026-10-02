@@ -258,7 +258,7 @@ PRs before reading a trend. Priced tokens ≠ billed tokens; coverage ≠ task s
 reproduce.sh        the one command
 ttg/                scoring: comparable_path, matcher, rollup, curve_recompute,
                     report_io, gold_freezer, derive_gold.sh, cli
-arms/               arm_matrix (data) + run_arm.sh + run_matrix.sh
+arms/               arm_matrix (data) + run_arm.sh + run_matrix.sh (+ run_cell_group.sh)
 corpora/            pinned instance manifests + digests
 gold/               frozen gold + digests
 tests/              the must-red suite (negative controls; run with unittest)

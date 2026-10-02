@@ -57,6 +57,8 @@ control", which has been false since #1347.
 
 from __future__ import annotations
 
+import itertools
+from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
@@ -122,8 +124,11 @@ _GATE_ROLES: Final = frozenset({ArmRole.ACCEPTANCE, ArmRole.SECTION5})
 class FreshStore:
     """The cell runs in its OWN absent-or-empty store (`<root>/<arm>_<corpus>`).
 
-    Fresh covers the store only: the engine's repo checkout cache
-    (`~/.cache/noodlbox-eval/repos`) is shared by every cell on a host."""
+    The engine's repository checkouts belong to the store too: since
+    noodlbox-app #2129 they live in a cache scope keyed by the store's
+    NOODLBOX_DATA_DIR (`~/.cache/noodlbox-eval/scopes/<id>/checkouts`, cloned
+    from mirrors shared per host), so a fresh store gets fresh working trees and
+    two stores' cells never touch the same tree."""
 
 
 @dataclass(frozen=True)
@@ -245,8 +250,7 @@ ARMS: Final[dict[str, Arm]] = {
     # rows from the reused store — see the incident note in the preservation
     # tree. REUSE silently depends on a warm checkout cache and a stable
     # disk, neither of which this arm can guarantee; a FRESH store removes the
-    # store dependency — the engine's checkout cache stays shared, see
-    # `FreshStore`.)
+    # store dependency, checkouts included — see `FreshStore`.)
     "native_floor": Arm(
         "native_floor", "off", None, "native-floor",
         extra_flags=("--explorer",),
@@ -424,6 +428,64 @@ def store_name(arm_name: str, corpus_name: str) -> str:
             return f"{arm_name}_{corpus_name}"
         case ReuseStore(of=source):
             return f"{source}_{corpus_name}"
+
+
+DEFAULT_CELL_JOBS: Final = 2
+"""Store groups `arms/run_matrix.sh` runs at once unless told otherwise, on a
+build that carries noodlbox-app #2129 (`ttg.cli check-concurrency` gates it). The
+real-cell witness of this width is row B85 of the benchmarks LEDGER (#2126)."""
+
+
+@dataclass(frozen=True)
+class CellGroup:
+    """The cells of one run that share a store, in the order they must run."""
+
+    store: str
+    corpus: str
+    arms: tuple[str, ...]
+
+
+def reuses_a_store(arm_name: str) -> bool:
+    """Whether `arm_name` runs in a store another arm made (sorts FRESH first)."""
+    return isinstance(get_arm(arm_name).store, ReuseStore)
+
+
+def refuse_empty_or_repeated(kind: str, names: Sequence[str]) -> None:
+    """A run needs at least one `kind`, and each one once."""
+    if not names:
+        raise ArmError(f"no {kind} to run")
+    repeated = sorted(name for name, count in Counter(names).items() if count > 1)
+    if repeated:
+        raise ArmError(f"{kind} listed more than once: {', '.join(repeated)}")
+
+
+def cell_groups(
+    arm_names: Sequence[str], corpus_names: Sequence[str]
+) -> list[CellGroup]:
+    """The cells of an arm x corpus run, grouped by the store they run in.
+
+    Cells in different groups touch different stores, so they may run at the
+    same time on an engine that scopes its repository cache to each store's
+    NOODLBOX_DATA_DIR (noodlbox-app #2129, EVAL-CLONE-RACE; the receipt verdict
+    records whether a build does). Cells in one group share a store (a REUSE arm
+    reads the store of the FRESH arm it reuses), so they run in order, the FRESH
+    cell first. Groups come arm by arm, so groups started together cover
+    different corpora (different repositories) rather than one corpus at once.
+    An empty or repeated arm or corpus is refused: a repeated cell would delete
+    the report of the first.
+    """
+    refuse_empty_or_repeated("arm", arm_names)
+    refuse_empty_or_repeated("corpus", corpus_names)
+    corpus_of: dict[str, str] = {}
+    arms_of: dict[str, list[str]] = {}
+    for arm_name, corpus_name in itertools.product(arm_names, corpus_names):
+        store = store_name(arm_name, corpus_name)
+        corpus_of[store] = corpus_name
+        arms_of.setdefault(store, []).append(arm_name)
+    return [
+        CellGroup(store, corpus_of[store], tuple(sorted(arms, key=reuses_a_store)))
+        for store, arms in arms_of.items()
+    ]
 
 
 def assert_corpus_matches_protocol(

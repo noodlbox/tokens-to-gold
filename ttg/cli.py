@@ -24,11 +24,12 @@ from pathlib import Path
 from arms.arm_matrix import (
     CORPORA,
     DEFAULT_ARMS,
+    DEFAULT_CELL_JOBS,
     SWEEP_ARMS,
     ArmError,
+    cell_groups,
     flags_for,
     get_arm,
-    store_name,
 )
 from ttg.acceptance import (
     check_against_baseline,
@@ -41,6 +42,8 @@ from ttg.cell_stamps import (
     StampError,
     cell_postrun,
     cell_preflight,
+    load_build_receipt,
+    load_receipt_verdict,
     measure_engine_tree,
     tree_digest,
     tree_entries_from_git,
@@ -100,12 +103,23 @@ PKG = Path(__file__).resolve().parent.parent
 # fixture — there is no second copy in this file.
 
 
-def _resolve_arms(spec: str) -> list[str]:
+def resolve_arms(spec: str) -> list[str]:
+    """`default`, `all`, or a comma list of arm names."""
     if spec == "default":
         return list(DEFAULT_ARMS)
     if spec == "all":
         return list(SWEEP_ARMS)
-    return [a.strip() for a in spec.split(",") if a.strip()]
+    return comma_list(spec)
+
+
+def resolve_corpora(spec: str) -> list[str]:
+    """A comma list of corpus names."""
+    return comma_list(spec)
+
+
+def comma_list(spec: str) -> list[str]:
+    """The non-empty, stripped items of a comma list."""
+    return [item.strip() for item in spec.split(",") if item.strip()]
 
 
 def cmd_flags(args: argparse.Namespace) -> int:
@@ -113,8 +127,41 @@ def cmd_flags(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_store_name(args: argparse.Namespace) -> int:
-    print(store_name(args.arm, args.corpus))
+def cmd_cell_groups(args: argparse.Namespace) -> int:
+    """One line per store group, `<store> <corpus> <arm>...`, cells in run order.
+
+    Every field is an identifier (arm, corpus and store names carry no
+    whitespace), so a line splits on whitespace (arms/run_matrix.sh does)."""
+    for group in cell_groups(resolve_arms(args.arms), resolve_corpora(args.corpora)):
+        print(" ".join((group.store, group.corpus, *group.arms)))
+    return 0
+
+
+def cmd_check_concurrency(args: argparse.Namespace) -> int:
+    """The width cells of different stores run at (`--jobs`, else the default),
+    refused above 1 on a build whose verdict does not show #2129's per-store
+    eval cache. Prints the width alone on stdout; the reason goes to stderr."""
+    jobs = DEFAULT_CELL_JOBS if args.jobs is None else args.jobs
+    if jobs < 1:
+        raise ArmError(f"--jobs must be a positive integer, got {jobs}")
+    if jobs == 1:
+        print("concurrency: 1 (cells run in turn)", file=sys.stderr)
+        print(jobs)
+        return 0
+    receipt = load_build_receipt(Path(args.build_receipt))
+    verdict = load_receipt_verdict(Path(args.receipt_verdict), Path(args.build_receipt), receipt)
+    if not verdict.cells_may_run_concurrently:
+        raise StampError(
+            f"--jobs {jobs} needs an engine with the per-store eval cache "
+            f"(noodlbox-app #2129); build {verdict.commit} predates it, so its cells would "
+            "race on one working tree per repository (EVAL-CLONE-RACE): use --jobs 1"
+        )
+    print(
+        f"concurrency: {jobs} (build {verdict.commit} carries #2129 via "
+        f"{verdict.eval_cache_scope_commit})",
+        file=sys.stderr,
+    )
+    print(jobs)
     return 0
 
 
@@ -292,13 +339,10 @@ def cmd_preflight(args: argparse.Namespace) -> int:
 
     Called by reproduce.sh before the run stage so the reproduction spine never
     depends on the caller remembering a feature flag or a system tool."""
-    for corpus in args.corpora.split(","):
-        corpus = corpus.strip()
-        if not corpus:
-            continue
+    for corpus in resolve_corpora(args.corpora):
         require_corpus_support(args.binary, corpus)
         print(f"preflight: {corpus} OK")
-    arms = _resolve_arms(args.arms) if args.arms else []
+    arms = resolve_arms(args.arms) if args.arms else []
     if "native_floor" in arms:
         require_native_floor_tools()
         print("preflight: native_floor tooling (rg) OK")
@@ -318,8 +362,8 @@ def cmd_check_arms(args: argparse.Namespace) -> int:
     directly: testing the wrong layer let go34/rust43 pass the gate yet fail
     every cell at run time. Without this, an unresolvable pair is discovered by
     run_matrix AFTER provisioning and derivation -- hours in."""
-    arms = _resolve_arms(args.arms)
-    corpora = [c.strip() for c in args.corpora.split(",") if c.strip()]
+    arms = resolve_arms(args.arms)
+    corpora = resolve_corpora(args.corpora)
     failures: list[str] = []
     for arm, corpus in itertools.product(arms, corpora):
         # Route through the real CLI (argparse choices + flags_for), capturing
@@ -596,12 +640,22 @@ def main(argv: list[str] | None = None) -> int:
     p_flags.add_argument("--corpus", required=True, choices=sorted(CORPORA))
     p_flags.set_defaults(func=cmd_flags)
 
-    p_store = sub.add_parser(
-        "store-name", help="the per-cell store directory name under a store root"
+    p_groups = sub.add_parser(
+        "cell-groups",
+        help="one line per store: <store> <corpus> <arm>..., in run order",
     )
-    p_store.add_argument("--arm", required=True)
-    p_store.add_argument("--corpus", required=True, choices=sorted(CORPORA))
-    p_store.set_defaults(func=cmd_store_name)
+    p_groups.add_argument("--arms", required=True, help="default | all | a,b,...")
+    p_groups.add_argument("--corpora", required=True, help="a,b,...")
+    p_groups.set_defaults(func=cmd_cell_groups)
+
+    p_conc = sub.add_parser(
+        "check-concurrency",
+        help="refuse --jobs above 1 unless the verdict shows the per-store eval cache",
+    )
+    p_conc.add_argument("--jobs", type=int, help=f"default {DEFAULT_CELL_JOBS}")
+    p_conc.add_argument("--build-receipt", required=True)
+    p_conc.add_argument("--receipt-verdict", required=True)
+    p_conc.set_defaults(func=cmd_check_concurrency)
 
     p_etd = sub.add_parser(
         "engine-tree-digest", help="the engine tree identity at a commit (git side)"
