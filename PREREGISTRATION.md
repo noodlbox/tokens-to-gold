@@ -521,8 +521,10 @@ The reader at `4d0df15` read only `files[].symbols`. That was a silent gap in ad
 
 No B88 grep number is reported from `4d0df15`.
 
+The table's source: noodlbox-app lane-evidence `lane-evidence/l21/1802/gate/results/{base,head}/delivered_<corpus>.json`. These are the `delivered-score` outputs of the 8 B88 cells, scored on their leases with ttg `4d0df15`, with engines base `b2512e15f` and head `e8261f11e`. Each row is `rows["grep.8000"].summary.failed_cells` against `n`.
+
 **Rule.**
-- A lean `files[]` group is `{file_path, [repo_id], [dependency_context], symbols, [members]}`. Any other key raises (`WireError`), so a new row-bearing key fails the cell rather than being skipped.
+- A lean `files[]` group is `{file_path, [repo_id], [dependency_context], symbols, [members]}`, and a lean `file_index` group is `{file_path, [repo_id], rows}` (stable across every `CompactFileIndexWire` version). Any other key raises (`WireError`), so a new row-bearing key fails the cell rather than being skipped. Object-shape `file_index` groups (pre-#1808, carrying `more_members`) stay open.
 - `member := [<line>] <kind> <name>`. It uses the recall grammar's prefix, with the 1-based line dropped when unknown. The row ENDS at the name: anything after it raises. That makes a missed escape detectable on member rows, as it already is on symbol rows.
 - Member rows are identities like any other row. A group's rows are its `symbols` then its `members`, in wire order. That order is identity order only; nothing reads ranks.
 - Members enter the grep identity oracle by `(path, line)`. A line-less member is an identity but no oracle key.
@@ -535,4 +537,7 @@ No B88 grep number is reported from `4d0df15`.
 **Controls.**
 - Must-red at `4d0df15`: a grep hit on a member line (`object/object.go:269`, B88's probe shape) raises `UnjoinableHit`.
 - Byte-identity: a group without members reads exactly as before.
-- Empirical check over all 1752 recorded JSON payloads of the 8 B88 cells (77064 groups; 23174 with members; 109192 member lines): every line parses under the strict member grammar, every group key is in the set above, and the rows minus member rows equal `4d0df15`'s rows in every payload (0 mismatches).
+- Empirical check over all 1752 recorded JSON payloads (`json.*` and `oracle.*` stdout) of the 8 B88 cells (77064 groups; 23174 with members; 109192 member lines). Every line parses under the strict member grammar, every group key is in the set above, and the rows minus member rows equal `4d0df15`'s rows in every payload (0 mismatches).
+  - Protocol: `python3 lane-evidence/l21/1802/rescore/identity_check.py <4d0df15 delivered_wire.py> <this branch's delivered_wire.py> lane-evidence/l21/1802/gate/probe`, run from the noodlbox workspace on macOS (Python 3).
+  - `probe/<cell>/root/out` is each cell's `result.tgz` extracted.
+  - The reader was this branch at `a90a8e7` and again at the commit that adds this line. Both runs gave the same counts.

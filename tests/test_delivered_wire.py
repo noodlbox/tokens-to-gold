@@ -304,6 +304,10 @@ class MemberLines(unittest.TestCase):
         with self.assertRaisesRegex(WireError, "unknown keys"):
             json_rows({"files": [{"file_path": "src/a.ts", "symbols": [], "fields": ["7 field x"]}]})
 
+    def test_an_unknown_lean_file_index_key_raises(self):
+        with self.assertRaisesRegex(WireError, "unknown keys"):
+            json_rows({"files": [], "file_index": [{"file_path": "src/c.ts", "rows": ["1 fn eps"], "more": []}]})
+
     def test_the_products_optional_group_keys_are_read(self):
         group = {"file_path": "src/a.ts", "repo_id": "r", "dependency_context": "npm:x@1",
                  "symbols": ["0123456789ab 3 function f definition query_match"]}

@@ -11,9 +11,10 @@ cell fails (a mixed or unknown envelope is never read by a guess):
   with `name` and a 0-based `line`.
 * LINES (the B63 D+id wire, noodlbox-app #1808): `files[]` groups
   `{file_path, [repo_id], [dependency_context], symbols: [line], [members: [line]]}`
-  and `file_index[].rows[]` lines. A group key outside that set raises: a new
-  row-bearing key is never skipped unread (B88: the pre-#11 reader skipped
-  `members`, so every member grep hit was unjoinable). The grammar mirrors the
+  and `file_index` groups `{file_path, [repo_id], rows: [line]}`. A group key
+  outside its set raises: a new row-bearing key is never skipped unread (B88:
+  the reader at 4d0df15 skipped `members`, so every member grep hit was
+  unjoinable). The grammar mirrors the
   product's one row-schema authority,
   `crates/noodlbox-services/src/context/output/compact_wire.rs`:
 
@@ -171,6 +172,8 @@ def json_rows(result: Mapping[str, object]) -> list[WireRow]:
             for row in _file_group_rows(group)
         ]
     for group in _objects(result.get("file_index", []), "`file_index`"):
+        if shape is JsonShape.LINES:
+            _closed_keys(group, _FILE_INDEX_GROUP_KEYS, "`file_index`")
         path = _path(group)
         for entry in _list(group.get("rows"), "`file_index[].rows`"):
             row = _object_recall(path, entry) if shape is JsonShape.OBJECTS else recall_line(path, entry)
@@ -180,15 +183,23 @@ def json_rows(result: Mapping[str, object]) -> list[WireRow]:
 
 
 _FILE_GROUP_KEYS = frozenset({"file_path", "repo_id", "dependency_context", "symbols", "members"})
+_FILE_INDEX_GROUP_KEYS = frozenset({"file_path", "repo_id", "rows"})
+
+
+def _closed_keys(group: Mapping[str, object], known: frozenset[str], what: str) -> None:
+    """Raise on a lean-wire group key outside `known` (the product's
+    `CompactFileWire` / `CompactFileIndexWire` fields): rows under an unknown
+    key would otherwise be skipped unread."""
+    unknown = sorted(set(group) - known)
+    if unknown:
+        raise WireError(f"a {what} group carries unknown keys {unknown}")
 
 
 def _file_group_rows(group: Mapping[str, object]) -> list[WireRow]:
     """One `files[]` group's rows in wire order: its `symbols` lines, then its
     `members` lines (absent when the group has none). A key outside the group's
     known set raises rather than being skipped."""
-    unknown = sorted(set(group) - _FILE_GROUP_KEYS)
-    if unknown:
-        raise WireError(f"a `files[]` group carries unknown keys {unknown}")
+    _closed_keys(group, _FILE_GROUP_KEYS, "`files[]`")
     path = _path(group)
     rows = [
         row
