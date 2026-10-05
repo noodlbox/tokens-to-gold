@@ -108,6 +108,21 @@ class GrepIdentitiesRule(unittest.TestCase):
         )
         self.assertEqual(got.lower, ["object/object.go:Kill"])
 
+    def test_a_member_on_its_containers_line_makes_the_key_ambiguous(self) -> None:
+        # A one-line container (`type Pair struct{ A, B int }`) and its admitted
+        # members share one `(path, line)` key: the hit delivers every name there,
+        # so the headline (lower) credits none of them and the upper credits all.
+        oracle = json.dumps({"result": {"files": [{
+            "file_path": "pair.go",
+            "symbols": ["0123456789ab 3 struct Pair definition query_match"],
+            "members": ["3 field A", "3 field B"],
+        }]}})
+        got = grep_identities("pair.go:3:[definition · query] type Pair struct{ A, B int }",
+                              oracle, one_line_per_hit=True)
+        self.assertEqual(got.lower, [])
+        self.assertEqual(got.upper, ["pair.go:Pair", "pair.go:A", "pair.go:B"])
+        self.assertEqual(got.ambiguous_hits, 1)
+
     def test_empty_block_is_no_hits_not_a_failure(self) -> None:
         self.assertEqual(grep_identities("", ORACLE, one_line_per_hit=True).lower, [])
 

@@ -505,3 +505,34 @@ Consequences:
 - grep hits 5256/5256 in pre-#1791 mode.
 
 The B63 lean cells are a pre-#1808 rendering: 0-based, before the name grammar. They pin name identity only, never a grep join.
+
+### Addendum 5: `files[].members` rows on the lean wire (noodlbox-app #2185), 2026-10-05 (before any re-scored number)
+
+**Why.** Since noodlbox-app #2185 (B87, main `b2512e15f`), an admitted container member is delivered as an id-less line in its file group's `members` list. Grep still prints the member as a hit.
+
+The reader at `4d0df15` read only `files[].symbols`. That was a silent gap in addendum 4's "rows are never dropped": member rows were skipped unread. As a result, every member grep hit raised `UnjoinableHit`. In B88 (the noodlbox-app #1802 re-gate) this left grep.8000 unscored on both arms:
+
+| Corpus | Unscored / total |
+|---|---|
+| ts40 | 34/37 |
+| go34 | 30/30 |
+| py_nosphinx | 39/39 |
+| rust43 | 35/40 |
+
+No B88 grep number is reported from `4d0df15`.
+
+**Rule.**
+- A lean `files[]` group is `{file_path, [repo_id], [dependency_context], symbols, [members]}`. Any other key raises (`WireError`), so a new row-bearing key fails the cell rather than being skipped.
+- `member := [<line>] <kind> <name>`. It uses the recall grammar's prefix, with the 1-based line dropped when unknown. The row ENDS at the name: anything after it raises. That makes a missed escape detectable on member rows, as it already is on symbol rows.
+- Member rows are identities like any other row. A group's rows are its `symbols` then its `members`, in wire order. That order is identity order only; nothing reads ranks.
+- Members enter the grep identity oracle by `(path, line)`. A line-less member is an identity but no oracle key.
+
+**Consequences, disclosed before any number.**
+1. Member grep hits now join.
+2. JSON-row identities grow by the delivered members, on both arms of any comparison, so json gold can move relative to `4d0df15`.
+3. A one-line container whose members share its line makes that oracle key ambiguous. Such a hit credits no name in the headline (lower) bound and all names in the upper bound. A re-scored gate reports `ambiguous_hits` per row on both arms, so a lower-bound move is attributable to this rule.
+
+**Controls.**
+- Must-red at `4d0df15`: a grep hit on a member line (`object/object.go:269`, B88's probe shape) raises `UnjoinableHit`.
+- Byte-identity: a group without members reads exactly as before.
+- Empirical check over all 1752 recorded JSON payloads of the 8 B88 cells (77064 groups; 23174 with members; 109192 member lines): every line parses under the strict member grammar, every group key is in the set above, and the rows minus member rows equal `4d0df15`'s rows in every payload (0 mismatches).
