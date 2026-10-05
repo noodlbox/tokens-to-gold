@@ -10,21 +10,30 @@ cell fails (a mixed or unknown envelope is never read by a guess):
   `location.{file_path,start_line}` and `name`; `file_index[].rows[]` objects
   with `name` and a 0-based `line`.
 * LINES (the B63 D+id wire, noodlbox-app #1808): `files[]` groups
-  `{file_path, symbols: [line]}` and `file_index[].rows[]` lines. The grammar
-  mirrors the product's one row-schema authority,
+  `{file_path, [repo_id], [dependency_context], symbols: [line], [members: [line]]}`
+  and `file_index` groups `{file_path, [repo_id], rows: [line]}`. A group key
+  outside its set raises: a new row-bearing key is never skipped unread (B88:
+  the reader at 4d0df15 skipped `members`, so every member grep hit was
+  unjoinable). The grammar mirrors the
+  product's one row-schema authority,
   `crates/noodlbox-services/src/context/output/compact_wire.rs`:
 
       symbol  := <id> [<span>] <kind> <name> <role> <reason> [<signature>]
       recall  := [<line>] <kind> <name> [<signature>]
+      member  := [<line>] <kind> <name>     (noodlbox-app #2185, B87)
       span    := <a> | <a>-<b>          (1-based lines)
       name    := a bare token (non-empty, no whitespace, no leading `"`)
                | a JSON string literal
 
   `role` and `reason` must come from the product's closed vocabularies: a name
   the product failed to quote would shift them, so a missed escape raises
-  instead of being misread. Only SYMBOL rows can detect a missed escape: a
-  recall row's name is followed by free-text signature, so an unquoted
-  whitespace name there reads as its first word (the product quotes it).
+  instead of being misread. SYMBOL rows detect a missed escape by their
+  vocabularies and MEMBER rows by ending at the name; a recall row's name is
+  followed by free-text signature, so an unquoted whitespace name there reads
+  as its first word (the product quotes it).
+
+  A member is an identity like any row. A one-line container whose members sit
+  on its own line therefore makes that `(path, line)` oracle key ambiguous.
 
 Both shapes yield the same `(path, name, 1-based line)` rows, so an identity
 (`path:name`) and an oracle key (`(path, line)`) mean the same thing on either
@@ -148,8 +157,8 @@ def _list(value: object, what: str) -> list[object]:
 
 def json_rows(result: Mapping[str, object]) -> list[WireRow]:
     """Every delivered row of a JSON search `result`, in wire order: the ranked
-    symbols, then the `file_index` rows. An unlocated symbol (empty path) is not
-    a row."""
+    symbols (on the lean wire, each group's symbols then its members), then the
+    `file_index` rows. An unlocated row (empty path) is not a row."""
     shape = json_shape(result)
     if shape is None:
         return []
@@ -160,15 +169,48 @@ def json_rows(result: Mapping[str, object]) -> list[WireRow]:
         rows = [
             row
             for group in _objects(result.get("files", []), "`files`")
-            for line in _list(group.get("symbols"), "`files[].symbols`")
-            if (row := symbol_line(_path(group), line)) is not None
+            for row in _file_group_rows(group)
         ]
     for group in _objects(result.get("file_index", []), "`file_index`"):
+        if shape is JsonShape.LINES:
+            _closed_keys(group, _FILE_INDEX_GROUP_KEYS, "`file_index`")
         path = _path(group)
         for entry in _list(group.get("rows"), "`file_index[].rows`"):
             row = _object_recall(path, entry) if shape is JsonShape.OBJECTS else recall_line(path, entry)
             if row.path:
                 rows.append(row)
+    return rows
+
+
+_FILE_GROUP_KEYS = frozenset({"file_path", "repo_id", "dependency_context", "symbols", "members"})
+_FILE_INDEX_GROUP_KEYS = frozenset({"file_path", "repo_id", "rows"})
+
+
+def _closed_keys(group: Mapping[str, object], known: frozenset[str], what: str) -> None:
+    """Raise on a lean-wire group key outside `known` (the product's
+    `CompactFileWire` / `CompactFileIndexWire` fields): rows under an unknown
+    key would otherwise be skipped unread."""
+    unknown = sorted(set(group) - known)
+    if unknown:
+        raise WireError(f"a {what} group carries unknown keys {unknown}")
+
+
+def _file_group_rows(group: Mapping[str, object]) -> list[WireRow]:
+    """One `files[]` group's rows in wire order: its `symbols` lines, then its
+    `members` lines (absent when the group has none). A key outside the group's
+    known set raises rather than being skipped."""
+    _closed_keys(group, _FILE_GROUP_KEYS, "`files[]`")
+    path = _path(group)
+    rows = [
+        row
+        for line in _list(group.get("symbols"), "`files[].symbols`")
+        if (row := symbol_line(path, line)) is not None
+    ]
+    rows.extend(
+        row
+        for line in _list(group.get("members", []), "`files[].members`")
+        if (row := member_line(path, line)) is not None
+    )
     return rows
 
 
@@ -245,10 +287,10 @@ def symbol_line(path: str, line: object) -> WireRow | None:
     return WireRow(path, name, start) if path else None
 
 
-def recall_line(path: str, line: object) -> WireRow:
-    """One `file_index[].rows[]` line."""
-    if not isinstance(line, str):
-        raise WireError("a `file_index` row is not a line")
+def _located_kind_name(line: str) -> tuple[int | None, str, int]:
+    """The `[<line>] <kind> <name>` prefix recall and member rows share (the
+    product's `located_kind_name`): the 1-based line when present, the name, and
+    the index after the name's separator."""
     column, after = _token(line, 0)
     start: int | None = None
     at = 0
@@ -256,7 +298,28 @@ def recall_line(path: str, line: object) -> WireRow:
         start = int(column)
         at = after
     at = _token(line, at)[1]  # kind
-    return WireRow(path, _name(line, at)[0], start)
+    name, at = _name(line, at)
+    return start, name, at
+
+
+def recall_line(path: str, line: object) -> WireRow:
+    """One `file_index[].rows[]` line."""
+    if not isinstance(line, str):
+        raise WireError("a `file_index` row is not a line")
+    start, name, _ = _located_kind_name(line)
+    return WireRow(path, name, start)
+
+
+def member_line(path: str, line: object) -> WireRow | None:
+    """One `files[].members[]` line: it ends at the name, so anything after it
+    (an unquoted whitespace name, a drifted column) raises. None for an
+    unlocated group (empty path)."""
+    if not isinstance(line, str):
+        raise WireError("a `files[].members` row is not a line")
+    start, name, at = _located_kind_name(line)
+    if at < len(line) or line.endswith(" "):
+        raise WireError(f"a member row carries columns after its name: {line!r}")
+    return WireRow(path, name, start) if path else None
 
 
 _FLAT_HIT = re.compile(r"(?P<path>.+?):(?P<line>[0-9]+):")

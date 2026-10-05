@@ -237,6 +237,87 @@ class NameGrammar(unittest.TestCase):
             symbol_line("src/a.ts", "abc 8-12 function f definition query_match")
 
 
+class MemberLines(unittest.TestCase):
+    """The lean-member arm's `files[].members` lines (L21 pre-registration,
+    wiki 3f86d1beb): read with the recall grammar after the group's symbols,
+    and a group without them reads as before."""
+
+    def test_member_lines_are_read_after_the_groups_symbols(self):
+        result = {"files": [{
+            "file_path": "src/a.ts",
+            "symbols": ["0123456789ab 22-30 function alpha definition query_match"],
+            "members": ["31 method beta", '40 attribute "a b"'],
+        }]}
+        self.assertEqual(
+            [(r.path, r.name, r.line) for r in json_rows(result)],
+            [("src/a.ts", "alpha", 22), ("src/a.ts", "beta", 31), ("src/a.ts", "a b", 40)],
+        )
+
+    def test_a_group_of_members_only_has_rows(self):
+        result = {"files": [{"file_path": "src/a.ts", "symbols": [], "members": ["7 method gamma"]}]}
+        self.assertEqual([r.identity for r in json_rows(result)], ["src/a.ts:gamma"])
+
+    def test_groups_without_members_read_exactly_as_before(self):
+        # Byte-identity with the pre-members reader (4d0df15): a group with no
+        # `members` key, or an empty one, yields exactly its `symbols` rows.
+        groups = [
+            {"file_path": "src/a.ts", "symbols": [
+                "0123456789ab 22-30 function alpha definition query_match",
+                "fedcba987654 31 method beta related workflow_context",
+            ]},
+            {"file_path": "src/b.ts", "symbols": ['00aa11bb22cc 4 const "a b" definition query_match']},
+            {"file_path": "src/c.ts", "symbols": [], "members": []},
+        ]
+        self.assertEqual(
+            [(r.path, r.name, r.line) for r in json_rows({"files": groups})],
+            [("src/a.ts", "alpha", 22), ("src/a.ts", "beta", 31), ("src/b.ts", "a b", 4)],
+        )
+
+    def test_a_line_less_member_is_an_identity_but_no_oracle_key(self):
+        rows = json_rows({"files": [{"file_path": "src/a.ts", "symbols": [], "members": ["method Kill"]}]})
+        self.assertEqual([(r.identity, r.line) for r in rows], [("src/a.ts:Kill", None)])
+
+    def test_a_quoted_member_name_decodes_its_escapes(self):
+        rows = json_rows({"files": [{"file_path": "src/a.ts", "symbols": [],
+                                     "members": [r'7 attribute "say \"hi\" now"']}]})
+        self.assertEqual([r.name for r in rows], ['say "hi" now'])
+
+    def test_a_member_row_fails_closed_on_anything_after_its_name(self):
+        for line in ("40 attribute a b", "31 method beta extra", "31 method beta "):
+            with self.subTest(line=line), self.assertRaises(WireError):
+                json_rows({"files": [{"file_path": "src/a.ts", "symbols": [], "members": [line]}]})
+
+    def test_a_malformed_member_row_raises(self):
+        for line in ("269", "269 method", '269 method "open', ""):
+            with self.subTest(line=line), self.assertRaises(WireError):
+                json_rows({"files": [{"file_path": "src/a.ts", "symbols": [], "members": [line]}]})
+
+    def test_a_non_line_member_raises_in_its_own_terms(self):
+        with self.assertRaisesRegex(WireError, "files\\[\\]\\.members"):
+            json_rows({"files": [{"file_path": "src/a.ts", "symbols": [], "members": [7]}]})
+
+    def test_an_unlocated_group_has_no_member_rows(self):
+        rows = json_rows({"files": [{"file_path": "", "symbols": [], "members": ["7 method gamma"]}]})
+        self.assertEqual(rows, [])
+
+    def test_an_unknown_group_key_raises_rather_than_being_skipped(self):
+        with self.assertRaisesRegex(WireError, "unknown keys"):
+            json_rows({"files": [{"file_path": "src/a.ts", "symbols": [], "fields": ["7 field x"]}]})
+
+    def test_an_unknown_lean_file_index_key_raises(self):
+        with self.assertRaisesRegex(WireError, "unknown keys"):
+            json_rows({"files": [], "file_index": [{"file_path": "src/c.ts", "rows": ["1 fn eps"], "more": []}]})
+
+    def test_the_products_optional_group_keys_are_read(self):
+        group = {"file_path": "src/a.ts", "repo_id": "r", "dependency_context": "npm:x@1",
+                 "symbols": ["0123456789ab 3 function f definition query_match"]}
+        self.assertEqual([r.identity for r in json_rows({"files": [group]})], ["src/a.ts:f"])
+
+    def test_members_must_be_a_list_of_lines(self):
+        with self.assertRaises(WireError):
+            json_rows({"files": [{"file_path": "src/a.ts", "symbols": [], "members": "7 method gamma"}]})
+
+
 class LineBases(unittest.TestCase):
     """Both shapes key the oracle on the same `(path, 1-based line)`. The D+id
     base is the product's: noodlbox-app `compact_wire.rs` renders spans and

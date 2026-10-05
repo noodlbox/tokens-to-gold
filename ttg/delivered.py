@@ -9,7 +9,8 @@ with the unchanged `ttg.matcher.match_gold` against the frozen gold.
 Three pure pieces, each the one authority for its question:
 
 * `json_identities` -- the delivered `file:name` identities of a JSON envelope
-  (`symbols[]` with a location, then `file_index[].rows[]`, in wire order).
+  (located symbols -- on the lean wire each `files[]` group's symbols then its
+  members -- then `file_index[].rows[]`, in wire order).
 * `grep_identities` -- the identities of a grep block, resolved through the
   same cell's identity oracle by `(path, 1-based line)`. Fail-closed: a hit with
   no oracle row raises `UnjoinableHit`. The headline credits a hit only when
@@ -109,7 +110,8 @@ absent from a build without dependency analysis."""
 
 def json_identities(text: str) -> list[str]:
     """The delivered `file:name` identities of a JSON search envelope, in wire
-    order: located symbols, then every `file_index` row (B52's
+    order: located symbols (each lean `files[]` group's symbols then its
+    members), then every `file_index` row (B52's
     `payload_items`), read under either wire shape (`ttg.delivered_wire`).
     Counts and totals are never identities.
 
