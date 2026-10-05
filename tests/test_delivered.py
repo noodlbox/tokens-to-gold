@@ -93,6 +93,21 @@ class GrepIdentitiesRule(unittest.TestCase):
         with self.assertRaises(UnjoinableHit):
             grep_identities("src/a.ts:11:function notInOracle()", ORACLE, one_line_per_hit=True)
 
+    def test_a_hit_on_a_member_line_joins_through_the_oracles_members(self) -> None:
+        # noodlbox-app #2185 (B87): an admitted container member rides the lean
+        # wire's id-less `files[].members`, while grep prints it as a hit. Before
+        # the members reader, every such hit was unjoinable (B88, 2026-10-05).
+        oracle = json.dumps({"result": {"files": [{
+            "file_path": "object/object.go",
+            "symbols": ["0123456789ab 213-215 struct String definition query_match"],
+            "members": ["269 method Kill"],
+        }]}})
+        got = grep_identities(
+            "object/object.go:269:[workflow · expansion] func (s *String) Kill() error",
+            oracle, one_line_per_hit=True,
+        )
+        self.assertEqual(got.lower, ["object/object.go:Kill"])
+
     def test_empty_block_is_no_hits_not_a_failure(self) -> None:
         self.assertEqual(grep_identities("", ORACLE, one_line_per_hit=True).lower, [])
 
