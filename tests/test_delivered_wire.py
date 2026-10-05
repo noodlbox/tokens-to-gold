@@ -257,6 +257,29 @@ class MemberLines(unittest.TestCase):
         result = {"files": [{"file_path": "src/a.ts", "symbols": [], "members": ["7 method gamma"]}]}
         self.assertEqual([r.identity for r in json_rows(result)], ["src/a.ts:gamma"])
 
+    def test_groups_without_members_read_exactly_as_before(self):
+        # Byte-identity with the pre-members reader (4d0df15): for a group with
+        # no `members` key, or an empty one, the rows are exactly its `symbols`
+        # lines read one by one, in wire order, with nothing added.
+        groups = [
+            {"file_path": "src/a.ts", "symbols": [
+                "0123456789ab 22-30 function alpha definition query_match",
+                "fedcba987654 31 method beta related workflow_context",
+            ]},
+            {"file_path": "src/b.ts", "symbols": ['00aa11bb22cc 4 const "a b" definition query_match']},
+            {"file_path": "src/c.ts", "symbols": [], "members": []},
+        ]
+        before = [
+            row
+            for group in groups
+            for line in group["symbols"]
+            if (row := symbol_line(group["file_path"], line)) is not None
+        ]
+        got = json_rows({"files": groups})
+        self.assertEqual([(r.path, r.name, r.line, r.identity) for r in got],
+                         [(r.path, r.name, r.line, r.identity) for r in before])
+        self.assertEqual(len(got), 3)
+
     def test_members_must_be_a_list_of_lines(self):
         with self.assertRaises(WireError):
             json_rows({"files": [{"file_path": "src/a.ts", "symbols": [], "members": "7 method gamma"}]})
