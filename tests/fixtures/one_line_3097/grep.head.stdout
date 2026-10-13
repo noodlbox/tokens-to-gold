@@ -1,0 +1,84 @@
+token/token.go:12:[def x] STRING — matched: string
+docs/src/.vuepress/components/wasm_exec.js:203:[def q] loadSliceOfValues — matched: slice valu of
+evaluator/evaluator.go:935:[rel sf] <closure_in_evalForExpression>
+  :1007:[rel sf] <closure_in_evalForInExpression>
+parser/parser.go:289:[wf q] func (p *Parser) parseAssignStatement() ast.Statement — matched: assign
+  :471:[def q] func (p *Parser) ParseStringLiteral() ast.Expression — matched: string
+evaluator/evaluator.go:1023:[rel sf] <closure_in_evalForInExpression>
+parser/parser.go:1067:[def q] func (p *Parser) parseCommand() ast.Expression
+  :189:[wf q] func (p *Parser) expectPeek(typ token.TokenType) bool — matched: expect
+  :672:[def q] func (p *Parser) parseWhileExpression() ast.Expression
+  :730:[wf q] func (p *Parser) parseForInExpression(initialExpression *ast.ForExpression) ast.Expression — matched: for in
+evaluator/evaluator.go:63:[rel sf] func BeginEval(program ast.Node, env *object.Environment, lexer *lexer.Lexer) object.Object
+  :1264:[rel sf] func CanCallMethod(f *object.Builtin, o object.Object) bool
+parser/parser.go:566:[def q] func (p *Parser) parseQuestionExpression(object ast.Expression) ast.Expression
+ast/ast.go:379:[def q] type ForInExpression struct — matched: for in
+object/environment.go:29:[wf q] func NewEnvironment(stdio *Stdio, dir string, version string, interactive bool) *Environment — matched: new
+evaluator/evaluator.go:23:[rel sf] EOF
+  :70:[rel sf] func Eval(node ast.Node, env *object.Environment) object.Object
+parser/parser.go:594:[def q] func (p *Parser) ParseBoolean() ast.Expression
+object/environment.go:13:[wf q] func NewEnclosedEnvironment(outer *Environment, args []Object) *Environment — matched: new
+parser/parser.go:598:[def q] func (p *Parser) parseGroupedExpression() ast.Expression
+  :209:[wf q] func (p *Parser) peekError(tok token.Token) — matched: error
+parser/parser_test.go:1516:[def q] func TestParsingIndexRangeExpressions(t *testing.T) — matched: index rang
+object/object.go:70:[wf q] func GenerateEqualityString(o Object) string — matched: string equal
+parser/parser.go:1078:[def q] func (p *Parser) parseBreak() ast.Expression — matched: break
+evaluator/evaluator.go:25:[rel sf] FALSE
+  :26:[rel sf] Fns
+  :22:[rel sf] NULL
+  :24:[rel sf] TRUE
+  :794:[rel sf] func appendFile(file string, content string) error
+  :1212:[rel sf] func applyFunction(tok token.Token, fn object.Object, env *object.Environment, args []object.Object) object.Object
+terminal/terminal.go:120:[def q] func (m Model) View() string
+evaluator/evaluator.go:1272:[wf q] func extendFunctionEnv( fn *object.Function, args []object.Object, ) (*object.Environment, *object.Error) — matched: extend
+terminal/terminal.go:628:[def q] <closure_in_eval> — matched: in
+lexer/lexer.go:19:[wf q] func New(in string) *Lexer — matched: new
+evaluator/evaluator.go:1231:[rel sf] func applyMethod(tok token.Token, o object.Object, me *ast.MethodExpression, env *object.Environment, args []object.Object) object.Object
+terminal/terminal.go:354:[def q] func (m Model) suggest(direction int) Model
+object/object.go:213:[wf q] type String struct — matched: string
+parser/parser.go:1074:[def q] func (p *Parser) parseComment() ast.Expression
+docs/src/.vuepress/components/wasm_exec.js:213:[wf q] loadString — matched: string
+evaluator/evaluator.go:370:[rel sf] func doEvalDecorator(node *ast.Decorator, env *object.Environment) (string, object.Object, object.Object)
+docs/src/.vuepress/public/wasm_exec.js:134:[def q] loadValue — matched: valu
+docs/src/.vuepress/components/wasm_exec.js:197:[wf q] loadSlice — matched: slice
+  :399:[def q] "syscall/js.valueNew" — matched: valu new
+evaluator/evaluator.go:1396:[rel sf] func evalArrayIndexExpression(tok token.Token, array, index object.Object, end object.Object, isRange bool) object.Object
+  :56:[wf q] func newContinueError(tok token.Token, format string, a ...interface{}) *object.ContinueError — matched: new error
+docs/src/.vuepress/public/wasm_exec.js:399:[def q] "syscall/js.valueNew" — matched: valu new
+object/object.go:345:[def q] IsCurrentArgs — matched: is current
+evaluator/evaluator.go:1116:[wf q] func isTruthy(obj object.Object) bool — matched: is
+  :808:[rel sf] func evalArrayInfixExpression( tok token.Token, operator string, left, right object.Object, ) object.Object
+parser/parser_test.go:1303:[def q] func TestCallExpressionParameterParsing(t *testing.T)
+object/object.go:77:[wf q] func Equal(obj1 Object, obj2 Object) bool — matched: equal
+evaluator/evaluator.go:486:[rel sf] func evalAssignment(as *ast.AssignStatement, env *object.Environment) object.Object
+ast/ast.go:330:[def q] type Scenario struct
+docs/src/.vuepress/components/wasm_exec.js:134:[wf q] loadValue — matched: valu
+object/object.go:456:[def q] func (h *Hash) Next() (Object, Object)
+lexer/lexer.go:328:[wf q] func (l *Lexer) readChar() — matched: read
+object/environment.go:83:[def q] Dir
+evaluator/evaluator.go:625:[rel sf] func evalBangOperatorExpression(right object.Object) object.Object
+  :1500:[rel sf] func evalCommandExpression(tok token.Token, cmd string, env *object.Environment) object.Object
+object/object.go:365:[def q] func (ao *Array) Homogeneous() bool
+  :141:[wf q] func (e *Error) Inspect() string — matched: inspect
+evaluator/evaluator.go:1565:[rel sf] func evalCommandInBackground(s *object.String)
+object/object.go:162:[wf q] func (f *Function) Inspect() string — matched: inspect
+parser/parser.go:443:[def q] func (p *Parser) ParseNumberLiteral() ast.Expression — matched: number
+token/token.go:37:[def q] OR — matched: or
+evaluator/evaluator.go:301:[rel sf] func evalCompoundAssignment(node *ast.CompoundAssignment, env *object.Environment) object.Object
+object/object.go:224:[wf q] func (s *String) Type() ObjectType — matched: type
+terminal/terminal.go:94:[def q] dirtyInput
+docs/src/.vuepress/public/wasm_exec.js:203:[def q] loadSliceOfValues — matched: slice valu of
+object/object.go:235:[wf q] func (s *String) mustHaveMutex() — matched: must
+  :335:[wf q] type Array struct — matched: array
+parser/parser_test.go:1357:[def q] func TestMethodExpressionParameterParsing(t *testing.T)
+evaluator/evaluator.go:336:[rel sf] func evalDecorator(node *ast.Decorator, env *object.Environment) object.Object
+  :918:[rel sf] func evalForExpression( fe *ast.ForExpression, env *object.Environment, ) object.Object
+object/object.go:385:[wf q] func (ao *Array) Inspect() string — matched: inspect
+lexer/lexer.go:338:[def q] func (l *Lexer) Rewind(pos int)
+docs/src/.vuepress/components/wasm_exec.js:147:[wf q] storeValue — matched: valu
+evaluator/evaluator.go:995:[rel sf] func evalForInExpression( fie *ast.ForInExpression, env *object.Environment, ) object.Object
+parser/parser.go:503:[def q] func (p *Parser) parseInfixExpression(left ast.Expression) ast.Expression
+  :73:[wf q] type Parser struct — matched: parser
+evaluator/evaluator_test.go:896:[def q] func TestEnclosingEnvironments(t *testing.T)
+evaluator/evaluator.go:885:[wf q] func evalNotInExpression(tok token.Token, left, right object.Object) object.Object — matched: in not
+parser/parser.go:518:[def q] func (p *Parser) parseCompoundAssignment(left ast.Expression) ast.Expression — matched: assign

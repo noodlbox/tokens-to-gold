@@ -22,8 +22,10 @@ Pinned here:
   an undelivered path raises on every build; any other line is a counted
   continuation on a pre-#1791 build and raises on a post-#1791 one.
 * GREP, ONE LINE PER HIT (noodlbox-app #3097): a `  :line:` hit takes the path
-  of the hit above it; one before any path raises; the headed and flat shapes
-  still read as before, through the same reader.
+  of the hit above it; one before any path raises; a line of one shape read in
+  the other shape's state raises; a path holding a `:NN:` field reads whole;
+  the headed and flat shapes still read as before, through the same reader; a
+  real head and base page of one retrieval join one oracle.
 """
 
 from __future__ import annotations
@@ -409,6 +411,35 @@ class ExhaustiveDispatch(unittest.TestCase):
             json_identities(envelope({"workflows": []}))
 
 
+class OneLinePerHitRealBinary(unittest.TestCase):
+    """A real head page (one line per hit) and the base page (headed) of ONE
+    retrieval, from DEV builds of noodlbox-app #3097 and its main; see
+    fixtures/one_line_3097/README.md. Both join the head binary's D+id oracle
+    through the one reader."""
+
+    FIXTURE = Path(__file__).parent / "fixtures" / "one_line_3097"
+
+    def text(self, name: str) -> str:
+        return (self.FIXTURE / f"{name}.stdout").read_text(encoding="utf-8")
+
+    def test_the_real_one_line_page_joins_the_same_runs_oracle(self):
+        oracle = self.text("json.head")
+        page = self.text("grep.head")
+        joined = grep_identities(page, oracle, one_line_per_hit=True)
+        self.assertEqual(len(joined.lower), len(page.splitlines()), "one hit per line, each joined")
+        self.assertEqual((joined.ambiguous_hits, joined.continuation_lines), (0, 0))
+        self.assertTrue(any(line.startswith("  :") for line in page.splitlines()),
+                        "non-vacuity: the page continues a file")
+        self.assertFalse(Counter(joined.lower) - Counter(json_identities(oracle)))
+
+    def test_the_real_base_page_reads_as_a_subset_of_the_head_page(self):
+        oracle = self.text("json.head")
+        head = grep_identities(self.text("grep.head"), oracle, one_line_per_hit=True).lower
+        base = grep_identities(self.text("grep.base"), oracle, one_line_per_hit=True).lower
+        self.assertTrue(base, "non-vacuity: the base page has hits")
+        self.assertFalse(Counter(base) - Counter(head), "the head page keeps every base row")
+
+
 class HeadedGrep(unittest.TestCase):
     """B64 addendum 4 grep rules, and L18's must-reds (a)-(c)."""
 
@@ -464,6 +495,27 @@ class HeadedGrep(unittest.TestCase):
     def test_a_same_path_hit_after_an_undelivered_path_never_joins(self):
         with self.assertRaises(UndeliveredHit):
             grep_hits("src/zz.ts:4:[def q] alpha\n  :5:[rel sf] beta\n", self.PATHS, one_line_per_hit=True)
+
+    def test_an_indented_hit_after_a_named_hit_raises(self):
+        # A flat block never carries `  N:`; reading it after a named hit would
+        # turn a pre-#1791 continuation into a phantom hit (round 1, R1-2).
+        for one_line_per_hit in (False, True):
+            with self.subTest(one_line_per_hit=one_line_per_hit):
+                with self.assertRaises(WireError):
+                    grep_hits("src/a.ts:3:[def q] alpha\n  12: tail of alpha\n", self.PATHS,
+                              one_line_per_hit=one_line_per_hit)
+
+    def test_a_same_path_hit_under_a_heading_raises(self):
+        for one_line_per_hit in (False, True):
+            with self.subTest(one_line_per_hit=one_line_per_hit):
+                with self.assertRaises(WireError):
+                    grep_hits("src/a.ts\n  3:[def q] alpha\n  :7:[rel sf] beta\n", self.PATHS,
+                              one_line_per_hit=one_line_per_hit)
+
+    def test_a_path_holding_a_line_field_reads_whole(self):
+        paths = frozenset({"src/a:12:b.ts"})
+        block = grep_hits("src/a:12:b.ts:3:[def q] alpha\n  :5:[rel sf] beta\n", paths, one_line_per_hit=True)
+        self.assertEqual(block.hits, [("src/a:12:b.ts", 3), ("src/a:12:b.ts", 5)])
 
     def test_c_a_continuation_is_counted_before_1791_and_raises_after(self):
         text = "src/a.ts:3:[definition · query] a multi\nline content\n"

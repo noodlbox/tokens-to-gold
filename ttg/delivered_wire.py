@@ -39,9 +39,11 @@ Both shapes yield the same `(path, name, 1-based line)` rows, so an identity
 (`path:name`) and an oracle key (`(path, line)`) mean the same thing on either
 wire.
 
-GREP. A block is either flat (G0: `path:line:content`) or headed (G1/G2: a path
-heading, then indented `  line:content` hits); the rules are in `grep_hits`
-(B64 addendum 4, stricter than B63's Amendment 1 on a post-#1791 build).
+GREP. A block is flat (G0: `path:line:content`), headed (G1/G2: a path
+heading, then indented `  line:content` hits), or one line per hit with the path
+named only when it changes (noodlbox-app #3097: `path:line:content`, then
+`  :line:content` for the same file); the rules are in `grep_hits` (B64
+addendum 4, stricter than B63's Amendment 1 on a post-#1791 build).
 """
 
 from __future__ import annotations
@@ -323,6 +325,8 @@ def member_line(path: str, line: object) -> WireRow | None:
 
 
 _FLAT_HIT = re.compile(r"(?P<path>.+?):(?P<line>[0-9]+):")
+# Every `:<line>:` field a line holds, overlapping, so a path may itself carry one.
+_LINE_FIELD = re.compile(r"(?=:(?P<line>[0-9]+):)")
 _HEADED_HIT = re.compile(r"  (?P<line>[0-9]+):")
 _SAME_PATH_HIT = re.compile(r"  :(?P<line>[0-9]+):")
 
@@ -340,6 +344,35 @@ class GrepHits:
     builds only)."""
 
 
+@dataclass(frozen=True)
+class _UnderHeading:
+    """The last path-bearing line was a heading (G1/G2 headed block)."""
+
+    path: str
+
+
+@dataclass(frozen=True)
+class _AfterNamedHit:
+    """The last path-bearing line was a hit that named its path (G0 flat, or
+    the one-line-per-hit block of noodlbox-app #3097)."""
+
+    path: str
+
+
+_Cursor = _UnderHeading | _AfterNamedHit | None
+
+
+def _named_hit(line: str, paths: frozenset[str]) -> tuple[str, int] | None:
+    """`(path, line)` of a `path:line:` hit on a delivered path: the longest
+    delivered prefix followed by `:<digits>:`, so a path that itself holds a
+    `:NN:` field is not split at it. `None` when no delivered path fits."""
+    named = None
+    for field in _LINE_FIELD.finditer(line):
+        if line[: field.start()] in paths:
+            named = (line[: field.start()], int(field.group("line")))
+    return named
+
+
 def grep_hits(
     text: str, delivered_paths: Sequence[str] | frozenset[str], *, one_line_per_hit: bool
 ) -> GrepHits:
@@ -347,15 +380,17 @@ def grep_hits(
     hit with a path named only when it changes (noodlbox-app #3097).
 
     One reader serves every shape, line by line, with no version flag: each
-    line's own form says how it is read.
+    line's own form, and the form of the last path-bearing line, say how it is
+    read. No build mixes the shapes, so a line read against the other shape's
+    state raises rather than borrowing a path.
 
-    * A column-0 line that is a delivered path is a heading; an indented
-      `  line:` hit takes the current path, and one before any path raises.
-    * A `path:line:` line is a hit, and its path becomes the current path; on a
-      path the retrieval did not deliver it raises `UndeliveredHit`, on every
-      build.
-    * A `  :line:` line is a hit on the current path (#3097: the hit above it
-      is of the same file); one before any path raises.
+    * A column-0 line that is a delivered path is a heading. An indented
+      `  line:` hit takes the heading's path; one not under a heading raises.
+    * A `path:line:` line on a delivered path names it (the longest delivered
+      prefix followed by `:<digits>:`). A hit-shaped line on a path the
+      retrieval did not deliver raises `UndeliveredHit`, on every build.
+    * A `  :line:` line is a hit on the path the hit above it named (#3097);
+      one that does not follow a named hit raises.
     * Any other non-empty line is a raw-newline continuation. A build that
       carries the #1791 fix (`one_line_per_hit`, from its receipt verdict) emits
       none, so there it raises; on an earlier build it is counted, never an
@@ -365,28 +400,27 @@ def grep_hits(
     paths = frozenset(delivered_paths)
     hits: list[tuple[str, int]] = []
     continuations = 0
-    heading: str | None = None
+    cursor: _Cursor = None
     for line in text.splitlines():
         if not line:
             continue
         if headed := _HEADED_HIT.match(line):
-            if heading is None:
-                raise WireError(f"an indented hit before any heading: {line!r}")
-            hits.append((heading, int(headed.group("line"))))
+            if not isinstance(cursor, _UnderHeading):
+                raise WireError(f"an indented hit not under a heading: {line!r}")
+            hits.append((cursor.path, int(headed.group("line"))))
         elif same_path := _SAME_PATH_HIT.match(line):
-            # Read before the flat form, which would take the two-space prefix
-            # for a path.
-            if heading is None:
-                message = f"a same-path hit before any hit named a path: {line!r}"
+            # Read before the named form, whose path would take the two-space prefix.
+            if not isinstance(cursor, _AfterNamedHit):
+                message = f"a same-path hit that does not follow a named hit: {line!r}"
                 raise WireError(message)
-            hits.append((heading, int(same_path.group("line"))))
+            hits.append((cursor.path, int(same_path.group("line"))))
         elif line in paths:
-            heading = line
-        elif flat := _FLAT_HIT.match(line):
-            if flat.group("path") not in paths:
-                raise UndeliveredHit(f"grep hit on a path the retrieval did not deliver: {line[:120]!r}")
-            heading = flat.group("path")
-            hits.append((heading, int(flat.group("line"))))
+            cursor = _UnderHeading(line)
+        elif named := _named_hit(line, paths):
+            cursor = _AfterNamedHit(named[0])
+            hits.append(named)
+        elif _FLAT_HIT.match(line):
+            raise UndeliveredHit(f"grep hit on a path the retrieval did not deliver: {line[:120]!r}")
         elif one_line_per_hit:
             raise WireError(f"a non-hit grep line from a one-line-per-hit (#1791) build: {line[:120]!r}")
         else:
