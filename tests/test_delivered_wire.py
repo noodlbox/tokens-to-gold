@@ -21,6 +21,9 @@ Pinned here:
 * GREP (B64 addendum 4): an indented hit before any heading raises; a hit on
   an undelivered path raises on every build; any other line is a counted
   continuation on a pre-#1791 build and raises on a post-#1791 one.
+* GREP, ONE LINE PER HIT (noodlbox-app #3097): a `  :line:` hit takes the path
+  of the hit above it; one before any path raises; the headed and flat shapes
+  still read as before, through the same reader.
 """
 
 from __future__ import annotations
@@ -430,6 +433,37 @@ class HeadedGrep(unittest.TestCase):
             with self.subTest(one_line_per_hit=one_line_per_hit):
                 with self.assertRaises(UndeliveredHit):
                     grep_hits("src/zz.ts:4:alpha()\n", self.PATHS, one_line_per_hit=one_line_per_hit)
+
+    def test_a_same_path_hit_takes_the_path_of_the_hit_above_it(self):
+        # Must-red (noodlbox-app #3097): before the reader knew the form, the
+        # `  :7:` line raised on a one-line-per-hit build ("a non-hit grep line").
+        text = "src/a.ts:3:[def q] alpha\n  :7:[rel sf] beta\nsrc/b.ts:2:[wf q] gamma\n  :9:[rel sf] delta\n"
+        for one_line_per_hit in (False, True):
+            with self.subTest(one_line_per_hit=one_line_per_hit):
+                block = grep_hits(text, self.PATHS, one_line_per_hit=one_line_per_hit)
+                self.assertEqual(
+                    block.hits,
+                    [("src/a.ts", 3), ("src/a.ts", 7), ("src/b.ts", 2), ("src/b.ts", 9)],
+                )
+                self.assertEqual(block.continuation_lines, 0)
+
+    def test_the_one_line_block_carries_the_headed_blocks_hits(self):
+        headed = "src/a.ts\n  3:[def q] alpha\n  7:[rel sf] beta\nsrc/b.ts\n  2:[wf q] gamma\nsrc/a.ts\n  9:[rel sf] delta\n"
+        one_line = "src/a.ts:3:[def q] alpha\n  :7:[rel sf] beta\nsrc/b.ts:2:[wf q] gamma\nsrc/a.ts:9:[rel sf] delta\n"
+        self.assertEqual(
+            grep_hits(one_line, self.PATHS, one_line_per_hit=True).hits,
+            grep_hits(headed, self.PATHS, one_line_per_hit=True).hits,
+        )
+
+    def test_a_same_path_hit_before_any_path_raises(self):
+        for one_line_per_hit in (False, True):
+            with self.subTest(one_line_per_hit=one_line_per_hit):
+                with self.assertRaises(WireError):
+                    grep_hits("  :3:[def q] alpha\n", self.PATHS, one_line_per_hit=one_line_per_hit)
+
+    def test_a_same_path_hit_after_an_undelivered_path_never_joins(self):
+        with self.assertRaises(UndeliveredHit):
+            grep_hits("src/zz.ts:4:[def q] alpha\n  :5:[rel sf] beta\n", self.PATHS, one_line_per_hit=True)
 
     def test_c_a_continuation_is_counted_before_1791_and_raises_after(self):
         text = "src/a.ts:3:[definition · query] a multi\nline content\n"

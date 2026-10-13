@@ -324,6 +324,7 @@ def member_line(path: str, line: object) -> WireRow | None:
 
 _FLAT_HIT = re.compile(r"(?P<path>.+?):(?P<line>[0-9]+):")
 _HEADED_HIT = re.compile(r"  (?P<line>[0-9]+):")
+_SAME_PATH_HIT = re.compile(r"  :(?P<line>[0-9]+):")
 
 
 class UndeliveredHit(WireError):
@@ -342,12 +343,19 @@ class GrepHits:
 def grep_hits(
     text: str, delivered_paths: Sequence[str] | frozenset[str], *, one_line_per_hit: bool
 ) -> GrepHits:
-    """Every hit of a grep block, flat or headed (B64 addendum 4).
+    """Every hit of a grep block: flat, headed (B64 addendum 4), or one line per
+    hit with a path named only when it changes (noodlbox-app #3097).
+
+    One reader serves every shape, line by line, with no version flag: each
+    line's own form says how it is read.
 
     * A column-0 line that is a delivered path is a heading; an indented
-      `  line:` hit takes the current heading, and one before any heading raises.
-    * A `path:line:` line is a hit; on a path the retrieval did not deliver it
-      raises `UndeliveredHit`, on every build.
+      `  line:` hit takes the current path, and one before any path raises.
+    * A `path:line:` line is a hit, and its path becomes the current path; on a
+      path the retrieval did not deliver it raises `UndeliveredHit`, on every
+      build.
+    * A `  :line:` line is a hit on the current path (#3097: the hit above it
+      is of the same file); one before any path raises.
     * Any other non-empty line is a raw-newline continuation. A build that
       carries the #1791 fix (`one_line_per_hit`, from its receipt verdict) emits
       none, so there it raises; on an earlier build it is counted, never an
@@ -365,12 +373,20 @@ def grep_hits(
             if heading is None:
                 raise WireError(f"an indented hit before any heading: {line!r}")
             hits.append((heading, int(headed.group("line"))))
+        elif same_path := _SAME_PATH_HIT.match(line):
+            # Read before the flat form, which would take the two-space prefix
+            # for a path.
+            if heading is None:
+                message = f"a same-path hit before any hit named a path: {line!r}"
+                raise WireError(message)
+            hits.append((heading, int(same_path.group("line"))))
         elif line in paths:
             heading = line
         elif flat := _FLAT_HIT.match(line):
             if flat.group("path") not in paths:
                 raise UndeliveredHit(f"grep hit on a path the retrieval did not deliver: {line[:120]!r}")
-            hits.append((flat.group("path"), int(flat.group("line"))))
+            heading = flat.group("path")
+            hits.append((heading, int(flat.group("line"))))
         elif one_line_per_hit:
             raise WireError(f"a non-hit grep line from a one-line-per-hit (#1791) build: {line[:120]!r}")
         else:
